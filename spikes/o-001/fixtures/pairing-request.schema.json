@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lumen.local/spikes/o-001/pairing-request.schema.json",
+  "title": "O-001 pairing request spike fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "spaceId",
+    "senderNodeId",
+    "recipientNodeId",
+    "taskId",
+    "nonce",
+    "issuedAt",
+    "expiresAt",
+    "payload"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "pairing.request" },
+    "spaceId": { "type": "string", "pattern": "^space_[a-z0-9]{8}$" },
+    "senderNodeId": { "type": "string", "pattern": "^node_[a-z0-9]{8}$" },
+    "recipientNodeId": { "type": "string", "pattern": "^node_[a-z0-9]{8}$" },
+    "taskId": { "type": "string", "pattern": "^task_[a-z0-9]{8}$" },
+    "nonce": { "type": "string", "minLength": 16, "maxLength": 128 },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayName", "ephemeralPublicKey", "confirmationCode"],
+      "properties": {
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "ephemeralPublicKey": { "type": "string", "minLength": 32, "maxLength": 256 },
+        "confirmationCode": { "type": "string", "pattern": "^[0-9]{6}$" }
+      }
+    }
+  }
+}

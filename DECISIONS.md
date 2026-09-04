@@ -41,3 +41,9 @@
 | O-006 | Which exact actions comprise the first four capability contracts? | User journeys and permission boundaries for coding, reminders, schedules, and notifications. |
 
 Do not decide an open question silently. Record the evidence, choice, consequence, and reversal trigger.
+
+## Evidence in progress
+
+| Decision | Evidence | Status |
+| --- | --- | --- |
+| `O-001` | [Headless stack comparison spike](./spikes/o-001/README.md) and [results](./spikes/o-001/EVIDENCE.md) | Contract parsing evidence passes for both candidates; platform lifecycle, storage, interop, packaging, and device checks remain pending. |

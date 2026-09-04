@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "kind": "pairing.request",
+  "spaceId": "space_demo0001",
+  "senderNodeId": "node_demo0001",
+  "recipientNodeId": "node_demo0002",
+  "taskId": "task_demo0002",
+  "nonce": "synthetic-nonce-00000002",
+  "issuedAt": "2026-09-04T11:50:00Z",
+  "expiresAt": "2026-09-04T11:55:00Z",
+  "payload": {
+    "displayName": "Synthetic Mac node",
+    "ephemeralPublicKey": "c3ludGhldGljLWVwaGVtZXJhbC1wdWJsaWMta2V5LTAwMDI=",
+    "confirmationCode": "234567"
+  }
+}

@@ -1,0 +1,12 @@
+id: event_demo0001
+event: task.status
+data: {"taskId":"task_demo0001","state":"running"}
+
+id: event_demo0002
+event: task.status
+data: {"taskId":"task_demo0001","state":"awaiting_permission"}
+
+id: event_demo0003
+event: task.status
+data: {"taskId":"task_demo0001",
+data: "state":"completed"}

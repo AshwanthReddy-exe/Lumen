@@ -1,0 +1,16 @@
+.DS_Store
+
+# Local tool state
+.mise.local.toml
+
+# Gradle and Kotlin
+.gradle/
+**/build/
+
+# Swift Package Manager and Xcode
+.build/
+.swiftpm/
+DerivedData/
+
+# Machine-specific SDK configuration
+local.properties
