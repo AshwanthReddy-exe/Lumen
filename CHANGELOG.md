@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Started Phase 0 `O-002` with a reviewable context-synchronization proposal and production system-design rules.
+
 ### Added
 
 - Added reproducible `O-001` Kotlin Multiplatform and native Swift/JSON Schema spikes with shared strict-decoding and SSE fixtures.

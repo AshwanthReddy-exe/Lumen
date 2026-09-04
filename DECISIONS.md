@@ -47,3 +47,4 @@ Do not decide an open question silently. Record the evidence, choice, consequenc
 | Decision | Evidence | Status |
 | --- | --- | --- |
 | `O-001` | [Headless stack comparison spike](./spikes/o-001/README.md) and [results](./spikes/o-001/EVIDENCE.md) | Contract parsing evidence passes for both candidates; platform lifecycle, storage, interop, packaging, and device checks remain pending. |
+| `O-002` | [Context synchronization proposal](./spikes/o-002/CONTEXT_SYNC_PROPOSAL.md) | Privacy-preserving defaults and examples are ready for owner review; no default is accepted until that review. |

@@ -38,4 +38,4 @@ Create implementation directories after the Phase 0 stack decision. Current cano
 
 No production application code or repository-wide build tooling exists yet.
 
-Phase 0 experiments live under [`spikes/`](./spikes/) and are evidence for open decisions, not production packages. The current [`O-001` comparison](./spikes/o-001/README.md) tests Kotlin Multiplatform against native Swift with shared JSON Schema fixtures.
+Phase 0 experiments live under [`spikes/`](./spikes/) and are evidence for open decisions, not production packages. The current [`O-001` comparison](./spikes/o-001/README.md) tests Kotlin Multiplatform against native Swift with shared JSON Schema fixtures; [`O-002`](./spikes/o-002/CONTEXT_SYNC_PROPOSAL.md) proposes reviewable context-synchronization defaults.

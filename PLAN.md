@@ -69,6 +69,13 @@ Each manual check records: build/version, devices and OS versions, preconditions
 - Unknown critical fields, unsupported versions, invalid signatures, expiry, and replay fail closed.
 - Database migration, encrypted export, restore, and key-loss prototypes behave as specified.
 
+### O-002 decision checks
+
+- A fixture demonstrates the serialized envelope and Host-store result for `none`, `metadata`, `summary`, and `content`.
+- Initial capability defaults cover `coding.run`, `reminder.manage`, `schedule.manage`, and `notification.deliver` without treating operational task records as general context.
+- Conflicting edits, deletion, expiry, revocation, and an offline upload have an explicit, testable outcome.
+- Owner review confirms the defaults before `O-002` is accepted.
+
 ### Owner manual checks
 
 - Review and approve the exact meaning of Space, Host, node, companion, capability, context, and task.
