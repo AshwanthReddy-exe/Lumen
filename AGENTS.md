@@ -51,7 +51,7 @@ Default deny. Local execution may bypass the Host data path but never bypass loc
 
 ## Commands and documentation
 
-No build or test tooling exists; do not invent commands. Use concise Markdown, sentence-case headings, and stable IDs. Validate links and cross-document references.
+Use `mise run phase0-check` for the current cross-platform contract baseline. Add build, format, lint, unit-test, and contract-test commands only when the implementation phase that needs them begins; do not invent commands. Use concise Markdown, sentence-case headings, and stable IDs. Validate links and cross-document references.
 
 Update affected documents in the same change: behavior in `PRD.md`, system design in `ARCHITECTURE.md`, durable choices in `DECISIONS.md`, sequence and verification in `PLAN.md`, and completed work in `CHANGELOG.md`. Link to canonical explanations instead of copying them.
 

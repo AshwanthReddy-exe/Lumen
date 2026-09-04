@@ -2,7 +2,7 @@
 
 ## Status
 
-This proposal turns `O-002` into reviewable behavior. It is not an accepted decision and does not authorize implementation. The owner must approve the defaults and the Phase 0 checks in [PLAN.md](../../PLAN.md) must pass before `O-002` moves to the accepted decisions table.
+This contract resolves `O-002` as `D-021`. It freezes the V1 defaults; implementation and physical behavior are verified in the relevant delivery phases.
 
 ## Design goals
 

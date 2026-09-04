@@ -14,7 +14,7 @@
 | Android SDK/device | Not available; pending |
 | Full Xcode/iOS simulator | Not available; pending |
 
-All fixtures contain synthetic identifiers and content. This document records prototype evidence only and does not resolve `O-001`.
+All fixtures contain synthetic identifiers and content. This document records prototype evidence only; `O-001` is resolved separately as `D-020`.
 
 ## Automated contract results
 
@@ -60,7 +60,7 @@ The artifact sizes and source counts are descriptive only. They use different ar
 
 ## Manual evidence still required
 
-The headless comparison is insufficient to accept `O-001`. Before the decision, run and record:
+The headless comparison is insufficient to pass the platform implementation gates. Before those phases exit, run and record:
 
 1. Android foreground-service and encrypted-store prototypes on the intended old-phone class of device.
 2. Native Apple encrypted-store and migration prototypes with full Xcode on macOS and iOS.
@@ -70,4 +70,4 @@ The headless comparison is insufficient to accept `O-001`. Before the decision, 
 
 ## Decision status
 
-`O-001` remains open. Record the selected strategy, evidence, consequences, and reversal trigger in `DECISIONS.md` only after the pending platform checks and owner review are complete.
+`O-001` is accepted as `D-020`: Kotlin Multiplatform shares portable protocol and Space rules while Android and Apple applications remain native. This headless evidence does not replace the pending platform checks; those checks gate the phases that implement Android lifecycle, Apple packaging, encrypted stores, and KMP-to-Swift integration.

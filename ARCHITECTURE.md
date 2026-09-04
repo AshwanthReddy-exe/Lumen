@@ -27,6 +27,8 @@ The Host owns the Space identity, node registry, capability grants, canonical sh
 
 The first Android Host should be a lightweight native Lumen service with a foreground-service lifecycle, local encrypted storage, health reporting, and restart recovery. Hermes on Termux may be offered as an optional Host-local execution adapter, but Host correctness cannot depend on it.
 
+The portable core is Kotlin Multiplatform and owns protocol validation, Space semantics, policy, task state, and context rules. Android uses native Kotlin platform code and native UI; iOS and macOS use native Swift/SwiftUI surfaces and platform adapters. UI, device keys, encrypted storage, lifecycle, and OS permissions remain platform-owned rather than crossing the portable boundary.
+
 ### Node runtime
 
 Every node owns its platform integration, local task runner, capability adapters, local context cache, permission prompts, and connection to the Host. A node may execute locally while the Host is unavailable if it has an unexpired cached grant. It records a context delta and synchronizes later.
@@ -57,6 +59,8 @@ The Host is informed, not placed in the latency-critical path.
 6. The Host updates canonical task state and shares authorized results with subscribed surfaces.
 
 Cross-node work requires the Host. When it is unavailable, the origin reports that fact and may queue only within an explicit delivery policy.
+
+The first transport is local-network only: mDNS discovers a previously paired Host, then nodes use one mutually authenticated encrypted channel. Discovery is never trust; a relay, internet traversal, and push wake-up remain later work.
 
 ## Capability contract
 
@@ -97,12 +101,13 @@ Platform features use narrow adapters. For example, Apple Reminders may be imple
 ## Security and recovery rules
 
 - Device keys are hardware-backed where the platform permits; secrets never enter prompts or ordinary logs.
-- Messages include Space, sender, recipient, task, schema, nonce, issue time, expiry, and signature.
+- Messages include Space, active Host epoch, sender, recipient, task, schema, nonce, issue time, expiry, and signature.
 - Approvals bind to exact action arguments or artifact digest and can be consumed once.
 - Nodes and adapters receive minimum context; remote transport carries end-to-end encrypted envelopes.
 - Host export is encrypted and requires explicit owner action. Host migration prevents two active Hosts from accepting new work.
 - A Host restart restores durable tasks and reconciles target-node status before retrying.
 - A revoked node loses future synchronization and execution authority immediately after the Host records revocation.
+- Backup, restore, and Host migration are owner-initiated. A monotonically advancing Host epoch rejects stale Hosts and prevents automatic failover from creating a second authority.
 
 ## Target code boundaries
 

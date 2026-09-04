@@ -1,3 +1,10 @@
 [tools]
 gradle = "9.5.0"
 java = "25.0.2"
+
+[tasks.phase0-check]
+description = "Run the Phase 0 cross-platform contract baseline"
+run = [
+  "gradle -p spikes/o-001/kmp jvmTest --no-daemon",
+  "swift run --package-path spikes/o-001/native-schema NativeSchemaSpikeChecker spikes/o-001/fixtures",
+]

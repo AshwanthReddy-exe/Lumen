@@ -34,8 +34,8 @@ tests/              contract, integration, security, recovery
 infra/              development and deployment configuration
 ```
 
-Create implementation directories after the Phase 0 stack decision. Current canonical documents are [PRD.md](./PRD.md), [ARCHITECTURE.md](./ARCHITECTURE.md), [DECISIONS.md](./DECISIONS.md), the V1 [threat model](./THREAT_MODEL.md), and the phased [PLAN.md](./PLAN.md). Contribution rules are in [AGENTS.md](./AGENTS.md).
+Phase 0 selected a Kotlin Multiplatform core with native Android and Apple applications. Production directories are created only as each delivery phase implements them. Current canonical documents are [PRD.md](./PRD.md), [ARCHITECTURE.md](./ARCHITECTURE.md), [DECISIONS.md](./DECISIONS.md), the V1 [threat model](./THREAT_MODEL.md), and the phased [PLAN.md](./PLAN.md). Contribution rules are in [AGENTS.md](./AGENTS.md).
 
-No production application code or repository-wide build tooling exists yet.
+Run the Phase 0 contract baseline with `mise run phase0-check`. It uses the pinned Java and Gradle environment and the system-managed Swift toolchain.
 
-Phase 0 experiments live under [`spikes/`](./spikes/) and are evidence for open decisions, not production packages. The current [`O-001` comparison](./spikes/o-001/README.md) tests Kotlin Multiplatform against native Swift with shared JSON Schema fixtures; [`O-002`](./spikes/o-002/CONTEXT_SYNC_PROPOSAL.md) proposes reviewable context-synchronization defaults.
+Phase 0 evidence lives under [`spikes/`](./spikes/) and freezes the stack, context, transport, Host, recovery, and capability decisions before Phase 1 begins.

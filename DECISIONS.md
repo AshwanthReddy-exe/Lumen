@@ -20,6 +20,12 @@
 | D-017 | Make companion interfaces optional. | Desk companion and Mac pet share core contracts with ordinary apps. |
 | D-018 | Use an old Android phone as the first Host. | The initial topology proves low-cost, always-present personal hosting. |
 | D-019 | Keep the Host core independent of Hermes. | Android/Termux limitations cannot break Space coordination. |
+| D-020 | Use a Kotlin Multiplatform core with native Kotlin/Android and Swift/SwiftUI applications. | Portable rules are shared; UI, lifecycle, storage, keys, and permissions remain native. [Evidence](./spikes/o-001/EVIDENCE.md) |
+| D-021 | Default initial capability context to the least useful level that preserves continuity. | `coding.run` and `reminder.manage` use metadata, `schedule.manage` separates Host-owned schedules from context, and `notification.deliver` uses none. [Contract](./spikes/o-002/CONTEXT_SYNC_PROPOSAL.md) |
+| D-022 | Start with paired-node, local-network transport only. | mDNS is discovery only; a mutually authenticated encrypted channel carries versioned envelopes. Remote relay, push, and NAT traversal remain later work. [Contract](./spikes/o-003/TRANSPORT_DECISION.md) |
+| D-023 | Make the first Host a native Android foreground service for a charged local-network phone. | Lumen reports degraded/offline states honestly and does not promise server-grade uptime. [Contract](./spikes/o-004/HOST_DECISION.md) |
+| D-024 | Use manual encrypted export and explicit Host migration with a monotonic epoch. | There is one active Host; no automatic failover, cloud escrow, or multi-master synchronization. [Contract](./spikes/o-005/RECOVERY_DECISION.md) |
+| D-025 | Freeze four small V1 capability contracts. | `coding.run`, `reminder.manage`, `schedule.manage`, and `notification.deliver` have typed actions and capability-scoped policy. [Contract](./spikes/o-006/CAPABILITY_DECISION.md) |
 
 ## Superseded
 
@@ -29,22 +35,6 @@
 | D-005 | Defer Android. | `D-018`; Android is now the first reference Host. |
 | D-010 | Predefine Home, VPS, and hybrid deployments. | `D-015`; any deployment must meet one Host contract. |
 
-## Must decide before implementation
+## Phase 0 closure
 
-| ID | Question | Evidence required |
-| --- | --- | --- |
-| O-001 | Which portable core, Android, iOS, and macOS stack minimizes duplicated logic? | Small pairing, encrypted-store, background-service, and SSE prototypes. |
-| O-002 | What exactly is shared context and what are the default sync levels? | Examples for coding, reminders, schedules, private content, conflicts, and deletion. |
-| O-003 | How does local discovery work, and which remote relay or direct transport follows? | Reconnect, NAT, push, end-to-end encryption, latency, cost, and onboarding tests. |
-| O-004 | What makes an old Android Host dependable enough? | Reboot, Doze, battery optimization, foreground-service, charging, thermal, and storage tests. |
-| O-005 | How are Host backup and explicit migration performed without split brain? | Failed-migration, rollback, recovery-key, and stale-Host tests. |
-| O-006 | Which exact actions comprise the first four capability contracts? | User journeys and permission boundaries for coding, reminders, schedules, and notifications. |
-
-Do not decide an open question silently. Record the evidence, choice, consequence, and reversal trigger.
-
-## Evidence in progress
-
-| Decision | Evidence | Status |
-| --- | --- | --- |
-| `O-001` | [Headless stack comparison spike](./spikes/o-001/README.md) and [results](./spikes/o-001/EVIDENCE.md) | Contract parsing evidence passes for both candidates; platform lifecycle, storage, interop, packaging, and device checks remain pending. |
-| `O-002` | [Context synchronization proposal](./spikes/o-002/CONTEXT_SYNC_PROPOSAL.md) | Privacy-preserving defaults and examples are ready for owner review; no default is accepted until that review. |
+`O-001`–`O-006` are resolved by `D-020`–`D-025`. The decision contracts state their reversal triggers and phase-specific acceptance checks. They do not claim that later Android, Apple, migration, or remote-access code has already been implemented or physically tested.
