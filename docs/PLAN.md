@@ -64,6 +64,10 @@ Each manual check records: build/version, devices and OS versions, preconditions
 
 **Goal:** prove Space semantics without depending on production UI or platform integrations.
 
+**Status:** in progress. The first slice is defined in [PHASE-1-CONTRACT.md](./PHASE-1-CONTRACT.md).
+
+The in-memory Space core and fake-node scenario now prove creation, pairing, advertisements, default-deny grants, exact approvals, idempotency, revocation, and honest terminal states. Encrypted persistence, key management, and restart reconciliation remain required Phase 1 work.
+
 ### Build steps
 
 1. Implement Space creation, owner identity, one-active-Host lease, and encrypted storage.

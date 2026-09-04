@@ -8,3 +8,7 @@ run = [
   "gradle -p spikes/o-001/kmp jvmTest --no-daemon",
   "swift run --package-path spikes/o-001/native-schema NativeSchemaSpikeChecker spikes/o-001/fixtures",
 ]
+
+[tasks.phase1-check]
+description = "Run the Phase 1 Space-core tests and fake-node scenario"
+run = "gradle :core:space:jvmTest :tools:space-scenario:run --no-daemon"
