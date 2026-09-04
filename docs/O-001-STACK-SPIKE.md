@@ -2,16 +2,16 @@
 
 ## Purpose
 
-This spike compares two candidates for Lumen's portable core without selecting either one:
+This spike recorded the comparison that selected Lumen's portable core:
 
 1. Kotlin Multiplatform code shared by Android and Apple targets.
 2. Separate native implementations sharing JSON Schema contracts and golden fixtures.
 
-The spike is disposable evidence. Nothing here is a production protocol or an accepted decision. Only `DECISIONS.md` can resolve `O-001`.
+The spike is disposable evidence, not production protocol. `D-020` in [DECISIONS.md](./DECISIONS.md) records the accepted choice.
 
 ## Common contract
 
-Both prototypes consume the files in `fixtures/` and must produce the same result for each case:
+Both prototypes consume the files in [`spikes/o-001/fixtures/`](../spikes/o-001/fixtures/) and must produce the same result for each case:
 
 | Fixture | Expected result | Reason |
 | --- | --- | --- |
@@ -24,7 +24,7 @@ The fixed evaluation time is `2026-09-04T12:00:00Z`. Implementations must not de
 
 Implementations must parse timestamps strictly, require `issuedAt < expiresAt`, and reject `expiresAt <= evaluation time`; they may not rely on a JSON Schema library treating `format` as an assertion.
 
-Both prototypes also parse `fixtures/task-events.sse` and must preserve event IDs, event types, and JSON data without interpreting data as authority.
+Both prototypes also parse `task-events.sse` in that fixture directory and must preserve event IDs, event types, and JSON data without interpreting data as authority.
 
 This fixture deliberately omits signatures, key proof, and durable nonce storage. Cryptographic message authentication and replay rejection remain required by the V1 threat model, but are separate comparison tracks because they need platform keystores and persistent state. Passing this fixture must not be reported as authentication or replay evidence. SSE reconnection, duplicate IDs, and malformed streams likewise remain pending beyond the parser comparison.
 
@@ -48,4 +48,4 @@ Headless checks may establish contract behavior, but they cannot satisfy Android
 
 ## Environment
 
-Repository tools are pinned in `../../mise.toml`. Run tools through `mise exec -- ...` so global installations do not affect the results. Apple CLI validation uses the system Swift toolchain because Xcode/Swift is platform-managed rather than installed by mise.
+Repository tools are pinned in [`mise.toml`](../mise.toml). Run tools through `mise exec -- ...` so global installations do not affect the results. Apple CLI validation uses the system Swift toolchain because Xcode/Swift is platform-managed rather than installed by mise.

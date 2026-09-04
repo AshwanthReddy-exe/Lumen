@@ -66,7 +66,7 @@ The headless comparison is insufficient to pass the platform implementation gate
 2. Native Apple encrypted-store and migration prototypes with full Xcode on macOS and iOS.
 3. KMP-to-Swift framework integration, startup, debugging, and packaging through a minimal native UI.
 4. SSE disconnect/reconnect and last-event replay in both strategies.
-5. Installation, startup time, UI responsiveness, logs, and debugging observations using the evidence format in `PLAN.md`.
+5. Installation, startup time, UI responsiveness, logs, and debugging observations using the evidence format in [PLAN.md](./PLAN.md).
 
 ## Decision status
 

@@ -8,7 +8,7 @@ Never silently assume a platform, Host location, feature scope, data-sharing lev
 
 ## Project structure
 
-`README.md` is the entry point. `PRD.md` owns user behavior and acceptance; `ARCHITECTURE.md` owns system boundaries; `DECISIONS.md` records accepted and open choices; `PLAN.md` owns delivery phases, tests, and manual sign-off; `CHANGELOG.md` records notable completed changes.
+`README.md` is the entry point. Canonical documents live in `docs/`: `PRD.md` owns user behavior and acceptance; `ARCHITECTURE.md` owns system boundaries; `DECISIONS.md` records accepted and open choices; `PLAN.md` owns delivery phases, tests, and manual sign-off; `CHANGELOG.md` records notable completed changes.
 
 Create the target directories in `README.md` only after the stack decision. Keep Space semantics and protocol types independent from UI, platforms, Hermes, transport, and storage. Do not commit generated output, runtime state, credentials, personal identifiers, prompts, context records, or task artifacts.
 
@@ -39,7 +39,7 @@ Design for change without speculative infrastructure. Prefer deterministic behav
 
 ## Agents and model selection
 
-Use multiple agents when a phase contains two or more independent, bounded workstreams. Keep one coordinator responsible for contracts, task assignment, integration, and final verification; use at most three workers as defined in `PLAN.md`. Give each worker exact files, dependencies, success criteria, and prohibited scope. Avoid parallel edits to shared schemas, state machines, migrations, or the same files. Do not delegate trivial work when coordination would cost more than execution.
+Use multiple agents when a phase contains two or more independent, bounded workstreams. Keep one coordinator responsible for contracts, task assignment, integration, and final verification; use at most three workers as defined in `docs/PLAN.md`. Give each worker exact files, dependencies, success criteria, and prohibited scope. Avoid parallel edits to shared schemas, state machines, migrations, or the same files. Do not delegate trivial work when coordination would cost more than execution.
 
 Choose the lightest capable model for each assignment. Use fast, low-cost models for repository discovery, formatting, documentation consistency, fixture generation, and repetitive isolated changes. Use stronger reasoning models for architecture, product ambiguity, cryptography, authorization, concurrency, migrations, threat modeling, difficult debugging, and integration review. Increase model strength when a lightweight attempt fails or uncertainty remains; never trade correctness or security for cost.
 
@@ -53,7 +53,7 @@ Default deny. Local execution may bypass the Host data path but never bypass loc
 
 Use `mise run phase0-check` for the current cross-platform contract baseline. Add build, format, lint, unit-test, and contract-test commands only when the implementation phase that needs them begins; do not invent commands. Use concise Markdown, sentence-case headings, and stable IDs. Validate links and cross-document references.
 
-Update affected documents in the same change: behavior in `PRD.md`, system design in `ARCHITECTURE.md`, durable choices in `DECISIONS.md`, sequence and verification in `PLAN.md`, and completed work in `CHANGELOG.md`. Link to canonical explanations instead of copying them.
+Update affected documents in the same change: behavior in `docs/PRD.md`, system design in `docs/ARCHITECTURE.md`, durable choices in `docs/DECISIONS.md`, sequence and verification in `docs/PLAN.md`, and completed work in `docs/CHANGELOG.md`. Link to canonical explanations instead of copying them.
 
 ## Git and pull requests
 
@@ -61,4 +61,4 @@ Keep `main` releasable. After the bootstrap commit, work on short-lived branches
 
 Use Conventional Commits: `type(scope): imperative summary`. Prefer `feat`, `fix`, `docs`, `test`, `refactor`, `build`, `ci`, `chore`, `perf`, and `revert`; for example, `feat(protocol): define capability manifest`. Mark breaking changes with `!` and a `BREAKING CHANGE:` footer. Keep commits focused and independently understandable. Before committing, inspect the staged diff and run every available relevant check.
 
-Pull requests must explain the problem and approach, link requirements or decisions, list validation evidence and residual risk, and include screenshots for visible UI changes. Require an independent review for protocol, cryptography, authorization, persistence, migration, or sandbox changes. Use annotated semantic-version tags for releases and maintain release notes in `CHANGELOG.md`.
+Pull requests must explain the problem and approach, link requirements or decisions, list validation evidence and residual risk, and include screenshots for visible UI changes. Require an independent review for protocol, cryptography, authorization, persistence, migration, or sandbox changes. Use annotated semantic-version tags for releases and maintain release notes in `docs/CHANGELOG.md`.

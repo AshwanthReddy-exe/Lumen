@@ -20,12 +20,12 @@
 | D-017 | Make companion interfaces optional. | Desk companion and Mac pet share core contracts with ordinary apps. |
 | D-018 | Use an old Android phone as the first Host. | The initial topology proves low-cost, always-present personal hosting. |
 | D-019 | Keep the Host core independent of Hermes. | Android/Termux limitations cannot break Space coordination. |
-| D-020 | Use a Kotlin Multiplatform core with native Kotlin/Android and Swift/SwiftUI applications. | Portable rules are shared; UI, lifecycle, storage, keys, and permissions remain native. [Evidence](./spikes/o-001/EVIDENCE.md) |
-| D-021 | Default initial capability context to the least useful level that preserves continuity. | `coding.run` and `reminder.manage` use metadata, `schedule.manage` separates Host-owned schedules from context, and `notification.deliver` uses none. [Contract](./spikes/o-002/CONTEXT_SYNC_PROPOSAL.md) |
-| D-022 | Start with paired-node, local-network transport only. | mDNS is discovery only; a mutually authenticated encrypted channel carries versioned envelopes. Remote relay, push, and NAT traversal remain later work. [Contract](./spikes/o-003/TRANSPORT_DECISION.md) |
-| D-023 | Make the first Host a native Android foreground service for a charged local-network phone. | Lumen reports degraded/offline states honestly and does not promise server-grade uptime. [Contract](./spikes/o-004/HOST_DECISION.md) |
-| D-024 | Use manual encrypted export and explicit Host migration with a monotonic epoch. | There is one active Host; no automatic failover, cloud escrow, or multi-master synchronization. [Contract](./spikes/o-005/RECOVERY_DECISION.md) |
-| D-025 | Freeze four small V1 capability contracts. | `coding.run`, `reminder.manage`, `schedule.manage`, and `notification.deliver` have typed actions and capability-scoped policy. [Contract](./spikes/o-006/CAPABILITY_DECISION.md) |
+| D-020 | Use a Kotlin Multiplatform core with native Kotlin/Android and Swift/SwiftUI applications. | Portable rules are shared; UI, lifecycle, storage, keys, and permissions remain native. [Evidence](./O-001-EVIDENCE.md) |
+| D-021 | Default initial capability context to the least useful level that preserves continuity. | `coding.run` and `reminder.manage` use metadata, `schedule.manage` separates Host-owned schedules from context, and `notification.deliver` uses none. [Contract](./O-002-CONTEXT.md) |
+| D-022 | Start with paired-node, local-network transport only. | mDNS is discovery only; a mutually authenticated encrypted channel carries versioned envelopes. Remote relay, push, and NAT traversal remain later work. [Contract](./O-003-TRANSPORT.md) |
+| D-023 | Make the first Host a native Android foreground service for a charged local-network phone. | Lumen reports degraded/offline states honestly and does not promise server-grade uptime. [Contract](./O-004-HOST.md) |
+| D-024 | Use manual encrypted export and explicit Host migration with a monotonic epoch. | There is one active Host; no automatic failover, cloud escrow, or multi-master synchronization. [Contract](./O-005-RECOVERY.md) |
+| D-025 | Freeze four small V1 capability contracts. | `coding.run`, `reminder.manage`, `schedule.manage`, and `notification.deliver` have typed actions and capability-scoped policy. [Contract](./O-006-CAPABILITIES.md) |
 
 ## Superseded
 
