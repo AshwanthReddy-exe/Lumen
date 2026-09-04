@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Started Phase 1 with a portable in-memory Space core, contract tests, and a fake Android/Mac/iPhone scenario runner.
+- Added `mise run phase1-check` for the core and scenario validation.
 - Completed Phase 0 with a KMP/native stack decision, privacy-first context defaults, local-only transport, Android Host limits, manual recovery, and four frozen capability contracts.
 - Added `mise run phase0-check` as the reproducible Kotlin/Swift contract baseline.
 - Added production system-design rules for contracts, ownership, recovery, privacy, observability, and change control.

@@ -34,7 +34,7 @@ tests/              contract, integration, security, recovery
 infra/              development and deployment configuration
 ```
 
-Phase 0 selected a Kotlin Multiplatform core with native Android and Apple applications. Production directories are created only as each delivery phase implements them. Current canonical documents are [PRD.md](./PRD.md), [ARCHITECTURE.md](./ARCHITECTURE.md), [DECISIONS.md](./DECISIONS.md), the V1 [threat model](./THREAT_MODEL.md), and the phased [PLAN.md](./PLAN.md). Contribution rules are in [AGENTS.md](./AGENTS.md).
+Phase 0 selected a Kotlin Multiplatform core with native Android and Apple applications. Production directories are created only as each delivery phase implements them. The canonical documents are in [docs/](./docs/); contribution rules are in [AGENTS.md](./AGENTS.md).
 
 Run the Phase 0 contract baseline with `mise run phase0-check`. It uses the pinned Java and Gradle environment and the system-managed Swift toolchain.
 

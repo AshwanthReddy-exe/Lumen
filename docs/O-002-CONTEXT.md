@@ -1,4 +1,4 @@
-# O-002 context synchronization proposal
+# O-002 context synchronization decision
 
 ## Status
 
