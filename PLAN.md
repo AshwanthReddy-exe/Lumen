@@ -13,7 +13,7 @@ V1 delivers one usable personal Space with:
 - authenticated cross-node execution through the Host;
 - configurable shared-context synchronization;
 - immediate and scheduled tasks;
-- encrypted remote access and explicit Host migration;
+- encrypted local-network access and explicit Host migration;
 - recovery, audit, export, and deletion behavior required by `PRD.md`.
 
 ## Delivery rules
@@ -42,41 +42,23 @@ At the start of a phase, the coordinator assigns non-overlapping files and publi
 
 Each manual check records: build/version, devices and OS versions, preconditions, steps, expected result, actual result, pass/fail, and a screenshot or redacted log reference. Store no secrets, raw private context, or personal identifiers in evidence.
 
-## Phase 0 — Product and technical foundation
+## Phase 0 — Product and technical foundation (decision baseline complete)
 
-**Goal:** remove decisions that would otherwise force expensive rewrites.
+**Outcome:** freeze the smallest production-sensible baseline before executable core work.
 
-### Build steps
+### Completed baseline
 
-1. Initialize version control and protect the current documentation baseline.
-2. Maintain the V1 [threat model](./THREAT_MODEL.md) and resolve its release-blocking threats.
-3. Resolve `O-001` by testing two realistic sharing strategies: a Kotlin Multiplatform core with native Apple UI, and separate native apps sharing JSON Schema fixtures. Compare background reliability, crypto, database migrations, packaging, Swift interop, and debugging.
-4. Resolve `O-002` with concrete context examples and default synchronization behavior.
-5. Resolve `O-003` for local discovery and secure transport; remote transport remains a later phase.
-6. Resolve Android Host lifecycle (`O-004`), Host backup/migration (`O-005`), and initial capability actions (`O-006`).
-7. Add real build, format, lint, unit-test, and contract-test commands.
-8. Define versioned schemas for pairing, node manifest, capability manifest, grant, command, event, permission, context delta, schedule, artifact, and error.
+1. Selected the KMP/native stack and retained native platform boundaries (`D-020`).
+2. Defined context defaults, local transport, Android Host limits, manual recovery, and four capability contracts (`D-021`–`D-025`).
+3. Added a threat model and paired Kotlin/Swift strict-decoding baseline.
+4. Added `mise run phase0-check` as the reproducible Phase 0 validation command.
 
-### Parallel work
+### Validation evidence
 
-- Core lane drafts schemas, state machines, and fixtures.
-- Platform lane runs minimal Android, iOS, and macOS lifecycle/storage prototypes.
-- Verification lane builds malformed-message fixtures and the threat matrix.
+- The Kotlin and Swift candidates both pass valid, expiry, version, unknown-field, time-order, and SSE fixture checks.
+- The accepted decision contracts define the negative, recovery, and physical-device checks that gate their implementation phases.
 
-### Automated tests
-
-- Golden fixtures encode and decode identically on every selected platform.
-- Unknown critical fields, unsupported versions, invalid signatures, expiry, and replay fail closed.
-- Database migration, encrypted export, restore, and key-loss prototypes behave as specified.
-
-### Owner manual checks
-
-- Review and approve the exact meaning of Space, Host, node, companion, capability, context, and task.
-- Compare the two stack prototypes: installation, startup time, UI responsiveness, logs, and ease of debugging.
-- Restart and background the Android prototype; verify its documented limitations match the intended desk use.
-- Review default context-sharing examples and confirm what Lumen may store.
-
-**Exit gate:** `O-001`–`O-006` are accepted decisions; all platforms pass protocol fixtures; the threat model has an owner and mitigations; one command runs the repository’s full validation suite.
+**Decision exit gate met:** the Phase 0 decisions are accepted, the threat model is present, and one command runs the cross-platform contract baseline. Implementation, security, and physical-device evidence remain exit criteria for the phases that implement those components; this is not a claim that those later checks have passed.
 
 ## Phase 1 — Executable Space core
 

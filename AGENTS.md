@@ -25,6 +25,18 @@ For multi-step work:
 
 Reproduce bugs with a test when practical. Every changed line must trace to a request, requirement, decision, or test.
 
+## Production system design
+
+Design from user journeys, explicit contracts, and failure behavior—not from frameworks or happy-path screens. State invariants, ownership, trust boundaries, lifecycle states, and observable outcomes before adding a component. Prefer a small vertical slice with real boundaries over a broad mock architecture.
+
+Keep dependencies directed inward: product and domain rules must not depend on UI, platform APIs, model runtimes, transports, databases, or vendors. Put those details behind narrow, versioned adapters. Do not introduce a generic abstraction until at least two real callers require the same stable contract.
+
+Every state-changing operation must name its authority, validation point, idempotency key, durable record, retry behavior, timeout, cancellation behavior, and honest outcome when completion is uncertain. Treat process death, duplicated and reordered messages, stale state, clock changes, offline operation, partial persistence, and dependency failure as normal design inputs.
+
+Make privacy, security, and operations part of the design: minimize data at collection and at every boundary; default to deny; expose only the context and credentials required for one action; version public data and migration formats; make changes observable through redacted structured events, health signals, and actionable errors. Never use logs, a model response, or an adapter result as the authority record.
+
+Design for change without speculative infrastructure. Prefer deterministic behavior, explicit configuration, reversible migrations, capability-scoped rollouts, and compatibility tests. An implementation is production-ready only when its acceptance, negative, recovery, and operational checks demonstrate the stated contract on the intended platform.
+
 ## Agents and model selection
 
 Use multiple agents when a phase contains two or more independent, bounded workstreams. Keep one coordinator responsible for contracts, task assignment, integration, and final verification; use at most three workers as defined in `PLAN.md`. Give each worker exact files, dependencies, success criteria, and prohibited scope. Avoid parallel edits to shared schemas, state machines, migrations, or the same files. Do not delegate trivial work when coordination would cost more than execution.
@@ -39,7 +51,7 @@ Default deny. Local execution may bypass the Host data path but never bypass loc
 
 ## Commands and documentation
 
-No build or test tooling exists; do not invent commands. Use concise Markdown, sentence-case headings, and stable IDs. Validate links and cross-document references.
+Use `mise run phase0-check` for the current cross-platform contract baseline. Add build, format, lint, unit-test, and contract-test commands only when the implementation phase that needs them begins; do not invent commands. Use concise Markdown, sentence-case headings, and stable IDs. Validate links and cross-document references.
 
 Update affected documents in the same change: behavior in `PRD.md`, system design in `ARCHITECTURE.md`, durable choices in `DECISIONS.md`, sequence and verification in `PLAN.md`, and completed work in `CHANGELOG.md`. Link to canonical explanations instead of copying them.
 

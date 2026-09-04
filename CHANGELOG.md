@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Completed Phase 0 with a KMP/native stack decision, privacy-first context defaults, local-only transport, Android Host limits, manual recovery, and four frozen capability contracts.
+- Added `mise run phase0-check` as the reproducible Kotlin/Swift contract baseline.
+- Added production system-design rules for contracts, ownership, recovery, privacy, observability, and change control.
+
 ### Added
 
 - Added reproducible `O-001` Kotlin Multiplatform and native Swift/JSON Schema spikes with shared strict-decoding and SSE fixtures.
