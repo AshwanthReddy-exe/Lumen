@@ -1,0 +1,44 @@
+# Repository Guidelines
+
+## Product language
+
+Lumen’s core is a multi-device **Space**, not a particular phone or computer. V1 has one active **Host** that owns canonical shared state and routes cross-node work. A **node** is any paired device. A **capability** is a separately permissioned action. A **companion** is an optional interface such as the old-phone desk display or Mac pet.
+
+Never silently assume a platform, Host location, feature scope, data-sharing level, or permission behavior. State the ambiguity and ask when it changes product direction, privacy, or security.
+
+## Project structure
+
+`README.md` is the entry point. `PRD.md` owns user behavior and acceptance; `ARCHITECTURE.md` owns system boundaries; `DECISIONS.md` records accepted and open choices; `PLAN.md` owns delivery phases, tests, and manual sign-off; `CHANGELOG.md` records notable completed changes.
+
+Create the target directories in `README.md` only after the stack decision. Keep Space semantics and protocol types independent from UI, platforms, Hermes, transport, and storage. Do not commit generated output, runtime state, credentials, personal identifiers, prompts, context records, or task artifacts.
+
+## Working approach
+
+Before implementation, state assumptions, alternatives, and observable success. Choose the smallest vertical slice that proves the requirement. Do not add speculative abstractions, unrelated cleanup, or features beyond the request. Match existing style and remove only orphans created by your change.
+
+For multi-step work:
+
+1. Identify the governing requirement or decision.
+2. Define the validation check.
+3. Make the minimum change.
+4. Run the check and report any gap.
+
+Reproduce bugs with a test when practical. Every changed line must trace to a request, requirement, decision, or test.
+
+## Security invariants
+
+Default deny. Local execution may bypass the Host data path but never bypass local capability policy. Cross-node execution requires Host authorization. Adapters cannot expand grants. Approvals are one-time and action-bound. Treat model, tool, MCP, relay, node, and external content as untrusted. Hermes is an adapter, never the Space authority.
+
+## Commands and documentation
+
+No build or test tooling exists; do not invent commands. Use concise Markdown, sentence-case headings, and stable IDs. Validate links and cross-document references.
+
+Update affected documents in the same change: behavior in `PRD.md`, system design in `ARCHITECTURE.md`, durable choices in `DECISIONS.md`, sequence and verification in `PLAN.md`, and completed work in `CHANGELOG.md`. Link to canonical explanations instead of copying them.
+
+## Git and pull requests
+
+Keep `main` releasable. After the bootstrap commit, work on short-lived branches named `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, or `chore/<topic>`. Merge through reviewed pull requests after required checks pass; do not force-push or rewrite shared history on `main`.
+
+Use Conventional Commits: `type(scope): imperative summary`. Prefer `feat`, `fix`, `docs`, `test`, `refactor`, `build`, `ci`, `chore`, `perf`, and `revert`; for example, `feat(protocol): define capability manifest`. Mark breaking changes with `!` and a `BREAKING CHANGE:` footer. Keep commits focused and independently understandable. Before committing, inspect the staged diff and run every available relevant check.
+
+Pull requests must explain the problem and approach, link requirements or decisions, list validation evidence and residual risk, and include screenshots for visible UI changes. Require an independent review for protocol, cryptography, authorization, persistence, migration, or sandbox changes. Use annotated semantic-version tags for releases and maintain release notes in `CHANGELOG.md`.
