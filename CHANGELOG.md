@@ -10,6 +10,7 @@
 - Added gated plans for scheduling, remote access, and explicit Host migration.
 - Added one complete V1 delivery plan with phase goals, agent lanes, automated tests, owner checks, exit gates, and requirement coverage.
 - Added production Git history, branch, commit, pull-request, review, and release rules.
+- Added risk-based model selection and bounded multi-agent collaboration rules.
 
 ### Changed
 

@@ -25,6 +25,14 @@ For multi-step work:
 
 Reproduce bugs with a test when practical. Every changed line must trace to a request, requirement, decision, or test.
 
+## Agents and model selection
+
+Use multiple agents when a phase contains two or more independent, bounded workstreams. Keep one coordinator responsible for contracts, task assignment, integration, and final verification; use at most three workers as defined in `PLAN.md`. Give each worker exact files, dependencies, success criteria, and prohibited scope. Avoid parallel edits to shared schemas, state machines, migrations, or the same files. Do not delegate trivial work when coordination would cost more than execution.
+
+Choose the lightest capable model for each assignment. Use fast, low-cost models for repository discovery, formatting, documentation consistency, fixture generation, and repetitive isolated changes. Use stronger reasoning models for architecture, product ambiguity, cryptography, authorization, concurrency, migrations, threat modeling, difficult debugging, and integration review. Increase model strength when a lightweight attempt fails or uncertainty remains; never trade correctness or security for cost.
+
+The coordinator must inspect every agent result, run integrated checks, resolve contradictions, and remain accountable for the final change. A security-sensitive implementation cannot be approved solely by the agent that authored it.
+
 ## Security invariants
 
 Default deny. Local execution may bypass the Host data path but never bypass local capability policy. Cross-node execution requires Host authorization. Adapters cannot expand grants. Approvals are one-time and action-bound. Treat model, tool, MCP, relay, node, and external content as untrusted. Hermes is an adapter, never the Space authority.
