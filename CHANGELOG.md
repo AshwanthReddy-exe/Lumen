@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added reproducible `O-001` Kotlin Multiplatform and native Swift/JSON Schema spikes with shared strict-decoding and SSE fixtures.
+- Added a mise-pinned Java and Gradle environment plus repository-wide build-artifact exclusions.
+- Added the V1 threat model with protected assets, trust boundaries, security invariants, release-blocking threats, and required verification evidence.
 - Defined Space, Host, node, capability, and optional companion as the core product model.
 - Added local and cross-node execution paths, configurable context synchronization, capability manifests, and deny/ask/allow grants.
 - Added the old Android Host, Mac pet/execution node, and iPhone node as the first reference topology.

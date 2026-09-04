@@ -49,7 +49,7 @@ Each manual check records: build/version, devices and OS versions, preconditions
 ### Build steps
 
 1. Initialize version control and protect the current documentation baseline.
-2. Write the V1 threat model and identify release-blocking threats.
+2. Maintain the V1 [threat model](./THREAT_MODEL.md) and resolve its release-blocking threats.
 3. Resolve `O-001` by testing two realistic sharing strategies: a Kotlin Multiplatform core with native Apple UI, and separate native apps sharing JSON Schema fixtures. Compare background reliability, crypto, database migrations, packaging, Swift interop, and debugging.
 4. Resolve `O-002` with concrete context examples and default synchronization behavior.
 5. Resolve `O-003` for local discovery and secure transport; remote transport remains a later phase.
