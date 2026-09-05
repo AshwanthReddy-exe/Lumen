@@ -66,7 +66,7 @@ Each manual check records: build/version, devices and OS versions, preconditions
 
 **Status:** in progress. The first slice is defined in [PHASE-1-CONTRACT.md](./PHASE-1-CONTRACT.md).
 
-The in-memory Space core and fake-node scenario now prove creation, pairing, advertisements, default-deny grants, exact approvals, idempotency, revocation, and honest terminal states. Encrypted persistence, key management, and restart reconciliation remain required Phase 1 work.
+The in-memory Space core and fake-node scenario now prove creation, pairing, advertisements, default-deny grants, exact approvals, idempotency, revocation, and honest terminal states. A Host-only recovery transition now marks interrupted queued tasks as unknown without redispatch; see the [restart contract](./PHASE-1-CONTRACT.md#restart-recovery-increment). Encrypted persistence, key management, actual process-restart evidence, and target reconciliation remain required Phase 1 work.
 
 ### Build steps
 
