@@ -118,6 +118,7 @@ enum class Operation {
 }
 
 enum class RejectionReason {
+    PERSISTENCE_UNAVAILABLE,
     HOST_RESTARTED,
     INVALID_SPACE,
     INVALID_IDENTIFIER,
