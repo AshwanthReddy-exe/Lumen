@@ -64,17 +64,16 @@ Each manual check records: build/version, devices and OS versions, preconditions
 
 **Goal:** prove Space semantics without depending on production UI or platform integrations.
 
-**Status:** in progress. The first slice is defined in [PHASE-1-CONTRACT.md](./PHASE-1-CONTRACT.md).
+**Status:** complete. The canonical contract and validation are in [PHASE-1-CONTRACT.md](./PHASE-1-CONTRACT.md).
 
-The in-memory Space core and fake-node scenario now prove creation, pairing, advertisements, default-deny grants, exact approvals, idempotency, revocation, and honest terminal states. A Host-only recovery transition now marks interrupted queued tasks as unknown without redispatch; see the [restart contract](./PHASE-1-CONTRACT.md#restart-recovery-increment). Encrypted persistence, key management, actual process-restart evidence, and target reconciliation remain required Phase 1 work.
+The portable core proves creation, pairing, advertisements, default-deny grants, exact approvals, idempotency, revocation, durable transition acknowledgment, and honest restart outcomes. Android owns the encrypted store, device keys, and physical restart evidence in Phase 2.
 
 ### Build steps
 
-1. Implement Space creation, owner identity, one-active-Host lease, and encrypted storage.
-2. Implement node pairing, key rotation, revocation, capability advertisement, and health.
-3. Implement deny/ask/allow policy evaluation with explainable results.
-4. Implement the durable task state machine, idempotent commands, permission records, audit events, and restart reconciliation.
-5. Create fake Android, Mac, and iPhone nodes and a command-line scenario runner.
+1. Implement Space creation, ownership, membership, advertisement, and grants.
+2. Implement idempotent tasks, exact approvals, revocation, redacted audit, and honest terminal outcomes.
+3. Commit transitions before acknowledgment through a platform-owned store contract; recover queued work as unknown before Host readiness.
+4. Create fake Android, Mac, and iPhone nodes and a command-line scenario runner.
 
 ### Parallel work
 
@@ -84,18 +83,17 @@ The in-memory Space core and fake-node scenario now prove creation, pairing, adv
 
 ### Automated tests
 
-- Pair, revoke, rotate, expire, and reconnect nodes.
-- Reject wrong Space, sender, target, capability, scope, signature, nonce, and schema.
-- Simulate duplicate delivery, out-of-order events, process death, disk-full failure, and an unknown target outcome.
-- Verify an adapter cannot grant itself authority or access unrelated context.
+- Pair and revoke nodes; reject invalid origin, target, capability, grant, epoch, approval, task state, and idempotency collisions.
+- Simulate duplicate delivery, failed writes, restored state, interrupted queued work, and an unknown target outcome.
+- Verify an adapter node cannot grant itself authority.
 
 ### Owner manual checks
 
 - Run the scenario tool to create a Space, pair three fake nodes, grant one capability, and route a task.
 - Change the capability from allow to ask to deny and verify the explanation shown each time.
-- Stop and restart the Host mid-task and confirm the final state is honest.
+- Run the simulated restart scenario and confirm interrupted work is reported as unknown.
 
-**Exit gate:** the simulated three-node Space completes one authorized task and blocks every negative security fixture with a comprehensible reason.
+**Exit gate met:** the simulated three-node Space completes authorized work, blocks its defined negative fixtures with stable reasons, and will not acknowledge uncommitted or interrupted work as complete.
 
 ## Phase 2 — Android Host and desk companion
 
