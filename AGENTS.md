@@ -59,6 +59,8 @@ Update affected documents in the same change: behavior in `docs/PRD.md`, system 
 
 Keep `main` releasable. After the bootstrap commit, work on short-lived branches named `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, or `chore/<topic>`. Merge through reviewed pull requests after required checks pass; do not force-push or rewrite shared history on `main`.
 
+Before starting a new branch or pull request, fetch `origin/main`. If the prior pull request has merged, fast-forward local `main` and branch from that updated commit. If it has not merged, stop and tell the owner to merge or explicitly choose another base before continuing.
+
 Use Conventional Commits: `type(scope): imperative summary`. Prefer `feat`, `fix`, `docs`, `test`, `refactor`, `build`, `ci`, `chore`, `perf`, and `revert`; for example, `feat(protocol): define capability manifest`. Mark breaking changes with `!` and a `BREAKING CHANGE:` footer. Keep commits focused and independently understandable. Before committing, inspect the staged diff and run every available relevant check.
 
 Pull requests must explain the problem and approach, link requirements or decisions, list validation evidence and residual risk, and include screenshots for visible UI changes. Require an independent review for protocol, cryptography, authorization, persistence, migration, or sandbox changes. Use annotated semantic-version tags for releases and maintain release notes in `docs/CHANGELOG.md`.
