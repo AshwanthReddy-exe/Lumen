@@ -1,8 +1,8 @@
-# Phase 1 executable slice
+# Phase 1 Space core
 
 ## Scope
 
-The first executable slice proves the Space rules with in-memory state and fake nodes. It creates a Space, pairs nodes, advertises a capability, evaluates a grant, records a task, consumes an approval once, and returns an honest terminal result. It does not implement encryption, real keys, durable storage, transport, UI, adapters, or platform lifecycle. It starts Phase 1; the encrypted-store and restart-reconciliation requirements remain mandatory before the Phase 1 exit gate.
+Phase 1 proves portable Space rules with fake nodes and a durable Host boundary. It does not implement device keys, encrypted serialization, transport, UI, adapters, or platform lifecycle. Those are native boundaries beginning in Phase 2.
 
 ## Frozen core contract
 
@@ -18,11 +18,13 @@ The portable `core:space` module exposes immutable `SpaceState` plus operations 
 
 Every submit, approval, and completion carries the current Host epoch and rejects a stale epoch before state changes. Every state-changing operation records a redacted audit event containing actor, active Host authority, epoch, operation, outcome, and idempotency key—never task arguments or content. Revocation also records each task it invalidates. A command fingerprint canonically binds Space, epoch, origin, target, capability, action, and argument or artifact digest. Repeating its idempotency key with the same fingerprint returns the first recorded result; reusing it with a different fingerprint is rejected.
 
+`SpaceHost` is the serial portable Host boundary. `SpaceStateStore` creates a Space only when empty and serializes each transition with its atomic replacement. The Host returns an accepted, rejected, or replayed transition only after that write; a failed write returns `persistence_unavailable` while retaining the last committed state. On open, it first reads the committed state, applies restart recovery, and writes that recovery result before becoming ready. The platform adapter owns encryption, key access, schema migration, and storage errors. This preserves the KMP boundary in [ARCHITECTURE](./ARCHITECTURE.md#space-host).
+
 ## Observable success
 
-`tools:space-scenario` creates fake Android, Mac, and iPhone nodes; grants one Mac capability; submits a task; demonstrates `deny`, `ask`, and `allow`; and exits nonzero if a policy or lifecycle invariant fails. Core tests cover invalid origin/target, revoked nodes, missing advertisements, stale epoch, duplicate commands and collisions, mismatched or reused approvals, and invalid task transitions.
+`tools:space-scenario` creates fake Android, Mac, and iPhone nodes; grants one Mac capability; submits a task; demonstrates `deny`, `ask`, and `allow`; and exits nonzero if a policy or lifecycle invariant fails. Core tests cover policy, idempotency, revocation, exact approval, terminal outcomes, write failure, reopened state, and conservative recovery.
 
-## Restart recovery increment
+## Recovery behavior
 
 `recoverAfterRestart` is a pure transition over restored state. It accepts a Space ID, current Host epoch, active Host actor, and operation ID. Only the paired active Host may invoke it; being the owner alone is insufficient. Wrong Space, stale epoch, and unauthorized actors are rejected. This operation is internal to Host startup, not a node-callable transport endpoint.
 
@@ -30,10 +32,10 @@ The current slice has no dispatch record, so every `queued` task may have execut
 
 The operation ID identifies one startup attempt. Retrying that exact operation returns its first receipt without touching newly submitted work; changed content under the same ID is rejected. A later startup uses a new ID. Submit receipts remain historical: replaying a submit may return its original `queued` receipt while the task is now `unknown_outcome`. Callers must read authoritative task state and must never dispatch based on a replayed receipt. Late completion cannot replace an unknown outcome through `complete`.
 
-The future store must atomically persist the resulting tasks, command record, and audit before acknowledging recovery or accepting new work. On write failure, timeout, or cancellation before confirmed commit, startup remains unavailable and retries the same operation against the latest committed state; it must not dispatch work. This synchronous pure transition has no I/O timeout or cancellation of its own. No retry or target reconciliation is implemented here: unknown outcomes remain terminal pending an explicit evidence-based reconciliation contract.
+On write failure, startup remains unavailable and retries from the latest committed state; it must not dispatch work. No retry or target reconciliation is implemented here: unknown outcomes remain terminal pending an explicit evidence-based reconciliation contract.
 
-Validation: `mise run phase1-check` covers mixed lifecycle recovery, Host authorization, Space/epoch mismatches, duplicate startup, key collisions, historical submit replay, late completion, and a simulated restart in the fake-node scenario. This is not evidence of disk durability or a real process restart.
+Validation: `mise run phase1-check` covers mixed lifecycle recovery, Host authorization, Space/epoch mismatches, duplicate startup, key collisions, historical submit replay, late completion, failed writes, reopened state, and a simulated restart in the fake-node scenario.
 
-## Remaining boundaries
+## Phase boundary
 
-The slice has no claim of encrypted persistence or authenticated transport. Phase 1 expands those behind the same contract; Android, Apple, Hermes, and real local-network work start only in their designated phases.
+This phase has no claim of encrypted serialization, real process lifecycle, authenticated transport, or target reconciliation. The Phase 2 Android adapter must implement the store contract with hardware-backed key access where available, atomic encrypted persistence, migrations, and physical restart evidence.

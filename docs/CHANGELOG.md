@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Added Host-only simulated restart recovery with conservative unknown outcomes, replay protection, independent tests, and a fake-node scenario.
+- Completed Phase 1 with a portable durable Host boundary, conservative restart recovery, contract tests, and a fake three-node scenario.
 - Completed the existing Space-core file split by restoring command, result, and audit definitions.
 
 - Started Phase 1 with a portable in-memory Space core, contract tests, and a fake Android/Mac/iPhone scenario runner.
