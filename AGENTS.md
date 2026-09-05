@@ -27,6 +27,8 @@ Reproduce bugs with a test when practical. Every changed line must trace to a re
 
 ## Production system design
 
+The canonical production principles are in [`docs/DESIGN-PRINCIPLES.md`](./docs/DESIGN-PRINCIPLES.md). Apply them to every design and review.
+
 Design from user journeys, explicit contracts, and failure behavior—not from frameworks or happy-path screens. State invariants, ownership, trust boundaries, lifecycle states, and observable outcomes before adding a component. Prefer a small vertical slice with real boundaries over a broad mock architecture.
 
 Keep dependencies directed inward: product and domain rules must not depend on UI, platform APIs, model runtimes, transports, databases, or vendors. Put those details behind narrow, versioned adapters. Do not introduce a generic abstraction until at least two real callers require the same stable contract.
@@ -64,3 +66,9 @@ Before starting a new branch or pull request, fetch `origin/main`. If the prior 
 Use Conventional Commits: `type(scope): imperative summary`. Prefer `feat`, `fix`, `docs`, `test`, `refactor`, `build`, `ci`, `chore`, `perf`, and `revert`; for example, `feat(protocol): define capability manifest`. Mark breaking changes with `!` and a `BREAKING CHANGE:` footer. Keep commits focused and independently understandable. Before committing, inspect the staged diff and run every available relevant check.
 
 Pull requests must explain the problem and approach, link requirements or decisions, list validation evidence and residual risk, and include screenshots for visible UI changes. Require an independent review for protocol, cryptography, authorization, persistence, migration, or sandbox changes. Use annotated semantic-version tags for releases and maintain release notes in `docs/CHANGELOG.md`.
+
+## graphify
+
+This project has a knowledge graph at `graphify-out/`. Dirty graph files are expected after incremental updates and must not be committed.
+
+For codebase questions, query the graph before broad source browsing when it exists. Use `graphify query` for scoped questions and `graphify path` or `graphify explain` for relationships. After modifying code, run `graphify update .` to refresh the local graph.

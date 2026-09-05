@@ -26,6 +26,9 @@
 | D-023 | Make the first Host a native Android foreground service for a charged local-network phone. | Lumen reports degraded/offline states honestly and does not promise server-grade uptime. [Contract](./O-004-HOST.md) |
 | D-024 | Use manual encrypted export and explicit Host migration with a monotonic epoch. | There is one active Host; no automatic failover, cloud escrow, or multi-master synchronization. [Contract](./O-005-RECOVERY.md) |
 | D-025 | Freeze four small V1 capability contracts. | `coding.run`, `reminder.manage`, `schedule.manage`, and `notification.deliver` have typed actions and capability-scoped policy. [Contract](./O-006-CAPABILITIES.md) |
+| D-026 | Run agent work through Hermes, but keep Lumen as the authority. | Hermes receives a scoped task and returns events, proposed actions, and artifacts; it cannot grant authority, persist canonical state, or approve itself. [Hermes browser documentation](https://hermes-agent.nousresearch.com/docs/user-guide/features/browser/) |
+| D-027 | Add `browser.run` in two stages. | Read-only research begins with allowlisted public sites and isolated profiles. Draft and submit actions require an exact preview and one-time approval; credential, payment, upload, download, and 2FA actions remain out of the first action slice. [Browser profile guidance](https://docs.browser-use.com/open-source/customize/browser/authentication) |
+| D-028 | Keep memory as Host-owned typed context. | Runtimes may propose records but cannot persist them directly. Each record is inspectable and has scope, provenance, classification, retention, expiry, and deletion behavior. |
 
 ## Superseded
 

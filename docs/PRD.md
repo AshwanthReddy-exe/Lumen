@@ -69,6 +69,8 @@ The initial working Space has one old Android phone acting as Host and desk comp
 | FR-33 | Let users choose context synchronization per capability: none, metadata, summary, or content where supported. |
 | FR-34 | Encrypt sensitive Host state and cross-node content, with export, backup, restore, and deletion controls. |
 | FR-35 | Record redacted audit events for routing, policy, approval, execution, synchronization, and outcome. |
+| FR-36 | Let a runtime propose typed memory records, but require Host validation and user inspection before a record becomes canonical context. |
+| FR-37 | Keep browser profiles and their credentials outside shared context; browser actions require a capability grant and action-specific policy. |
 
 ## Initial capability set
 
@@ -78,6 +80,7 @@ The first contracts should prove different behaviors rather than maximize featur
 - `reminder.manage`: create, list, complete, and delete reminders on an eligible Apple node.
 - `schedule.manage`: create, pause, resume, and cancel Host-owned schedules.
 - `notification.deliver`: deliver task and approval notifications to selected nodes.
+- `browser.run`: initially research, navigate, and extract from allowlisted public sites; later draft and submit only with an exact preview and one-time approval.
 
 ## V1 success gate
 

@@ -14,3 +14,8 @@ DerivedData/
 
 # Machine-specific SDK configuration
 local.properties
+
+# Per-machine agent settings and generated repository graph
+.agents/
+.codex/
+graphify-out/
