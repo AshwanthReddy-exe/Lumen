@@ -22,6 +22,18 @@ Every submit, approval, and completion carries the current Host epoch and reject
 
 `tools:space-scenario` creates fake Android, Mac, and iPhone nodes; grants one Mac capability; submits a task; demonstrates `deny`, `ask`, and `allow`; and exits nonzero if a policy or lifecycle invariant fails. Core tests cover invalid origin/target, revoked nodes, missing advertisements, stale epoch, duplicate commands and collisions, mismatched or reused approvals, and invalid task transitions.
 
-## Deferred boundaries
+## Restart recovery increment
+
+`recoverAfterRestart` is a pure transition over restored state. It accepts a Space ID, current Host epoch, active Host actor, and operation ID. Only the paired active Host may invoke it; being the owner alone is insufficient. Wrong Space, stale epoch, and unauthorized actors are rejected. This operation is internal to Host startup, not a node-callable transport endpoint.
+
+The current slice has no dispatch record, so every `queued` task may have executed before interruption. Recovery marks those tasks `unknown_outcome` with reason `HOST_RESTARTED`, preserves awaiting permissions and terminal tasks, and records one redacted event per changed task plus the operation receipt. It preserves grants, consumed approvals, membership, and the Host epoch. A restart is not Host migration.
+
+The operation ID identifies one startup attempt. Retrying that exact operation returns its first receipt without touching newly submitted work; changed content under the same ID is rejected. A later startup uses a new ID. Submit receipts remain historical: replaying a submit may return its original `queued` receipt while the task is now `unknown_outcome`. Callers must read authoritative task state and must never dispatch based on a replayed receipt. Late completion cannot replace an unknown outcome through `complete`.
+
+The future store must atomically persist the resulting tasks, command record, and audit before acknowledging recovery or accepting new work. On write failure, timeout, or cancellation before confirmed commit, startup remains unavailable and retries the same operation against the latest committed state; it must not dispatch work. This synchronous pure transition has no I/O timeout or cancellation of its own. No retry or target reconciliation is implemented here: unknown outcomes remain terminal pending an explicit evidence-based reconciliation contract.
+
+Validation: `mise run phase1-check` covers mixed lifecycle recovery, Host authorization, Space/epoch mismatches, duplicate startup, key collisions, historical submit replay, late completion, and a simulated restart in the fake-node scenario. This is not evidence of disk durability or a real process restart.
+
+## Remaining boundaries
 
 The slice has no claim of encrypted persistence or authenticated transport. Phase 1 expands those behind the same contract; Android, Apple, Hermes, and real local-network work start only in their designated phases.

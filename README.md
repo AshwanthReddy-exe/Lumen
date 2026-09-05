@@ -39,3 +39,5 @@ Phase 0 selected a Kotlin Multiplatform core with native Android and Apple appli
 Run the Phase 0 contract baseline with `mise run phase0-check`. It uses the pinned Java and Gradle environment and the system-managed Swift toolchain.
 
 Phase 0 evidence lives under [`spikes/`](./spikes/) and freezes the stack, context, transport, Host, recovery, and capability decisions before Phase 1 begins.
+
+Run the executable Space core and simulated restart scenario with `mise run phase1-check`. Phase 1 remains in progress; see the [slice contract](./docs/PHASE-1-CONTRACT.md) for implemented behavior and remaining persistence work.

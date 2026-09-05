@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Added Host-only simulated restart recovery with conservative unknown outcomes, replay protection, independent tests, and a fake-node scenario.
+- Completed the existing Space-core file split by restoring command, result, and audit definitions.
+
 - Started Phase 1 with a portable in-memory Space core, contract tests, and a fake Android/Mac/iPhone scenario runner.
 - Added `mise run phase1-check` for the core and scenario validation.
 - Completed Phase 0 with a KMP/native stack decision, privacy-first context defaults, local-only transport, Android Host limits, manual recovery, and four frozen capability contracts.

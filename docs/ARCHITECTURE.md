@@ -90,6 +90,8 @@ The minimum durable entities are `Space`, `Identity`, `Node`, `CapabilityManifes
 
 Any active state may move to `cancelling`, `failed`, `paused`, `expired`, or `unknown_outcome`. Local tasks begin at `running` and later enter `synchronizing`. Transitions are compare-and-set and idempotent; uncertainty is never reported as success.
 
+The implemented in-memory subset uses conservative [restart recovery](./PHASE-1-CONTRACT.md#restart-recovery-increment): queued tasks become unknown because there is no durable dispatch record yet. Historical command receipts never authorize redispatch. Storage and startup must commit recovery before accepting work; encrypted storage and target reconciliation remain unimplemented.
+
 ## Runtime and platform adapters
 
 Hermes is one execution adapter, principally for capable desktop/server nodes. Integrate through its documented Runs API for start, status, SSE events, stop, approval, health, capability discovery, and idempotency. Lumen normalizes Hermes events and keeps independent task and context state.

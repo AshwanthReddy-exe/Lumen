@@ -6,6 +6,7 @@ import dev.lumen.core.CompletionOutcome
 import dev.lumen.core.Grant
 import dev.lumen.core.PairNodeCommand
 import dev.lumen.core.RejectionReason
+import dev.lumen.core.RecoverAfterRestartCommand
 import dev.lumen.core.SetGrantCommand
 import dev.lumen.core.Space
 import dev.lumen.core.SpaceState
@@ -90,7 +91,21 @@ fun main() {
     ).state
     check(state.tasks["task-allow"]?.status == TaskStatus.UNKNOWN_OUTCOME) { "uncertain completion was not preserved" }
 
-    println("space scenario passed: deny, ask+approval, allow, idempotency")
+    val interruptedCommand = submit("submit-interrupted", "task-interrupted")
+    state = apply(Space.submit(state, interruptedCommand)).state
+    state = apply(
+        Space.recoverAfterRestart(state, RecoverAfterRestartCommand("restart-host", SPACE, state.activeHostEpoch, ANDROID)),
+    ).state
+    check(state.tasks.getValue("task-interrupted").status == TaskStatus.UNKNOWN_OUTCOME)
+    val historical = apply(Space.submit(state, interruptedCommand))
+    check(historical.receipt.taskStatus == TaskStatus.QUEUED)
+    check(historical.state.tasks.getValue("task-interrupted").status == TaskStatus.UNKNOWN_OUTCOME)
+    expectRejected(
+        Space.complete(state, CompleteCommand("late-completion", SPACE, state.activeHostEpoch, "task-interrupted", MAC, CompletionOutcome.COMPLETED)),
+        RejectionReason.INVALID_TASK_STATE,
+    )
+
+    println("space scenario passed: deny, ask+approval, allow, idempotency, simulated restart -> unknown_outcome")
 }
 
 private fun submit(operationId: String, taskId: String) = SubmitCommand(
