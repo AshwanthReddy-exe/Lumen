@@ -78,36 +78,55 @@ git commit -m "feat(android): model Host runtime health"
 ### Task 2: Publish service lifecycle state
 
 **Files:**
+- Create: `apps/android-host/src/main/kotlin/dev/lumen/android/host/HostServiceLifecycle.kt`
 - Modify: `apps/android-host/src/main/kotlin/dev/lumen/android/host/LumenHostService.kt`
-- Test: `apps/android-host/src/test/kotlin/dev/lumen/android/host/HostRuntimeTest.kt`
+- Test: `apps/android-host/src/test/kotlin/dev/lumen/android/host/HostServiceLifecycleTest.kt`
 
 **Interfaces:**
-- Consumes Task 1 state methods.
+- Consumes `SpaceHostOpenResult` and produces `HostRuntimeState` for open success, open failure, explicit stop, and timeout.
 - Produces `start(context)`, `stop(context)`, and `ACTION_STOP` handling in `LumenHostService`.
 
-- [ ] **Step 1: Add the failing stopped-state test**
+- [ ] **Step 1: Add the failing reducer test**
 
 ```kotlin
-@Test fun `stopped state never reports active coordination`() {
-    HostRuntime.resetForTest()
-    HostRuntime.stopped()
-    assertEquals(HostRuntimeStatus.STOPPED, HostRuntime.state.value.status)
-    assertEquals("Host is stopped", HostRuntime.state.value.detail)
+@Test fun `an unavailable open becomes degraded rather than ready`() {
+    val state = HostServiceLifecycle.afterOpen(
+        SpaceHostOpenResult.Unavailable(HostUnavailableReason.PERSISTENCE_UNAVAILABLE),
+    )
+    assertEquals(HostRuntimeStatus.DEGRADED, state.status)
+    assertEquals("Encrypted Space state is unavailable", state.detail)
 }
 ```
 
-- [ ] **Step 2: Verify failure, then update the service one path at a time**
+- [ ] **Step 2: Verify failure, then implement the pure reducer**
 
 Run: `rtk gradle :apps:android-host:testDebugUnitTest --no-daemon`
+
+Expected: `HostServiceLifecycle` is unresolved.
+
+```kotlin
+object HostServiceLifecycle {
+    fun afterOpen(result: SpaceHostOpenResult): HostRuntimeState = when (result) {
+        is SpaceHostOpenResult.Ready -> HostRuntimeState(READY, "Encrypted Space state recovered")
+        is SpaceHostOpenResult.Unavailable -> HostRuntimeState(DEGRADED, "Encrypted Space state is unavailable")
+    }
+    fun afterStop() = HostRuntimeState(STOPPED, "Host is stopped")
+    fun afterTimeout() = HostRuntimeState(DEGRADED, "Android stopped continuous coordination; restart required")
+}
+```
+
+- [ ] **Step 3: Thin the service around the tested reducer**
 
 ```kotlin
 override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
     HostRuntime.opening()
     startForeground(NOTIFICATION_ID, notification())
-    when (SpaceHost.open(AndroidEncryptedSpaceStateStore(this), "android-startup")) {
-        is SpaceHostOpenResult.Ready -> { HostRuntime.ready(); notifyActive() }
-        is SpaceHostOpenResult.Unavailable -> { HostRuntime.degraded("Encrypted Space state is unavailable"); stopSelf(startId) }
+    val result = SpaceHost.open(AndroidEncryptedSpaceStateStore(this), "android-startup")
+    HostRuntime.publish(HostServiceLifecycle.afterOpen(result))
+    when (result) {
+        is SpaceHostOpenResult.Ready -> notifyActive()
+        is SpaceHostOpenResult.Unavailable -> stopSelf(startId)
     }
     return START_NOT_STICKY
 }
@@ -115,16 +134,16 @@ override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 
 Add `onDestroy()` to publish stopped unless the current state is degraded. Implement the API-35 timeout callback to publish timeout degradation then call `stopSelf()`.
 
-- [ ] **Step 3: Run Android tests and assemble the APK**
+- [ ] **Step 4: Run Android tests and assemble the APK**
 
 Run: `rtk gradle :apps:android-host:testDebugUnitTest :apps:android-host:assembleDebug --no-daemon`
 
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add apps/android-host/src/main/kotlin/dev/lumen/android/host/LumenHostService.kt apps/android-host/src/test/kotlin/dev/lumen/android/host/HostRuntimeTest.kt
+git add apps/android-host/src/main/kotlin/dev/lumen/android/host/HostServiceLifecycle.kt apps/android-host/src/main/kotlin/dev/lumen/android/host/LumenHostService.kt apps/android-host/src/test/kotlin/dev/lumen/android/host/HostServiceLifecycleTest.kt
 git commit -m "feat(android): report foreground Host lifecycle"
 ```
 
