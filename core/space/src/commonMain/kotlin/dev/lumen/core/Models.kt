@@ -1,12 +1,14 @@
 package dev.lumen.core
 
+import kotlinx.serialization.Serializable
+
 /**
  * Pure, portable state for one Lumen Space.
  *
  * This module deliberately stores fingerprints rather than action arguments. Platform,
  * transport, cryptographic, and persistence concerns remain outside this boundary.
  */
-data class SpaceState(
+@Serializable data class SpaceState(
     val spaceId: String,
     val ownerNodeId: String,
     val activeHostNodeId: String,
@@ -20,17 +22,17 @@ data class SpaceState(
     val auditEvents: List<AuditEvent> = emptyList(),
 )
 
-data class Node(val id: String, val status: NodeStatus = NodeStatus.PAIRED)
+@Serializable data class Node(val id: String, val status: NodeStatus = NodeStatus.PAIRED)
 
-enum class NodeStatus { PAIRED, REVOKED }
+@Serializable enum class NodeStatus { PAIRED, REVOKED }
 
-data class CapabilityKey(val nodeId: String, val capabilityId: String, val action: String)
+@Serializable data class CapabilityKey(val nodeId: String, val capabilityId: String, val action: String)
 
-data class CapabilityAdvertisement(val key: CapabilityKey)
+@Serializable data class CapabilityAdvertisement(val key: CapabilityKey)
 
-enum class Grant { DENY, ASK, ALLOW }
+@Serializable enum class Grant { DENY, ASK, ALLOW }
 
-data class Task(
+@Serializable data class Task(
     val id: String,
     val commandId: String,
     val originNodeId: String,
@@ -43,9 +45,9 @@ data class Task(
     val terminalReason: RejectionReason? = null,
 )
 
-enum class TaskStatus { AWAITING_PERMISSION, QUEUED, COMPLETED, FAILED, UNKNOWN_OUTCOME }
+@Serializable enum class TaskStatus { AWAITING_PERMISSION, QUEUED, COMPLETED, FAILED, UNKNOWN_OUTCOME }
 
-data class Approval(
+@Serializable data class Approval(
     val id: String,
     val taskId: String,
     val actorNodeId: String,
