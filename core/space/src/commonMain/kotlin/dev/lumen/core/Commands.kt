@@ -1,5 +1,7 @@
 package dev.lumen.core
 
+import kotlinx.serialization.Serializable
+
 data class RecoverAfterRestartCommand(
     val operationId: String,
     val spaceId: String,
@@ -71,7 +73,7 @@ data class CompleteCommand(
     val outcome: CompletionOutcome,
 )
 
-enum class CompletionOutcome {
+@Serializable enum class CompletionOutcome {
     COMPLETED,
     FAILED,
     UNKNOWN_OUTCOME,

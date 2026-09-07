@@ -1,5 +1,7 @@
 package dev.lumen.core
 
+import kotlinx.serialization.Serializable
+
 sealed interface Transition {
     val state: SpaceState
 
@@ -14,27 +16,27 @@ sealed interface Transition {
     ) : Transition
 }
 
-data class CommandReceipt(
+@Serializable data class CommandReceipt(
     val operation: Operation,
     val operationId: String,
     val subjectId: String,
     val taskStatus: TaskStatus? = null,
 )
 
-data class RecordedCommand(
+@Serializable data class RecordedCommand(
     val content: CommandContent,
     val outcome: RecordedOutcome,
 )
 
-sealed interface RecordedOutcome {
-    data class Applied(val receipt: CommandReceipt) : RecordedOutcome
-    data class Rejected(val reason: RejectionReason) : RecordedOutcome
+@Serializable sealed interface RecordedOutcome {
+    @Serializable data class Applied(val receipt: CommandReceipt) : RecordedOutcome
+    @Serializable data class Rejected(val reason: RejectionReason) : RecordedOutcome
 }
 
-sealed interface CommandContent {
+@Serializable sealed interface CommandContent {
     val operation: Operation
 
-    data class RecoverAfterRestart(
+    @Serializable data class RecoverAfterRestart(
         val spaceId: String,
         val hostEpoch: Long,
         val actorNodeId: String,
@@ -42,11 +44,11 @@ sealed interface CommandContent {
         override val operation = Operation.RECOVER_AFTER_RESTART
     }
 
-    data class Pair(val actorNodeId: String, val nodeId: String) : CommandContent {
+    @Serializable data class Pair(val actorNodeId: String, val nodeId: String) : CommandContent {
         override val operation = Operation.PAIR_NODE
     }
 
-    data class Advertise(
+    @Serializable data class Advertise(
         val actorNodeId: String,
         val nodeId: String,
         val capabilityId: String,
@@ -55,7 +57,7 @@ sealed interface CommandContent {
         override val operation = Operation.ADVERTISE_CAPABILITY
     }
 
-    data class SetGrant(
+    @Serializable data class SetGrant(
         val actorNodeId: String,
         val key: CapabilityKey,
         val grant: Grant,
@@ -63,11 +65,11 @@ sealed interface CommandContent {
         override val operation = Operation.SET_GRANT
     }
 
-    data class Revoke(val actorNodeId: String, val nodeId: String) : CommandContent {
+    @Serializable data class Revoke(val actorNodeId: String, val nodeId: String) : CommandContent {
         override val operation = Operation.REVOKE_NODE
     }
 
-    data class Submit(
+    @Serializable data class Submit(
         val spaceId: String,
         val hostEpoch: Long,
         val taskId: String,
@@ -80,7 +82,7 @@ sealed interface CommandContent {
         override val operation = Operation.SUBMIT
     }
 
-    data class Approve(
+    @Serializable data class Approve(
         val spaceId: String,
         val hostEpoch: Long,
         val approvalId: String,
@@ -94,7 +96,7 @@ sealed interface CommandContent {
         override val operation = Operation.APPROVE
     }
 
-    data class Complete(
+    @Serializable data class Complete(
         val spaceId: String,
         val hostEpoch: Long,
         val taskId: String,
@@ -105,7 +107,7 @@ sealed interface CommandContent {
     }
 }
 
-enum class Operation {
+@Serializable enum class Operation {
     RECOVER_AFTER_RESTART,
     CREATE_SPACE,
     PAIR_NODE,
@@ -117,7 +119,7 @@ enum class Operation {
     COMPLETE,
 }
 
-enum class RejectionReason {
+@Serializable enum class RejectionReason {
     PERSISTENCE_UNAVAILABLE,
     HOST_RESTARTED,
     INVALID_SPACE,
