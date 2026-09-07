@@ -43,23 +43,26 @@ The companion observes this runtime state and rechecks the encrypted store on la
 
 The Host creates a non-exportable Android Keystore P-256 signing identity. The public key fingerprint is stored in encrypted Space state; a hardware-backed implementation is used when available but is not assumed on the old phone. Hardware attestation is optional evidence, not a requirement for pairing. [Android key attestation](https://developer.android.com/privacy-and-security/security-key-attestation)
 
-Pairing is an owner-visible session:
+Pairing is an owner-visible, rate-limited session. It has a random 128-bit ID, one active session, a two-minute monotonic expiry, and at most five verification attempts. Each side creates a fresh P-256 ECDH key, signs a length-prefixed and domain-separated transcript with its long-term P-256 signing key, and derives a six-digit SAS from HKDF-SHA-256 over the shared secret and transcript hash. The transcript contains roles, both long-term public keys, both ephemeral keys, random nonces, Space ID, session ID, and protocol version; it prevents reflection, substitution, and role confusion.
 
 1. The Host creates a short-lived pairing session and displays a QR code plus a human-comparable authentication string.
 2. The joining node scans or enters the session data, creates its own signing identity, and displays the same authentication string.
-3. The owner confirms both strings. Only then does the Host persist that node's public key and membership through the portable Space boundary.
-4. A failed, expired, mismatched, or cancelled session leaves no paired node or transport trust record.
+3. The owner confirms both strings. Only then does the Host atomically persist the node membership, public key, SHA-256 DER-SPKI fingerprint, and pairing session ID through its encrypted authority record.
+4. The joining node remains pending until it receives a signed `PairingAccepted` containing Host epoch, membership version, and transcript hash. Lost acknowledgements are reconciled by an idempotent proof query; cancellation after Host commit revokes the node rather than claiming no record exists.
+5. A failed, expired, mismatched, or cancelled pre-commit session leaves no paired node or transport trust record.
 
-The Android Host advertises `_lumen._tcp` through `NsdManager`. Discovery carries service version, a random Host instance ID, the Space ID, and port only. It is never authentication. On API 37, local-network access is requested through Android's service picker where possible; a broad local-network permission is requested only when required for hosting or the intended connection path. [Android NSD](https://developer.android.com/reference/android/net/nsd/NsdManager)
+The Android Host advertises `_lumen._tcp` through `NsdManager`. Discovery carries protocol version, a random per-service-start Host instance ID, and port only; it never reveals a stable Space ID. It is never authentication. Since API 37 requires local-network permission for a Host that advertises/listens, Host mode requests `ACCESS_LOCAL_NETWORK` and stops/degrades on denial or revocation. Android's service picker is reserved for a client node selecting an outbound Host service. [Android NSD](https://developer.android.com/reference/android/net/nsd/NsdManager)
 
-The connection uses one mutually authenticated encrypted channel. A session binds both long-term public keys, the Space ID, active Host epoch, protocol version, ephemeral key agreement, and the pairing transcript. Each frame is encrypted and authenticated, then contains a versioned envelope:
+The connection uses TLS 1.3 with ALPN `lumen/1`, ECDHE, Host certificate SPKI pinning from pairing, and required/pinned client certificates after pairing. TLS resumption never grants authorization. A missing, invalid, or changed Host Keystore identity for the durable fingerprint moves the Host to degraded; it does not silently generate a replacement.
+
+Each received frame has bounded length and carries strict UTF-8 JSON unsigned-envelope bytes plus a P-256/SHA-256 DER signature over `SHA256("lumen-envelope-v1" || unsignedEnvelopeBytes)`. Verification uses exact received bytes before parsing; unknown fields, payload schemas, and oversized frames fail closed. The envelope contains:
 
 ```text
-spaceId · hostEpoch · sender · recipient · messageId · taskId?
-issuedAt · expiresAt · nonce · payload
+kind · payloadSchemaVersion · spaceId · hostEpoch · sender · recipient
+messageId · taskId? · issuedAt · expiresAt · nonce · payload
 ```
 
-Before applying a state-changing envelope, the Host verifies the session identity, membership, epoch, recipient, time bounds, nonce, and schema version. It persists the idempotency/message result through `SpaceHost` before it acknowledges the command. A duplicate returns that durable outcome; a malformed, expired, replayed, revoked, or stale-epoch frame fails closed.
+Before applying a state-changing envelope, the Host verifies the session identity, membership, epoch, recipient, signature, time bounds, nonce, and schema version. It first looks up `(senderId, messageId)`: the same envelope digest returns the recorded durable outcome; a different digest is an idempotency collision. For a new message ID, it atomically reserves the sender nonce and immutable digest with the accepted command before acknowledging it. Nonces remain reserved through expiry. A malformed, expired, replayed, revoked, or stale-epoch frame fails closed. Durable revocation closes every active session for that node and rejects later resumption.
 
 ## Companion and hardware
 

@@ -35,7 +35,7 @@
 
 ```kotlin
 @Test fun `runtime exposes the latest explicit health state`() {
-    HostRuntime.resetForTest()
+    HostRuntime.stopped()
     HostRuntime.opening()
     assertEquals(HostRuntimeStatus.OPENING, HostRuntime.state.value.status)
     HostRuntime.degraded("Encrypted state unavailable")
