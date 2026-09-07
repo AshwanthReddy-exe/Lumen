@@ -1,10 +1,12 @@
 package dev.lumen.core
 
+import kotlinx.serialization.Serializable
+
 /**
  * Redacted audit record. It intentionally contains no action arguments, artifact values, or
  * action fingerprints. The [idempotencyKey] is retained so an operator can correlate retries.
  */
-data class AuditEvent(
+@Serializable data class AuditEvent(
     val sequence: Long,
     val actorNodeId: String?,
     val authorityNodeId: String,
@@ -15,7 +17,7 @@ data class AuditEvent(
     val reason: RejectionReason? = null,
 )
 
-enum class AuditOutcome {
+@Serializable enum class AuditOutcome {
     ACCEPTED,
     REJECTED,
     REPLAYED,

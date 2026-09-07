@@ -1,5 +1,6 @@
 pluginManagement {
     repositories {
+        google()
         gradlePluginPortal()
         mavenCentral()
     }
@@ -7,6 +8,7 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
+        google()
         mavenCentral()
     }
 }
@@ -15,3 +17,4 @@ rootProject.name = "lumen"
 
 include(":core:space")
 include(":tools:space-scenario")
+include(":apps:android-host")

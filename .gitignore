@@ -5,6 +5,7 @@
 
 # Gradle and Kotlin
 .gradle/
+.kotlin/
 **/build/
 
 # Swift Package Manager and Xcode
@@ -19,3 +20,4 @@ local.properties
 .agents/
 .codex/
 graphify-out/
+.worktrees/

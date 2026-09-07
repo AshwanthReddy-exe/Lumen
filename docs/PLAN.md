@@ -14,7 +14,11 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 ## Block 2 — Android Host
 
+**Status:** in progress. The encrypted on-device Space setup, live foreground-service health, explicit stop control, and first Xiaomi owner check are complete. It does not yet satisfy this block's transport, pairing, hardware-companion, boot recovery, or five-run exit criteria. See [PHASE-2-ANDROID-HOST.md](./PHASE-2-ANDROID-HOST.md).
+
 **Goal:** make the old Android phone a dependable local-network Host.
+
+**Execution sequence:** secure pairing → encrypted local transport → companion dashboard → separately permissioned hardware companion → five physical lifecycle runs. The sequence preserves the Space authority boundary: a companion never grants access, discovery never establishes trust, and microphone/camera usage remains foreground and default-denied.
 
 **Build:** native foreground Host service; Android Keystore-backed encrypted store; boot and locked-store recovery; paired-node discovery and authenticated transport; Space health; and a companion showing status, task, node, and approval state.
 
