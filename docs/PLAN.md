@@ -18,6 +18,8 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 **Goal:** make the old Android phone a dependable local-network Host.
 
+**Execution sequence:** secure pairing → encrypted local transport → companion dashboard → separately permissioned hardware companion → five physical lifecycle runs. The sequence preserves the Space authority boundary: a companion never grants access, discovery never establishes trust, and microphone/camera usage remains foreground and default-denied.
+
 **Build:** native foreground Host service; Android Keystore-backed encrypted store; boot and locked-store recovery; paired-node discovery and authenticated transport; Space health; and a companion showing status, task, node, and approval state.
 
 **Live proof:** create a Space on the phone, pair a fake Mac, reboot, change Wi-Fi, unplug/replug power, and route one task after reconnect.
