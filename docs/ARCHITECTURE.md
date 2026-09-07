@@ -78,6 +78,8 @@ A grant selects capability actions and scopes, then applies `deny`, `ask`, or `a
 
 ## Shared context
 
+Runtimes may propose memory, but only the Host validates and persists canonical records. Records carry scope, provenance, classification, retention, expiry, confidence, and a digest; users can inspect, edit, export, and delete them within their authorized scope.
+
 The Host stores canonical Space context as typed records and append-only events, not one unbounded prompt. Context namespaces include user preferences, projects, devices, tasks, schedules, and capability-specific memory. Each synchronized record carries origin node, version, timestamp, classification, retention, and content digest.
 
 Users choose a synchronization level per capability: `none`, `metadata`, `summary`, or `content`. Local context remains usable when disconnected. Conflicting mutable records are preserved as conflicts or resolved by a type-specific rule; arrival order alone never silently wins.
@@ -95,6 +97,10 @@ The implemented in-memory subset uses conservative [restart recovery](./PHASE-1-
 ## Runtime and platform adapters
 
 Hermes is one execution adapter, principally for capable desktop/server nodes. Integrate through its documented Runs API for start, status, SSE events, stop, approval, health, capability discovery, and idempotency. Lumen normalizes Hermes events and keeps independent task and context state.
+
+Hermes receives only the task, capability-scoped context, deadline, and cancellation identity that a Host policy approved. Its output is evidence: events, proposed actions, and artifacts never become authority records by themselves.
+
+`browser.run` is a capability adapter, not a general browser attached to the runtime. The first actions are read-only research, navigation, and extraction on allowlisted public sites. A browser profile is a protected credential boundary: the Host stores only an opaque profile reference, never cookies or passwords as context. Draft and submit actions require an exact preview, one-time approval, durable receipt, and an honest unknown outcome when completion cannot be verified.
 
 For `coding.run`, Hermes works in an isolated Git worktree or sandbox, never the canonical project. Lumen validates the produced patch and applies it only under the capability’s approval policy. A Hermes command approval is a runtime safeguard, not a Lumen capability grant.
 

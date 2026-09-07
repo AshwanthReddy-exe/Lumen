@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Replaced phase-by-phase feature accumulation with block-based delivery: each block has one live personal journey, failure checks, and an exit gate.
+- Defined Hermes as the execution runtime behind Lumen authority, staged `browser.run`, and made memory Host-owned typed context.
+
 - Completed Phase 1 with a portable durable Host boundary, conservative restart recovery, contract tests, and a fake three-node scenario.
 - Completed the existing Space-core file split by restoring command, result, and audit definitions.
 
