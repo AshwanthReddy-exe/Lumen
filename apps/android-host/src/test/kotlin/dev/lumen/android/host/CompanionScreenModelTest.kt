@@ -6,6 +6,17 @@ import org.junit.Test
 
 class CompanionScreenModelTest {
     @Test
+    fun `a recovered Host offers an explicit stop action`() {
+        val screen = CompanionScreenModel.from(
+            CompanionStorageState.PRESENT,
+            HostRuntimeState(HostRuntimeStatus.READY, "Encrypted Space state recovered"),
+        )
+
+        assertEquals("Stop Host", screen.primaryAction)
+        assertTrue(screen.primaryActionEnabled)
+    }
+
+    @Test
     fun `an unconfigured phone directs its owner to create a Space`() {
         val screen = CompanionScreenModel.unconfigured()
 
