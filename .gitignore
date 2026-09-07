@@ -5,6 +5,7 @@
 
 # Gradle and Kotlin
 .gradle/
+.kotlin/
 **/build/
 
 # Swift Package Manager and Xcode
