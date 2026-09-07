@@ -14,6 +14,8 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 ## Block 2 — Android Host
 
+**Status:** in progress. The encrypted on-device Space setup and foreground-service startup slice is ready for owner verification; it does not yet satisfy this block's transport, recovery, health, companion-state, or five-run exit criteria. See [PHASE-2-ANDROID-HOST.md](./PHASE-2-ANDROID-HOST.md).
+
 **Goal:** make the old Android phone a dependable local-network Host.
 
 **Build:** native foreground Host service; Android Keystore-backed encrypted store; boot and locked-store recovery; paired-node discovery and authenticated transport; Space health; and a companion showing status, task, node, and approval state.

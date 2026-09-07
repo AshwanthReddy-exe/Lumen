@@ -27,6 +27,8 @@ The Host owns the Space identity, node registry, capability grants, canonical sh
 
 The first Android Host should be a lightweight native Lumen service with a foreground-service lifecycle, local encrypted storage, health reporting, and restart recovery. Hermes on Termux may be offered as an optional Host-local execution adapter, but Host correctness cannot depend on it.
 
+The implemented Android slice composes the portable `SpaceHost` with an app-private Keystore AES-GCM `SpaceStateStore`. The companion creates a Space only through the portable creation boundary, and the foreground service opens it through the portable recovery boundary before showing itself active. It has no transport, pairing identity, or health authority yet; those remain outside this early adapter slice. See [PHASE-2-ANDROID-HOST.md](./PHASE-2-ANDROID-HOST.md).
+
 The portable core is Kotlin Multiplatform and owns protocol validation, Space semantics, policy, task state, and context rules. Android uses native Kotlin platform code and native UI; iOS and macOS use native Swift/SwiftUI surfaces and platform adapters. UI, device keys, encrypted storage, lifecycle, and OS permissions remain platform-owned rather than crossing the portable boundary.
 
 ### Node runtime

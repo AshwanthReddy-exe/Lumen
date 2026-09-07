@@ -16,27 +16,66 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.lumen.core.SpaceHost
+import dev.lumen.core.SpaceHostOpenResult
+import dev.lumen.core.SpaceStateStoreRead
+import java.util.UUID
 
 class LumenHostActivity : ComponentActivity() {
+    private val store by lazy { AndroidEncryptedSpaceStateStore(this) }
+    private var screen by mutableStateOf(CompanionScreenModel.unconfigured())
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        screen = when (store.read()) {
+            SpaceStateStoreRead.Missing -> CompanionScreenModel.unconfigured()
+            is SpaceStateStoreRead.Present -> CompanionScreenModel.readyToStart()
+            SpaceStateStoreRead.Unavailable -> CompanionScreenModel.unavailable()
+        }
         setContent {
             LumenTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    CompanionScreen(CompanionScreenModel.unconfigured())
+                    CompanionScreen(screen, ::startOrCreateHost)
                 }
             }
         }
     }
+
+    private fun startOrCreateHost() {
+        when (store.read()) {
+            SpaceStateStoreRead.Missing -> createSpace()
+            is SpaceStateStoreRead.Present -> startHost()
+            SpaceStateStoreRead.Unavailable -> screen = CompanionScreenModel.unavailable()
+        }
+    }
+
+    private fun createSpace() {
+        val identity = UUID.randomUUID().toString()
+        when (SpaceHost.create(store, "space-$identity", "owner-$identity", "host-$identity")) {
+            is SpaceHostOpenResult.Ready -> startHost()
+            is SpaceHostOpenResult.Unavailable -> screen = when (store.read()) {
+                is SpaceStateStoreRead.Present -> CompanionScreenModel.readyToStart()
+                else -> CompanionScreenModel.unavailable()
+            }
+        }
+    }
+
+    private fun startHost() {
+        screen = CompanionScreenModel.starting()
+        LumenHostService.start(this)
+    }
 }
 
 @Composable
-private fun CompanionScreen(screen: CompanionScreenModel) {
+private fun CompanionScreen(screen: CompanionScreenModel, onPrimaryAction: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -56,7 +95,7 @@ private fun CompanionScreen(screen: CompanionScreenModel) {
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "This phone can show your Space wherever you use it. It is not a Host until its encrypted store is ready.",
+                text = screen.supportingText,
                 style = MaterialTheme.typography.bodyLarge,
             )
         }
@@ -70,8 +109,8 @@ private fun CompanionScreen(screen: CompanionScreenModel) {
             }
         }
         Button(
-            onClick = {},
-            enabled = false,
+            onClick = onPrimaryAction,
+            enabled = screen.primaryActionEnabled,
             modifier = Modifier
                 .fillMaxWidth()
                 .sizeIn(minHeight = 48.dp),
@@ -79,7 +118,7 @@ private fun CompanionScreen(screen: CompanionScreenModel) {
             Text(screen.primaryAction)
         }
         Text(
-            text = "Encrypted storage is the next setup step.",
+            text = "A companion can run on any paired node; this phone is only the first Host deployment.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
