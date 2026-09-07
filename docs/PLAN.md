@@ -14,7 +14,7 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 ## Block 2 — Android Host
 
-**Status:** in progress. The encrypted on-device Space setup and foreground-service startup slice is ready for owner verification; it does not yet satisfy this block's transport, recovery, health, companion-state, or five-run exit criteria. See [PHASE-2-ANDROID-HOST.md](./PHASE-2-ANDROID-HOST.md).
+**Status:** in progress. The encrypted on-device Space setup, live foreground-service health, explicit stop control, and first Xiaomi owner check are complete. It does not yet satisfy this block's transport, pairing, hardware-companion, boot recovery, or five-run exit criteria. See [PHASE-2-ANDROID-HOST.md](./PHASE-2-ANDROID-HOST.md).
 
 **Goal:** make the old Android phone a dependable local-network Host.
 

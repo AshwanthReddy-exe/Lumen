@@ -33,6 +33,7 @@
 - `:apps:android-host:testDebugUnitTest` covers the owner-visible empty and ready setup states.
 - `:apps:android-host:assembleDebug` produces the sideloadable APK.
 - `mise run phase1-check` remains the portable policy and recovery regression gate.
+- 2026-09-07 Xiaomi M2101K7BI (Android 13 / API 33): `adb install -r` updated the app without clearing its existing Space. After the owner tapped **Start Host**, accessibility output showed **Host is ready** and **Stop Host**; Android service state confirmed `LumenHostService` is foreground with notification ID `1001`.
 
 ## Remaining Block 2 work
 
