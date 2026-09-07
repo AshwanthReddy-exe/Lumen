@@ -1,8 +1,10 @@
-# Phase 2 Android Host slice
+# Superseded Android foreground-Host slice
 
 ## Status
 
-**In progress.** The first physical Android slice is implemented and ready for owner verification on the reference Xiaomi Android 13 phone. It is not the Block 2 exit: node pairing, authenticated local-network transport, boot/locked-store recovery, health signals, and the five-run lifecycle gate remain unimplemented.
+**Superseded.** This document records implementation and physical-test evidence from the first Android experiment. It must not guide new work. The experiment incorrectly placed canonical Host state and lifecycle inside the companion APK. [D-029](./DECISIONS.md) replaces that design with a headless terminal service; [PHASE-2-HOST-HERMES.md](./PHASE-2-HOST-HERMES.md) is the active Block 2 plan.
+
+Do not extend `LumenHostService`, `HostRuntime`, `HostServiceLifecycle`, or `AndroidEncryptedSpaceStateStore`. The Android rewire will remove those Host responsibilities and retain only companion/node concerns. Existing encrypted state on the development phone is test data from the superseded topology and is not accepted as production Host authority.
 
 ## Implemented contract
 
@@ -21,10 +23,10 @@
 | Existing state opens | The service runs portable restart recovery before becoming active. | Queued portable tasks become `unknown_outcome` under the Phase 1 recovery contract. |
 | Service is stopped | Its ongoing notification disappears. | No Android process remains to coordinate new cross-node work. |
 
-## Owner verification
+## Historical owner verification
 
 1. Build with `rtk gradle :apps:android-host:assembleDebug --no-daemon`.
-2. Copy `apps/android-host/build/outputs/apk/debug/android-host-debug.apk` to the phone with `adb push`, then install it from **Files → Downloads**. MIUI on the reference phone blocks USB installation without its own account/SIM configuration, so manual sideloading is the supported validation path.
+2. Install the debug APK with `adb install -r apps/android-host/build/outputs/apk/debug/android-host-debug.apk`. The reference Xiaomi initially required manual sideloading, but direct replacement installation was subsequently enabled and verified.
 3. Open **Lumen**, tap **Create your Space**, then confirm the screen changes to **Starting your Host** and Android shows a persistent **Lumen Host** notification.
 4. Force-stop or reboot the phone, reopen Lumen, tap **Start Host**, and confirm the notification returns. Record the outcome; this is a smoke check only, not the five-run Block 2 exit.
 
@@ -35,10 +37,12 @@
 - `mise run phase1-check` remains the portable policy and recovery regression gate.
 - 2026-09-07 Xiaomi M2101K7BI (Android 13 / API 33): `adb install -r` updated the app without clearing its existing Space. After the owner tapped **Start Host**, accessibility output showed **Host is ready** and **Stop Host**; Android service state confirmed `LumenHostService` is foreground with notification ID `1001`.
 
-## Remaining Block 2 work
+## Work moved to later blocks
 
-1. **Secure pairing:** create Android Keystore identities, show QR/SAS owner confirmation, and atomically bind each paired node’s public-key fingerprint to its Space membership.
+These items begin only after the headless Host/Hermes exit gate passes:
+
+1. **Secure pairing:** create node identities, show QR/SAS owner confirmation, and atomically bind each paired node’s public-key fingerprint to its Space membership.
 2. **Local encrypted transport:** handle API 37 local-network permission, advertise with mDNS as a non-trust hint, establish pinned TLS 1.3 mutual authentication, and process signed/versioned envelopes with replay protection and durable duplicate outcomes.
-3. **Companion dashboard:** show paired nodes, Host/network health, tasks, and approvals alongside the existing Host lifecycle state.
+3. **Companion dashboard:** show paired nodes, Host/network health, tasks, and approvals alongside the companion connection state.
 4. **Hardware companion:** add local text-to-speech status, then default-denied foreground microphone and camera-preview capabilities with explicit Android permission prompts. Raw media stays local and is not captured, stored, or shared by default.
 5. **Physical exit checks:** verify restart, Wi-Fi loss/reconnect, explicit stop/restart, update retention, a paired-node command, and microphone/camera deny and grant paths. Record five lifecycle runs without manual state repair.

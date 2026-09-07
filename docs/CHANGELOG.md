@@ -2,8 +2,12 @@
 
 ## Unreleased
 
-- Started Block 2 with the Android Host vertical slice: Android Keystore AES-GCM encrypted Space state, atomic replacement, an owner-driven Space setup screen, and a visible foreground Host service. Pairing, transport, health, boot recovery, and the Block 2 lifecycle gate remain in progress.
-- Added live Android Host health states, an explicit stop control, and verified foreground Host recovery on the Xiaomi reference phone.
+- Corrected the Host boundary: the Host is a headless Kotlin/JVM service supervised by systemd, launchd, Docker, or Termux/runit; Android remains a companion/node application.
+- Reordered delivery so the durable Host-to-Hermes execution loop completes before pairing, node transport, or companion work.
+- Marked the merged Android foreground-Host implementation as superseded evidence instead of rewriting published history.
+
+- Implemented the now-superseded Android foreground-Host experiment: Android Keystore AES-GCM state, atomic replacement, owner-driven setup, and a visible foreground service.
+- Added and physically verified the experimental Android Host health and stop controls on the Xiaomi reference phone; this remains historical evidence rather than the production Host direction.
 
 - Replaced phase-by-phase feature accumulation with block-based delivery: each block has one live personal journey, failure checks, and an exit gate.
 - Defined Hermes as the execution runtime behind Lumen authority, staged `browser.run`, and made memory Host-owned typed context.

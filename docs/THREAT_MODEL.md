@@ -21,6 +21,7 @@ The Space owner is the only administrative principal in V1. Multi-user Spaces, a
 | Artifacts and patch digests | Integrity, provenance, stale-base detection |
 | Schedules | Integrity, bounded authority, predictable execution |
 | Audit and recovery records | Integrity, availability, redaction |
+| Host-state key, operator credential, and Hermes bearer credential | Independent confidentiality, rotation, least privilege, non-interchangeability |
 
 Availability matters, but it does not override authorization or confidentiality. Lumen may become unavailable rather than fail open.
 
@@ -33,8 +34,12 @@ Availability matters, but it does not override authorization or confidentiality.
 5. **Space to relay or push provider:** remote infrastructure transports opaque envelopes and owns no Space authority.
 6. **Coding workspace to canonical repository:** generated changes remain untrusted until scope, digest, base, and approval checks pass.
 7. **Context namespace to capability:** access to one capability or record type must not imply access to another.
+8. **Operator CLI to Host:** a local process crossing the owner-restricted Unix-domain control socket is untrusted until its operator credential, endpoint identity, request bounds, actor mapping, freshness, and action scope are validated.
+9. **Host to Hermes:** the configurable runtime endpoint, mutual endpoint authentication, bearer authentication, HTTP behavior, SSE stream, runtime approvals, tool requests, and results are untrusted adapter inputs even when both processes are local.
 
 Physical compromise of an unlocked node, a compromised operating system, malicious firmware, and denial of service by the network provider cannot be fully prevented by Lumen V1. The product must limit resulting authority, support revocation and recovery, and state these residual risks during setup.
+
+Processes in one Termux installation share an Android UID. Co-locating Host and Hermes there is therefore a compatibility profile for synthetic, non-sensitive state, not an isolation boundary. A security-valid Termux deployment uses an isolated Hermes endpoint on another machine or container with pinned mutual TLS; compromise of the Termux UID remains compromise of the Host.
 
 ## Threat actors and inputs
 
@@ -44,6 +49,7 @@ Physical compromise of an unlocked node, a compromised operating system, malicio
 - Malicious content in repositories, prompts, files, reminders, notifications, or synchronized context.
 - An accidental owner action caused by ambiguous targeting, misleading approval details, or stale UI.
 - A local attacker who obtains a device, backup, diagnostic bundle, or unencrypted storage.
+- A malicious local process that can scan loopback ports, read another process’s environment or command line, alter configuration, follow redirects, or race the operator and Hermes endpoints.
 - Faults such as crashes, clock skew, disk exhaustion, partial writes, duplicate delivery, and interrupted migration.
 
 All external content is data, never policy or authority.
@@ -68,6 +74,8 @@ All external content is data, never policy or authority.
 | T-014 | Ambiguous routing sends work or data to the wrong node. | Deterministic eligibility from capability, policy, health, and constraints; require owner selection when multiple valid targets remain. | Equal-candidate, stale-health, unsupported-version, and offline-target fixtures. | Blocking |
 | T-015 | Clock manipulation bypasses expiry or schedules unintended work. | Revalidate expiry at dispatch and execution; `D-022` requires a durable time high-water mark and fail-closed degraded state after a backwards jump. | Test forward/backward jumps, timezone changes, DST, suspend, and long offline periods against the accepted design. | Blocking before scheduling |
 | T-016 | Pairing is intercepted or confirms the wrong device. | Short-lived authenticated transcript, out-of-band comparison or explicit owner confirmation, key proof, rate limits, cancellation. | MITM, transcript substitution, timeout, brute-force, and concurrent-pairing tests. | Blocking |
+| T-017 | A local process impersonates the operator or replays an administrative request. | Owner-restricted Unix-domain socket; pinned Host endpoint identity; independent generated operator credential; bounded authenticated requests; explicit owner-principal mapping; idempotency, freshness, rotation, and redacted diagnostics. | Probe unauthorized socket access, unauthenticated, stolen, stale, replayed, oversized, and rotated credentials; scan process arguments and logs for canary secrets. | Blocking for Phase 2 |
+| T-018 | Hermes or a redirected runtime endpoint causes SSRF, bypasses approval, loses events, or forges completion. | Hardened deployments isolate Hermes under another OS principal or container and use pinned mutual TLS through a protected endpoint or proxy. The adapter rejects redirects and userinfo, uses a separate scoped bearer credential, pins a behavior-tested Hermes compatibility record, treats SSE as lossy single-consumer evidence, and derives authority from Host state plus bounded status reconciliation. Plain loopback is a synthetic development profile only. | Test endpoint confusion, redirects, authentication failure, certificate and identity mismatch, advertised-but-broken features, approval bypass, concurrent or subsequent SSE consumers, disconnect, forged terminal events, and credential rotation. | Blocking for Phase 2 |
 
 ## Security invariants
 
@@ -80,6 +88,7 @@ All external content is data, never policy or authority.
 - Unknown versions and unknown security-critical fields fail closed.
 - Task and context writes preserve origin and ordering evidence; arrival order alone does not resolve conflicts.
 - Secrets and raw private content do not enter prompts, ordinary logs, notifications, or test evidence.
+- Host-state encryption, operator control, and Hermes authentication use independently generated credentials; compromise or rotation of one never authorizes use of another.
 
 ## Release-blocking evidence
 
@@ -92,6 +101,7 @@ The following evidence is required before the relevant phase can exit:
 5. Host lifecycle and migration tests prove revocation, encrypted recovery, and stale-Host rejection.
 6. Capability-specific abuse cases pass before that capability ships.
 7. A named owner reviews unresolved blocking threats at every phase exit; open blocking items prevent release.
+8. Host/Hermes fixtures prove operator authentication, endpoint confinement, behavioral compatibility, lossy-event reconciliation, exact approval forwarding, credential separation, and secret redaction.
 
 Evidence follows the format in [PLAN.md](./PLAN.md#evidence-format) and must use synthetic identifiers and content. Test fixtures must contain no production credentials, personal identifiers, or private context.
 

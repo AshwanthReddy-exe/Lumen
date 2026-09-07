@@ -38,4 +38,4 @@ Validation: `mise run phase1-check` covers mixed lifecycle recovery, Host author
 
 ## Phase boundary
 
-This phase has no claim of encrypted serialization, real process lifecycle, authenticated transport, or target reconciliation. The Phase 2 Android adapter must implement the store contract with hardware-backed key access where available, atomic encrypted persistence, migrations, and physical restart evidence.
+This phase has no claim of encrypted serialization, real process lifecycle, authenticated transport, durable dispatch evidence, cancellation, or target reconciliation. Phase 2 first extends the inward-facing task contract for Host-local execution, then the headless JVM Host implements encrypted persistence, migrations, lifecycle, and physical restart evidence. The merged Android store is superseded experiment evidence and must not become production authority.

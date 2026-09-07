@@ -3,21 +3,18 @@
 ## System model
 
 ```text
-                         ┌────────── Lumen Space ──────────┐
-                         │                                 │
-Old Android phone        │  Active Host                    │
-desk companion ─────────▶│  context · policy · tasks       │
-                         │  registry · scheduler · audit    │
-                         │          │                      │
-                         │     cross-node routing           │
-                         │       ┌──┴──────────┐            │
-                         │       ▼             ▼            │
-                         │   Mac node      iPhone node      │
-                         │   pet + code     app + personal  │
-                         └─────────────────────────────────┘
+Operator CLI ──local authenticated control──▶ Headless Host service
+                                                │
+                         canonical Space state  │ versioned Runtime Adapter
+                         policy · tasks · audit │
+                                                ▼
+                                         Hermes API server
+
+Later authenticated node transport:
+Android companion · Mac node · iPhone node ──▶ Headless Host service
 ```
 
-**Deployment role and device type are independent.** A phone, Mac, Linux machine, old PC, home server, or VPS may become Host if it implements the Host contract. V1 has one active Host. A node may simultaneously be an interaction surface, execution node, companion, and Host.
+**The Host is a service role, not an app role.** V1 has one active headless Host process. The same service artifact may run on Linux/VPS, macOS, an old PC, or Android Termux. systemd, launchd, Docker, or Termux/runit supervises it; the executable itself stays a normal foreground process with explicit startup, readiness, shutdown, and exit behavior. A companion can run on the same device but remains a separate client.
 
 ## Component responsibilities
 
@@ -25,11 +22,21 @@ desk companion ─────────▶│  context · policy · tasks    
 
 The Host owns the Space identity, node registry, capability grants, canonical shared context, durable cross-node task state, scheduler, routing, approval records, and audit history. It authenticates messages and selects only eligible nodes. It does not need to proxy local model calls or same-device tool traffic.
 
-The first Android Host should be a lightweight native Lumen service with a foreground-service lifecycle, local encrypted storage, health reporting, and restart recovery. Hermes on Termux may be offered as an optional Host-local execution adapter, but Host correctness cannot depend on it.
+The first production composition is a Kotlin/JVM Host service that combines the portable `SpaceHost` with encrypted durable storage, a local operator control boundary, structured health, and a versioned Hermes Runtime Adapter. JVM 21 is the deployment baseline so one distribution can run on Linux/VPS, macOS, and Android Termux. Host correctness never depends on Hermes availability.
 
-The implemented Android slice composes the portable `SpaceHost` with an app-private Keystore AES-GCM `SpaceStateStore`. The companion creates a Space only through the portable creation boundary, and the foreground service opens it through the portable recovery boundary before showing itself active. It has no transport, pairing identity, or health authority yet; those remain outside this early adapter slice. See [PHASE-2-ANDROID-HOST.md](./PHASE-2-ANDROID-HOST.md).
+The previously merged Android foreground service and Android-owned canonical store proved the portable boundary on a phone but assigned authority to the wrong process. They are superseded and must be removed from the companion application. See [PHASE-2-ANDROID-HOST.md](./PHASE-2-ANDROID-HOST.md) for the historical evidence and [PHASE-2-HOST-HERMES.md](./PHASE-2-HOST-HERMES.md) for the replacement slice.
 
-The portable core is Kotlin Multiplatform and owns protocol validation, Space semantics, policy, task state, and context rules. Android uses native Kotlin platform code and native UI; iOS and macOS use native Swift/SwiftUI surfaces and platform adapters. UI, device keys, encrypted storage, lifecycle, and OS permissions remain platform-owned rather than crossing the portable boundary.
+The portable core is Kotlin Multiplatform and owns Space semantics, policy, task state, recovery, and context rules. The headless service owns Host composition, durable authority storage, lifecycle, and runtime adapters. Platform apps own only their node identity, local cache, connection, UI, capabilities, and OS permissions.
+
+### Host process boundary
+
+`lumen-host` exposes commands for initialization, serving, status, task submission, cancellation, approval resolution, and clean shutdown. Operator commands reach the running daemon only through an owner-restricted Unix-domain socket with an independent credential and pinned Host endpoint identity. Secrets come from restricted files or service-manager credentials, never command arguments, prompts, or logs. The Host refuses all work until its encrypted state is open and restart recovery is committed. It may report the Space ready while Hermes is degraded, but it refuses new Hermes-targeted work until that adapter reports compatible readiness.
+
+Hardened Linux, macOS, and VPS deployments isolate Hermes under another OS principal or container and reach it through a protected endpoint or proxy using pinned mutual TLS plus a separately scoped bearer credential. Plain loopback HTTP is an explicit development profile with synthetic state and cannot satisfy the security exit gate. Hermes and Lumen are separately supervised processes; Lumen does not import Hermes internals, edit Hermes state, or treat Hermes health as Host health.
+
+Android Termux runs the same Host artifact and contract. Processes within one Termux installation share an Android UID, so a co-located Hermes process is compatibility-only and cannot protect Host secrets. A security-valid Termux deployment reaches Hermes isolated on another machine or container through pinned mutual TLS; compromise of the Termux UID remains compromise of the Host.
+
+The initialized active Host identity is also the first execution target and advertises the Host-local Hermes capability. The recoverable owner identity remains a separate principal. Authentication through the operator socket maps a request to that owner only after the Host validates the independent operator credential and endpoint identity; it does not merge owner, Host, Hermes, or future node identities.
 
 ### Node runtime
 
@@ -37,9 +44,18 @@ Every node owns its platform integration, local task runner, capability adapters
 
 ### Companion surfaces
 
-The Android desk companion and Mac pet are UI shells over the same Space and node contracts. They provide voice or text interaction, presence, progress, and approval prompts. Removing or closing a companion does not delete the Space or change authority.
+The Android desk companion and Mac pet are UI shells over the same node contracts. They provide voice or text interaction, presence, progress, and approval prompts. Removing, force-stopping, or uninstalling a companion does not stop the Host, delete the Space, or change authority.
 
 ## Execution paths
+
+### Host-local Hermes path
+
+1. The local operator submits a typed task through the authenticated Host Unix-domain control socket.
+2. The Host durably records the idempotency key and validates capability, policy, context scope, deadline, and approval state.
+3. The Host checks Hermes `/v1/capabilities` and authenticated readiness, then creates a run through `/v1/runs`.
+4. The adapter normalizes the Hermes SSE stream into bounded Lumen events. Unknown, oversized, reordered, or duplicated events fail closed or deduplicate under the recorded run mapping.
+5. Hermes may report a runtime approval request, but only the Host may match and consume an exact Lumen approval before forwarding a decision.
+6. The Host records completion, failure, cancellation, or `unknown_outcome` before reporting it to the operator. Hermes output is evidence, never the authority record.
 
 ### Local fast path
 
@@ -98,7 +114,7 @@ The implemented in-memory subset uses conservative [restart recovery](./PHASE-1-
 
 ## Runtime and platform adapters
 
-Hermes is one execution adapter, principally for capable desktop/server nodes. Integrate through its documented Runs API for start, status, SSE events, stop, approval, health, capability discovery, and idempotency. Lumen normalizes Hermes events and keeps independent task and context state.
+Hermes is the first execution adapter used to prove the Host before node networking begins. Integrate through its [documented Runs API](https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration) for start, status, SSE events, stop, approval, health, capability discovery, steering where policy permits, and idempotency. Lumen normalizes Hermes events and keeps independent task and context state.
 
 Hermes receives only the task, capability-scoped context, deadline, and cancellation identity that a Host policy approved. Its output is evidence: events, proposed actions, and artifacts never become authority records by themselves.
 
@@ -121,4 +137,4 @@ Platform features use narrow adapters. For example, Apple Reminders may be imple
 
 ## Target code boundaries
 
-`core/` contains portable Space semantics and must not import UI or Hermes packages. `packages/protocol/` owns versioned wire schemas. `adapters/` implement capabilities behind contracts. Platform apps compose these modules and expose OS-specific permissions. The optional relay transports opaque envelopes and owns no Space authority.
+`core/` contains portable Space semantics and must not import UI, service managers, HTTP clients, or Hermes packages. `services/host/` composes the Host process and owns its operator boundary and durable adapters. `adapters/hermes/` implements only the versioned Hermes contract. `packages/protocol/` is created when node transport begins. Platform apps remain clients and expose OS-specific permissions. The optional relay transports opaque envelopes and owns no Space authority.

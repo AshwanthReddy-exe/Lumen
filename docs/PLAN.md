@@ -6,63 +6,65 @@ Lumen is built in blocks, not as disconnected features. Each block starts with o
 
 Do not begin a later block because its UI can be mocked. Fix or simplify the current block when recovery, approval, privacy, or daily-use evidence fails. Record build, devices, preconditions, expected and actual result, pass/fail, and a redacted evidence reference for every owner check.
 
+## Current execution lock
+
+**The first task in the next session is to finish Block 2: the headless Host service and its real Hermes execution loop. Begin with the one-time Android authority quarantine required by that block; otherwise do not resume pairing, node transport, Android companion features, hardware capabilities, Mac, or iPhone implementation until the Block 2 exit gate passes.** See [PHASE-2-HOST-HERMES.md](./PHASE-2-HOST-HERMES.md).
+
 ## Block 1 — Space foundation
 
 **Status:** complete. The portable Space core proves creation, pairing, capability policy, exact approvals, idempotency, revocation, redacted audit, durable transition acknowledgment, and conservative restart recovery. See [PHASE-1-CONTRACT.md](./PHASE-1-CONTRACT.md).
 
 **Live proof:** create a three-node fake Space, grant and revoke a capability, route an authorized task, and restart while work is queued.
 
-## Block 2 — Android Host
+## Block 2 — Headless Host and Hermes execution loop
 
-**Status:** in progress. The encrypted on-device Space setup, live foreground-service health, explicit stop control, and first Xiaomi owner check are complete. It does not yet satisfy this block's transport, pairing, hardware-companion, boot recovery, or five-run exit criteria. See [PHASE-2-ANDROID-HOST.md](./PHASE-2-ANDROID-HOST.md).
+**Status:** next and blocking. The portable Space core is ready, but no production headless Host, durable JVM store, operator CLI, supervisor integration, or Hermes adapter exists. The Android foreground-Host experiment is superseded evidence, not a base for more features.
 
-**Goal:** make the old Android phone a dependable local-network Host.
+**Goal:** run the canonical Host as a terminal service and complete one bounded Hermes task with honest authority, persistence, events, approval, cancellation, failure, and restart behavior.
 
-**Execution sequence:** secure pairing → encrypted local transport → companion dashboard → separately permissioned hardware companion → five physical lifecycle runs. The sequence preserves the Space authority boundary: a companion never grants access, discovery never establishes trust, and microphone/camera usage remains foreground and default-denied.
+**Execution sequence:** superseded Android authority quarantine → Host-local execution contract → Host process and CLI → encrypted durable store → authenticated Hermes adapter → run/events → approval and cancellation → recovery and reconciliation → supervisor parity → Android Termux proof.
 
-**Build:** native foreground Host service; Android Keystore-backed encrypted store; boot and locked-store recovery; paired-node discovery and authenticated transport; Space health; and a companion showing status, task, node, and approval state.
+**Build:** one Kotlin/JVM 21 `lumen-host` distribution; foreground `serve` command; owner-restricted authenticated operator socket; encrypted, locked, atomic Host state; redacted health; a versioned Hermes Runs API adapter; and systemd, launchd, Docker, and Termux/runit examples.
 
-**Live proof:** create a Space on the phone, pair a fake Mac, reboot, change Wi-Fi, unplug/replug power, and route one task after reconnect.
+**Live proof:** initialize and supervise the Host, submit a task from its CLI, observe a real Hermes event stream, resolve one exact approval, cancel one run, interrupt another, restart, and confirm the Host records a proven terminal state or `unknown_outcome`. Repeat the service lifecycle and one task in Android Termux.
 
-**Exit:** five lifecycle runs pass without manual state repair.
+**Exit:** [the Phase 2 automated and owner gates](./PHASE-2-HOST-HERMES.md#exit) pass. Host/Hermes completion is required before any node work.
 
-## Block 3 — Hermes daily loop and read-only browser research
+## Block 3 — Paired-node protocol and local transport
 
-**Goal:** make Lumen useful every day without web side effects.
+**Goal:** let the proven Host authenticate and coordinate one external node without weakening its local authority contract.
 
-**Build:** a versioned Hermes Runtime Adapter; a task feed and audit view on the Mac; `browser.run` limited to `research`, `navigate`, and `extract`; an allowlisted public-site policy; and source artifacts.
+**Build:** Host and node signing identities; QR/SAS pairing; durable membership; versioned signed envelopes; mTLS; replay and duplicate protection; mDNS as discovery only; revocation; and reconnect reconciliation.
 
-**Checks:** Hermes unavailable, cancellation, event-stream loss, duplicate events, untrusted page content, blocked domain, and expired grant. Browser output never changes policy or becomes trusted context automatically.
+**Checks:** wrong identity or Space, stale epoch, expiry, replay, duplicate collision, reordered delivery, revocation, Wi-Fi loss, reconnect, and lost acknowledgements.
 
-**Live proof:** use Lumen for a daily research brief for five days and inspect sources, status, and audit events.
+**Live proof:** pair one test node, disconnect and reconnect it, route one harmless command, replay the envelope, revoke the node, and prove future work is rejected.
 
-**Exit:** five successful runs, no unauthorized browser action, and no manual task-state repair.
+**Exit:** the authenticated-node scenario and independent protocol/security review pass without relying on discovery as trust.
 
-## Block 4 — User-controlled memory
+## Block 4 — Android companion and device capabilities
 
-**Goal:** preserve useful continuity without an uncontrolled agent memory store.
+**Goal:** make the old Android phone a useful desk companion and capability node for the already-running Host.
 
-**Build:** typed `ContextRecord` proposals for preferences, project facts, decisions, and task summaries; scope, source, classification, retention, expiry, confidence, and status; approval, inspection, edit, deletion, and export.
+**Build:** finish the Android companion module/package rename after the earlier authority quarantine; add node identity, pairing, Host connection, task and approval views, and local text-to-speech. Microphone and camera remain separate foreground capabilities with explicit Android permission and local policy checks.
 
-**Checks:** a runtime cannot persist a memory directly; deletion and expiry are durable; revoked nodes lose access; browser text, credentials, secrets, and raw transcripts are rejected by default.
+**Live proof:** install with `adb install -r`, pair with the Host, follow the Host/Hermes task from the desk display, deny and grant each hardware capability separately, force-stop the app, and prove the Host continues running.
 
-**Live proof:** approve a preference and project fact, use them later, inspect provenance, delete one, and confirm it cannot be used.
+**Exit:** companion removal or failure cannot change Host authority; permission-denial and reconnect paths are honest on the Xiaomi reference phone.
 
-**Exit:** seven days of use with a weekly memory audit.
+## Block 5 — Private daily loop, context, and browser actions
 
-## Block 5 — Approved browser actions
+**Goal:** make the Host/Hermes system useful daily without creating a surveillance archive or an unsupervised account operator.
 
-**Goal:** allow a small, reviewable web action without handing browser authority to a runtime.
+**Build:** typed Host-owned context with provenance, retention, expiry, inspect/edit/delete/export controls; read-only `browser.run` research on allowlisted public sites; then separately gated `draft` and `submit` with exact preview, one-time approval, receipt, cancellation, and uncertain outcomes.
 
-**Build:** `browser.run` actions for `draft` and `submit`; isolated profiles; exact action preview; one-time action-bound approval; receipt capture; cancellation and uncertain outcome behavior.
+**Checks:** a runtime cannot persist memory or expand grants; deletion and expiry are durable; blocked domains, changed targets, credential entry, upload, download, payment, and 2FA fail closed or ask again; retries do not duplicate a submission.
 
-**Checks:** profiles cannot expand grants; changed targets, upload, download, payment, credential entry, or 2FA block or ask again; retries do not duplicate a submission.
+**Live proof:** complete repeated research tasks, inspect and delete retained context, block one domain, reject one stale approval, submit one harmless approved action, and interrupt another.
 
-**Live proof:** create a draft in a low-risk test account after reviewing its target and payload.
+**Exit:** ten useful tasks complete; denied synchronization stays absent; every attempted side effect has approval, receipt, and an honest final or unknown outcome.
 
-**Exit:** every attempted action has approval, receipt, and an honest final or unknown outcome.
-
-## Block 6 — Mac coding companion
+## Block 6 — Mac coding node and companion
 
 **Goal:** safely use Hermes for bounded coding work on the Mac.
 

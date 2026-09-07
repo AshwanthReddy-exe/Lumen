@@ -7,7 +7,8 @@
 - [Threat model](./THREAT_MODEL.md)
 - [Changelog](./CHANGELOG.md)
 - [Phase 1 executable slice](./PHASE-1-CONTRACT.md)
-- [Phase 2 Android Host slice](./PHASE-2-ANDROID-HOST.md)
+- [Active Phase 2 Host and Hermes slice](./PHASE-2-HOST-HERMES.md)
+- [Superseded Android foreground-Host evidence](./PHASE-2-ANDROID-HOST.md)
 - [Production design principles](./DESIGN-PRINCIPLES.md)
 
 Phase 0 evidence and decision contracts use the `O-001` through `O-006` files in this folder. Executable spike code and synthetic fixtures remain in [`../spikes/`](../spikes/).
