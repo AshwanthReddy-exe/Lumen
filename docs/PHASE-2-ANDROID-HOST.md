@@ -33,11 +33,12 @@
 - `:apps:android-host:testDebugUnitTest` covers the owner-visible empty and ready setup states.
 - `:apps:android-host:assembleDebug` produces the sideloadable APK.
 - `mise run phase1-check` remains the portable policy and recovery regression gate.
+- 2026-09-07 Xiaomi M2101K7BI (Android 13 / API 33): `adb install -r` updated the app without clearing its existing Space. After the owner tapped **Start Host**, accessibility output showed **Host is ready** and **Stop Host**; Android service state confirmed `LumenHostService` is foreground with notification ID `1001`.
 
 ## Remaining Block 2 work
 
-1. Add device-generated pairing identities and the versioned, mutually authenticated envelope contract.
-2. Implement mDNS discovery as a non-trust hint plus encrypted local transport and reconnect behavior.
-3. Add durable Host health, storage/key/clock/network degradation, Android-supported restart paths, and corresponding negative tests.
-4. Bind the companion to Host health, node, task, and approval state.
-5. Complete and record five physical lifecycle runs: restart, Wi-Fi change, power loss/recovery, service stop, and reconnect after a paired-node task.
+1. **Secure pairing:** create Android Keystore identities, show QR/SAS owner confirmation, and atomically bind each paired node’s public-key fingerprint to its Space membership.
+2. **Local encrypted transport:** handle API 37 local-network permission, advertise with mDNS as a non-trust hint, establish pinned TLS 1.3 mutual authentication, and process signed/versioned envelopes with replay protection and durable duplicate outcomes.
+3. **Companion dashboard:** show paired nodes, Host/network health, tasks, and approvals alongside the existing Host lifecycle state.
+4. **Hardware companion:** add local text-to-speech status, then default-denied foreground microphone and camera-preview capabilities with explicit Android permission prompts. Raw media stays local and is not captured, stored, or shared by default.
+5. **Physical exit checks:** verify restart, Wi-Fi loss/reconnect, explicit stop/restart, update retention, a paired-node command, and microphone/camera deny and grant paths. Record five lifecycle runs without manual state repair.

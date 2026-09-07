@@ -16,9 +16,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
@@ -31,29 +30,34 @@ import java.util.UUID
 
 class LumenHostActivity : ComponentActivity() {
     private val store by lazy { AndroidEncryptedSpaceStateStore(this) }
-    private var screen by mutableStateOf(CompanionScreenModel.unconfigured())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        screen = when (store.read()) {
-            SpaceStateStoreRead.Missing -> CompanionScreenModel.unconfigured()
-            is SpaceStateStoreRead.Present -> CompanionScreenModel.readyToStart()
-            SpaceStateStoreRead.Unavailable -> CompanionScreenModel.unavailable()
-        }
         setContent {
+            val runtime by HostRuntime.state.collectAsState()
+            val screen = CompanionScreenModel.from(storageState(), runtime)
             LumenTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    CompanionScreen(screen, ::startOrCreateHost)
+                    CompanionScreen(screen) {
+                        if (runtime.status == HostRuntimeStatus.READY) LumenHostService.stop(this)
+                        else startOrCreateHost()
+                    }
                 }
             }
         }
+    }
+
+    private fun storageState() = when (store.read()) {
+        SpaceStateStoreRead.Missing -> CompanionStorageState.MISSING
+        is SpaceStateStoreRead.Present -> CompanionStorageState.PRESENT
+        SpaceStateStoreRead.Unavailable -> CompanionStorageState.UNAVAILABLE
     }
 
     private fun startOrCreateHost() {
         when (store.read()) {
             SpaceStateStoreRead.Missing -> createSpace()
             is SpaceStateStoreRead.Present -> startHost()
-            SpaceStateStoreRead.Unavailable -> screen = CompanionScreenModel.unavailable()
+            SpaceStateStoreRead.Unavailable -> HostRuntime.degraded("Encrypted Space state is unavailable")
         }
     }
 
@@ -61,15 +65,13 @@ class LumenHostActivity : ComponentActivity() {
         val identity = UUID.randomUUID().toString()
         when (SpaceHost.create(store, "space-$identity", "owner-$identity", "host-$identity")) {
             is SpaceHostOpenResult.Ready -> startHost()
-            is SpaceHostOpenResult.Unavailable -> screen = when (store.read()) {
-                is SpaceStateStoreRead.Present -> CompanionScreenModel.readyToStart()
-                else -> CompanionScreenModel.unavailable()
-            }
+            is SpaceHostOpenResult.Unavailable -> if (store.read() is SpaceStateStoreRead.Present) startHost()
+            else HostRuntime.degraded("Encrypted Space state is unavailable")
         }
     }
 
     private fun startHost() {
-        screen = CompanionScreenModel.starting()
+        HostRuntime.opening()
         LumenHostService.start(this)
     }
 }
