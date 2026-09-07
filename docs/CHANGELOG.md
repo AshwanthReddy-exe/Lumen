@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Started Block 2 with the Android Host vertical slice: Android Keystore AES-GCM encrypted Space state, atomic replacement, an owner-driven Space setup screen, and a visible foreground Host service. Pairing, transport, health, boot recovery, and the Block 2 lifecycle gate remain in progress.
+
 - Replaced phase-by-phase feature accumulation with block-based delivery: each block has one live personal journey, failure checks, and an exit gate.
 - Defined Hermes as the execution runtime behind Lumen authority, staged `browser.run`, and made memory Host-owned typed context.
 

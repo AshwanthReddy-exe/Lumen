@@ -41,3 +41,5 @@ Run the Phase 0 contract baseline with `mise run phase0-check`. It uses the pinn
 Phase 0 evidence lives under [`spikes/`](./spikes/) and freezes the stack, context, transport, Host, recovery, and capability decisions before Phase 1 begins.
 
 Run the Space-core contract and simulated restart scenario with `mise run phase1-check`. Phase 1 is complete; the [core contract](./docs/PHASE-1-CONTRACT.md) defines the Phase 2 platform-store boundary.
+
+The first Android Host slice is available for manual verification: it creates encrypted Space state on the device and starts a visible foreground Host service. Its exact scope, sideload instructions, and remaining Block 2 exit work are in [PHASE-2-ANDROID-HOST.md](./docs/PHASE-2-ANDROID-HOST.md).
