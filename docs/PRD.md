@@ -15,15 +15,15 @@ Lumen makes a person’s devices feel like one understandable, permission-contro
 
 ## First reference deployment
 
-The initial working Space has one old Android phone acting as Host and desk companion, one Mac acting as a pet surface and coding node, and one iPhone acting as an interaction and personal-capability node. This topology validates the model; it does not define the product’s platform boundary.
+The initial working Space starts with a headless Host service and a separately supervised Hermes runtime. A co-located plaintext loopback profile may prove compatibility only with synthetic state; the release proof isolates Hermes behind pinned mutual TLS. The Host runs from a terminal under an external service manager on a development computer, Linux/VPS, or Android Termux. The old Android phone is a companion and capability node; it is never the Host merely because the companion app is installed. Mac and iPhone nodes follow only after the Host-to-Hermes execution loop is complete.
 
 ## Core journeys
 
-1. Create a Space on the old phone and pair the Mac and iPhone.
-2. Inspect each node’s available capabilities and configure their authority.
-3. Ask the desk companion to execute a coding task on the Mac and follow its progress.
-4. Talk to the Mac pet and perform a Mac-local task directly; synchronize the useful task context to the Host afterward.
-5. Ask from one node to create a reminder or scheduled task using an eligible node.
+1. Initialize a Space through the local Host CLI, start the Host as a supervised service, and verify durable recovery.
+2. Configure an isolated, mutually authenticated Hermes endpoint, submit one bounded task through the Host, and follow its normalized events to an honest terminal outcome. A plaintext loopback run is development evidence only.
+3. Pair the Android companion and inspect the Host, task, and approval state without giving the app canonical authority.
+4. Inspect each node’s available capabilities and configure their authority.
+5. Ask the desk companion to execute a capability on an eligible node and follow its progress.
 6. Receive an approval request when an action exceeds its grant, then approve once, reject, narrow the scope, or cancel.
 7. Revoke a node and verify that it can no longer read context or execute work.
 
@@ -35,9 +35,11 @@ The initial working Space has one old Android phone acting as Host and desk comp
 | --- | --- |
 | FR-01 | Create one private Space with one active Host and a recoverable owner identity. |
 | FR-02 | Pair and revoke nodes using device-generated keys and explicit confirmation. |
-| FR-03 | Let any eligible node satisfy the documented Host contract and be selected through an explicit migration flow. |
+| FR-03 | Let any eligible deployment environment run the documented Host service and be selected through an explicit migration flow; co-located node and Host identities remain separate. |
 | FR-04 | Keep canonical shared context, policies, task history, and node registry on the active Host. |
 | FR-05 | Authenticate signed, expiring messages and reject repeated nonces or revoked senders. |
+| FR-06 | Run the Host as a headless foreground process whose lifecycle is supervised externally and whose executable contract is identical on Linux/VPS, macOS, and Android Termux. |
+| FR-07 | Keep companion applications outside the Host authority boundary even when a companion and Host share one physical device. |
 
 ### Nodes and capabilities
 
@@ -71,6 +73,7 @@ The initial working Space has one old Android phone acting as Host and desk comp
 | FR-35 | Record redacted audit events for routing, policy, approval, execution, synchronization, and outcome. |
 | FR-36 | Let a runtime propose typed memory records, but require Host validation and user inspection before a record becomes canonical context. |
 | FR-37 | Keep browser profiles and their credentials outside shared context; browser actions require a capability grant and action-specific policy. |
+| FR-38 | Integrate Hermes through a versioned adapter that discovers capabilities, submits and observes runs, forwards only exact approved runtime decisions, supports cancellation, and treats every Hermes result as untrusted evidence. |
 
 ## Initial capability set
 

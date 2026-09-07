@@ -1,4 +1,6 @@
-# Android Block 2 design
+# Superseded Android Block 2 design
+
+> Superseded by [Host-first rearchitecture design](./2026-09-07-host-first-rearchitecture-design.md). This document records the abandoned Android foreground-Host design and must not guide implementation.
 
 ## Purpose and scope
 
