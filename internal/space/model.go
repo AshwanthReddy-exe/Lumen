@@ -1,7 +1,5 @@
 package space
 
-import "fmt"
-
 type Grant string
 
 const (
@@ -19,25 +17,53 @@ const (
 
 type CommandType string
 
-const CommandCreateSpace CommandType = "create_space"
+const (
+	CommandCreateSpace         CommandType = "create_space"
+	CommandPairNode            CommandType = "pair_node"
+	CommandAdvertiseCapability CommandType = "advertise_capability"
+	CommandSetGrant            CommandType = "set_grant"
+	CommandSubmit              CommandType = "submit"
+	CommandApprove             CommandType = "approve"
+	CommandComplete            CommandType = "complete"
+	CommandRevokeNode          CommandType = "revoke_node"
+	CommandRecoverAfterRestart CommandType = "recover_after_restart"
+)
 
 type Outcome string
 
-const OutcomeApplied Outcome = "applied"
+const (
+	OutcomeApplied            Outcome = "applied"
+	OutcomeAwaitingPermission Outcome = "awaiting_permission"
+	OutcomeQueued             Outcome = "queued"
+	OutcomeCompleted          Outcome = "completed"
+	OutcomeFailed             Outcome = "failed"
+	OutcomeUnknown            Outcome = "unknown_outcome"
+)
 
 type AuditEventType string
 
-const AuditSpaceCreated AuditEventType = "space.created"
+const (
+	AuditSpaceCreated    AuditEventType = "space.created"
+	AuditCommandAccepted AuditEventType = "command.accepted"
+	AuditCommandRejected AuditEventType = "command.rejected"
+	AuditCommandReplayed AuditEventType = "command.replayed"
+)
 
 type State struct {
-	SchemaVersion int          `json:"schemaVersion"`
-	SpaceID       string       `json:"spaceId,omitempty"`
-	OwnerID       string       `json:"ownerId,omitempty"`
-	HostID        string       `json:"hostId,omitempty"`
-	Epoch         int          `json:"epoch,omitempty"`
-	Identities    []Identity   `json:"identities,omitempty"`
-	Capabilities  []Capability `json:"capabilities,omitempty"`
-	Audit         []AuditEvent `json:"audit"`
+	SchemaVersion  int                        `json:"schemaVersion"`
+	SpaceID        string                     `json:"spaceId,omitempty"`
+	OwnerID        string                     `json:"ownerId,omitempty"`
+	HostID         string                     `json:"hostId,omitempty"`
+	Epoch          int                        `json:"epoch,omitempty"`
+	Identities     []Identity                 `json:"identities,omitempty"`
+	Capabilities   []Capability               `json:"capabilities,omitempty"`
+	Audit          []AuditEvent               `json:"audit"`
+	Nodes          map[string]Node            `json:"nodes,omitempty"`
+	Advertisements []CapabilityKey            `json:"advertisements,omitempty"`
+	Grants         map[string]Grant           `json:"grants,omitempty"`
+	Tasks          map[string]Task            `json:"tasks,omitempty"`
+	Approvals      map[string]Approval        `json:"approvals,omitempty"`
+	Commands       map[string]RecordedCommand `json:"commands,omitempty"`
 }
 type Identity struct {
 	ID   string       `json:"id"`
@@ -47,16 +73,67 @@ type Capability struct {
 	ID    string `json:"id"`
 	Grant Grant  `json:"grant"`
 }
+type Node struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+type CapabilityKey struct {
+	NodeID       string `json:"nodeId"`
+	CapabilityID string `json:"capabilityId"`
+	Action       string `json:"action"`
+}
+type Task struct {
+	ID                string  `json:"id"`
+	CommandID         string  `json:"commandId"`
+	OriginNodeID      string  `json:"originNodeId"`
+	TargetNodeID      string  `json:"targetNodeId"`
+	CapabilityID      string  `json:"capabilityId"`
+	Action            string  `json:"action"`
+	ActionFingerprint string  `json:"actionFingerprint"`
+	HostEpoch         int     `json:"hostEpoch"`
+	Status            Outcome `json:"status"`
+	TerminalReason    string  `json:"terminalReason,omitempty"`
+}
+type Approval struct {
+	ID                string `json:"id"`
+	TaskID            string `json:"taskId"`
+	ActorNodeID       string `json:"actorNodeId"`
+	TargetNodeID      string `json:"targetNodeId"`
+	ActionFingerprint string `json:"actionFingerprint"`
+	ExpiresAt         int64  `json:"expiresAt"`
+	ConsumedAt        int64  `json:"consumedAt"`
+}
+type RecordedCommand struct {
+	Type      CommandType `json:"type"`
+	Content   string      `json:"content"`
+	Receipt   *Receipt    `json:"receipt,omitempty"`
+	Rejection string      `json:"rejection,omitempty"`
+}
 type AuditEvent struct {
 	Event     AuditEventType `json:"event"`
 	RequestID string         `json:"requestId"`
 }
 type Command struct {
-	Type      CommandType `json:"type"`
-	SpaceID   string      `json:"spaceId"`
-	OwnerID   string      `json:"ownerId"`
-	HostID    string      `json:"hostId"`
-	RequestID string      `json:"requestId"`
+	Type              CommandType `json:"type"`
+	SpaceID           string      `json:"spaceId"`
+	OwnerID           string      `json:"ownerId"`
+	HostID            string      `json:"hostId"`
+	RequestID         string      `json:"requestId"`
+	Epoch             int         `json:"epoch,omitempty"`
+	OperationID       string      `json:"operationId,omitempty"`
+	ActorID           string      `json:"actorId,omitempty"`
+	NodeID            string      `json:"nodeId,omitempty"`
+	CapabilityID      string      `json:"capabilityId,omitempty"`
+	Action            string      `json:"action,omitempty"`
+	ActionFingerprint string      `json:"actionFingerprint,omitempty"`
+	TaskID            string      `json:"taskId,omitempty"`
+	OriginNodeID      string      `json:"originNodeId,omitempty"`
+	TargetNodeID      string      `json:"targetNodeId,omitempty"`
+	Grant             Grant       `json:"grant,omitempty"`
+	ApprovalID        string      `json:"approvalId,omitempty"`
+	ExpiresAt         int64       `json:"expiresAt,omitempty"`
+	ApprovedAt        int64       `json:"approvedAt,omitempty"`
+	Outcome           Outcome     `json:"outcome,omitempty"`
 }
 type Transition struct {
 	State     State
@@ -66,6 +143,7 @@ type Transition struct {
 type Receipt struct {
 	RequestID string  `json:"requestId,omitempty"`
 	Outcome   Outcome `json:"outcome,omitempty"`
+	SubjectID string  `json:"subjectId,omitempty"`
 }
 type FixtureSuite struct {
 	SchemaVersion int           `json:"schemaVersion"`
@@ -87,19 +165,9 @@ type ExpectedTransition struct {
 	Rejection string  `json:"rejection"`
 }
 
-func Apply(state State, command Command) Transition {
-	if command.Type != CommandCreateSpace {
-		return Transition{State: state, Rejection: fmt.Sprintf("unsupported command: %s", command.Type)}
+func commandID(c Command) string {
+	if c.RequestID != "" {
+		return c.RequestID
 	}
-	if state.SpaceID != "" {
-		return Transition{State: state, Rejection: "space already exists"}
-	}
-	if command.SpaceID == "" || command.OwnerID == "" || command.HostID == "" || command.OwnerID == command.HostID {
-		return Transition{State: state, Rejection: "invalid space identities"}
-	}
-	state.SpaceID, state.OwnerID, state.HostID, state.Epoch = command.SpaceID, command.OwnerID, command.HostID, 1
-	state.Identities = []Identity{{command.OwnerID, IdentityOwner}, {command.HostID, IdentityHost}}
-	state.Capabilities = []Capability{{"agent.run/execute", GrantAsk}}
-	state.Audit = append(state.Audit, AuditEvent{AuditSpaceCreated, command.RequestID})
-	return Transition{State: state, Receipt: Receipt{command.RequestID, OutcomeApplied}}
+	return c.OperationID
 }

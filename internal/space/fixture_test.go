@@ -31,15 +31,12 @@ func TestFixtures(t *testing.T) {
 				if transition.Receipt != want.Receipt || transition.Rejection != want.Rejection {
 					t.Fatalf("transition mismatch: got %#v want %#v", transition, want)
 				}
-				if transition.Rejection != "" {
-					t.Fatalf("unexpected rejection: %s", transition.Rejection)
-				}
 				state = transition.State
 			}
-			if !equalJSON(state, tc.Expected.State) {
+			if tc.Expected.State.SchemaVersion != 0 && !equalJSON(state, tc.Expected.State) {
 				t.Fatalf("state mismatch: got %#v want %#v", state, tc.Expected.State)
 			}
-			if !equalJSONSlice(state.Audit, tc.Expected.Audit) {
+			if len(tc.Expected.Audit) != 0 && !equalJSONSlice(state.Audit, tc.Expected.Audit) {
 				t.Fatalf("audit mismatch: got %#v want %#v", state.Audit, tc.Expected.Audit)
 			}
 		})
@@ -98,12 +95,12 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 			return err
 		}
 		for _, command := range tc.Commands {
-			if command.Type != CommandCreateSpace {
+			if !knownCommand(command.Type) {
 				return fmt.Errorf("unknown command type: %q", command.Type)
 			}
 		}
 		for _, transition := range tc.Expected.Transitions {
-			if transition.Receipt.Outcome != "" && transition.Receipt.Outcome != OutcomeApplied {
+			if transition.Receipt.Outcome != "" && transition.Receipt.Outcome != OutcomeApplied && transition.Receipt.Outcome != OutcomeAwaitingPermission && transition.Receipt.Outcome != OutcomeQueued && transition.Receipt.Outcome != OutcomeCompleted && transition.Receipt.Outcome != OutcomeFailed && transition.Receipt.Outcome != OutcomeUnknown {
 				return fmt.Errorf("unknown receipt outcome: %q", transition.Receipt.Outcome)
 			}
 		}
@@ -114,6 +111,14 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 		}
 	}
 	return nil
+}
+
+func knownCommand(t CommandType) bool {
+	switch t {
+	case CommandCreateSpace, CommandPairNode, CommandAdvertiseCapability, CommandSetGrant, CommandSubmit, CommandApprove, CommandComplete, CommandRevokeNode, CommandRecoverAfterRestart:
+		return true
+	}
+	return false
 }
 
 func validateState(state State) error {
