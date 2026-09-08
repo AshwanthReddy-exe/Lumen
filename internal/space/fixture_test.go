@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,9 +16,7 @@ func TestFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	var suite FixtureSuite
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&suite); err != nil {
+	if err := decodeFixture(data, &suite); err != nil {
 		t.Fatal(err)
 	}
 	if suite.SchemaVersion != 1 {
@@ -26,8 +25,12 @@ func TestFixtures(t *testing.T) {
 	for _, tc := range suite.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			state := tc.Initial
-			for _, command := range tc.Commands {
+			for i, command := range tc.Commands {
 				transition := Apply(state, command)
+				want := tc.Expected.Transitions[i]
+				if transition.Receipt != want.Receipt || transition.Rejection != want.Rejection {
+					t.Fatalf("transition mismatch: got %#v want %#v", transition, want)
+				}
 				if transition.Rejection != "" {
 					t.Fatalf("unexpected rejection: %s", transition.Rejection)
 				}
@@ -64,6 +67,10 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(suite); err != nil {
 		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return fmt.Errorf("trailing JSON: %v", err)
 	}
 	if suite.SchemaVersion != 1 {
 		return fmt.Errorf("unsupported fixture schema version: %d", suite.SchemaVersion)

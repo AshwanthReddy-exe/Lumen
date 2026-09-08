@@ -17,6 +17,18 @@ const (
 	IdentityHost  IdentityKind = "host"
 )
 
+type CommandType string
+
+const CommandCreateSpace CommandType = "create_space"
+
+type Outcome string
+
+const OutcomeApplied Outcome = "applied"
+
+type AuditEventType string
+
+const AuditSpaceCreated AuditEventType = "space.created"
+
 type State struct {
 	SchemaVersion int          `json:"schemaVersion"`
 	SpaceID       string       `json:"spaceId,omitempty"`
@@ -36,15 +48,15 @@ type Capability struct {
 	Grant Grant  `json:"grant"`
 }
 type AuditEvent struct {
-	Event     string `json:"event"`
-	RequestID string `json:"requestId"`
+	Event     AuditEventType `json:"event"`
+	RequestID string         `json:"requestId"`
 }
 type Command struct {
-	Type      string `json:"type"`
-	SpaceID   string `json:"spaceId"`
-	OwnerID   string `json:"ownerId"`
-	HostID    string `json:"hostId"`
-	RequestID string `json:"requestId"`
+	Type      CommandType `json:"type"`
+	SpaceID   string      `json:"spaceId"`
+	OwnerID   string      `json:"ownerId"`
+	HostID    string      `json:"hostId"`
+	RequestID string      `json:"requestId"`
 }
 type Transition struct {
 	State     State
@@ -52,8 +64,8 @@ type Transition struct {
 	Rejection string
 }
 type Receipt struct {
-	RequestID string `json:"requestId,omitempty"`
-	Outcome   string `json:"outcome,omitempty"`
+	RequestID string  `json:"requestId,omitempty"`
+	Outcome   Outcome `json:"outcome,omitempty"`
 }
 type FixtureSuite struct {
 	SchemaVersion int           `json:"schemaVersion"`
@@ -66,12 +78,17 @@ type FixtureCase struct {
 	Expected FixtureExpected `json:"expected"`
 }
 type FixtureExpected struct {
-	State State        `json:"state"`
-	Audit []AuditEvent `json:"audit"`
+	State       State                `json:"state"`
+	Audit       []AuditEvent         `json:"audit"`
+	Transitions []ExpectedTransition `json:"transitions"`
+}
+type ExpectedTransition struct {
+	Receipt   Receipt `json:"receipt"`
+	Rejection string  `json:"rejection"`
 }
 
 func Apply(state State, command Command) Transition {
-	if command.Type != "create_space" {
+	if command.Type != CommandCreateSpace {
 		return Transition{State: state, Rejection: fmt.Sprintf("unsupported command: %s", command.Type)}
 	}
 	if state.SpaceID != "" {
@@ -83,6 +100,6 @@ func Apply(state State, command Command) Transition {
 	state.SpaceID, state.OwnerID, state.HostID, state.Epoch = command.SpaceID, command.OwnerID, command.HostID, 1
 	state.Identities = []Identity{{command.OwnerID, IdentityOwner}, {command.HostID, IdentityHost}}
 	state.Capabilities = []Capability{{"agent.run/execute", GrantAsk}}
-	state.Audit = append(state.Audit, AuditEvent{"space.created", command.RequestID})
-	return Transition{State: state, Receipt: Receipt{command.RequestID, "applied"}}
+	state.Audit = append(state.Audit, AuditEvent{AuditSpaceCreated, command.RequestID})
+	return Transition{State: state, Receipt: Receipt{command.RequestID, OutcomeApplied}}
 }
