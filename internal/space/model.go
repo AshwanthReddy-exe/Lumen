@@ -18,15 +18,18 @@ const (
 type CommandType string
 
 const (
-	CommandCreateSpace         CommandType = "create_space"
-	CommandPairNode            CommandType = "pair_node"
-	CommandAdvertiseCapability CommandType = "advertise_capability"
-	CommandSetGrant            CommandType = "set_grant"
-	CommandSubmit              CommandType = "submit"
-	CommandApprove             CommandType = "approve"
-	CommandComplete            CommandType = "complete"
-	CommandRevokeNode          CommandType = "revoke_node"
-	CommandRecoverAfterRestart CommandType = "recover_after_restart"
+	CommandCreateSpace                CommandType = "create_space"
+	CommandPairNode                   CommandType = "pair_node"
+	CommandAdvertiseCapability        CommandType = "advertise_capability"
+	CommandSetGrant                   CommandType = "set_grant"
+	CommandSubmit                     CommandType = "submit"
+	CommandApprove                    CommandType = "approve"
+	CommandComplete                   CommandType = "complete"
+	CommandRevokeNode                 CommandType = "revoke_node"
+	CommandRecoverAfterRestart        CommandType = "recover_after_restart"
+	CommandDispatchHostRun            CommandType = "dispatch_host_run"
+	CommandReconcileHostRun           CommandType = "reconcile_host_run"
+	CommandRequestHostRunCancellation CommandType = "request_host_run_cancellation"
 )
 
 type Outcome string
@@ -38,6 +41,20 @@ const (
 	OutcomeCompleted          Outcome = "completed"
 	OutcomeFailed             Outcome = "failed"
 	OutcomeUnknown            Outcome = "unknown_outcome"
+	OutcomeDispatched         Outcome = "dispatched"
+	OutcomeRunning            Outcome = "running"
+	OutcomeCancelling         Outcome = "cancelling"
+	OutcomeCancelled          Outcome = "cancelled"
+)
+
+type EvidenceOutcome string
+
+const (
+	EvidenceRunning     EvidenceOutcome = "running"
+	EvidenceCompleted   EvidenceOutcome = "completed"
+	EvidenceFailed      EvidenceOutcome = "failed"
+	EvidenceCancelled   EvidenceOutcome = "cancelled"
+	EvidenceUnavailable EvidenceOutcome = "unavailable"
 )
 
 type AuditEventType string
@@ -64,6 +81,7 @@ type State struct {
 	Tasks          map[string]Task            `json:"tasks,omitempty"`
 	Approvals      map[string]Approval        `json:"approvals,omitempty"`
 	Commands       map[string]RecordedCommand `json:"commands,omitempty"`
+	HostRuns       map[string]HostRun         `json:"hostRuns,omitempty"`
 }
 type Identity struct {
 	ID   string       `json:"id"`
@@ -94,6 +112,14 @@ type Task struct {
 	Status            Outcome `json:"status"`
 	TerminalReason    string  `json:"terminalReason,omitempty"`
 }
+type HostRun struct {
+	TaskID               string `json:"taskId"`
+	RuntimeRunID         string `json:"runtimeRunId"`
+	RuntimeProfileDigest string `json:"runtimeProfileDigest"`
+	HostEpoch            int    `json:"hostEpoch"`
+	DispatchedAt         int64  `json:"dispatchedAt"`
+	ReconcileBy          int64  `json:"reconcileBy"`
+}
 type Approval struct {
 	ID                string `json:"id"`
 	TaskID            string `json:"taskId"`
@@ -119,26 +145,32 @@ type AuditEvent struct {
 	Outcome   string         `json:"outcome"`
 }
 type Command struct {
-	Type              CommandType `json:"type"`
-	SpaceID           string      `json:"spaceId"`
-	OwnerID           string      `json:"ownerId"`
-	HostID            string      `json:"hostId"`
-	RequestID         string      `json:"requestId"`
-	Epoch             int         `json:"epoch,omitempty"`
-	OperationID       string      `json:"operationId,omitempty"`
-	ActorID           string      `json:"actorId,omitempty"`
-	NodeID            string      `json:"nodeId,omitempty"`
-	CapabilityID      string      `json:"capabilityId,omitempty"`
-	Action            string      `json:"action,omitempty"`
-	ActionFingerprint string      `json:"actionFingerprint,omitempty"`
-	TaskID            string      `json:"taskId,omitempty"`
-	OriginNodeID      string      `json:"originNodeId,omitempty"`
-	TargetNodeID      string      `json:"targetNodeId,omitempty"`
-	Grant             Grant       `json:"grant,omitempty"`
-	ApprovalID        string      `json:"approvalId,omitempty"`
-	ExpiresAt         int64       `json:"expiresAt,omitempty"`
-	ApprovedAt        int64       `json:"approvedAt,omitempty"`
-	Outcome           Outcome     `json:"outcome,omitempty"`
+	Type                 CommandType     `json:"type"`
+	SpaceID              string          `json:"spaceId"`
+	OwnerID              string          `json:"ownerId"`
+	HostID               string          `json:"hostId"`
+	RequestID            string          `json:"requestId"`
+	Epoch                int             `json:"epoch,omitempty"`
+	OperationID          string          `json:"operationId,omitempty"`
+	ActorID              string          `json:"actorId,omitempty"`
+	NodeID               string          `json:"nodeId,omitempty"`
+	CapabilityID         string          `json:"capabilityId,omitempty"`
+	Action               string          `json:"action,omitempty"`
+	ActionFingerprint    string          `json:"actionFingerprint,omitempty"`
+	TaskID               string          `json:"taskId,omitempty"`
+	OriginNodeID         string          `json:"originNodeId,omitempty"`
+	TargetNodeID         string          `json:"targetNodeId,omitempty"`
+	Grant                Grant           `json:"grant,omitempty"`
+	ApprovalID           string          `json:"approvalId,omitempty"`
+	ExpiresAt            int64           `json:"expiresAt,omitempty"`
+	ApprovedAt           int64           `json:"approvedAt,omitempty"`
+	Outcome              Outcome         `json:"outcome,omitempty"`
+	RuntimeRunID         string          `json:"runtimeRunId,omitempty"`
+	RuntimeProfileDigest string          `json:"runtimeProfileDigest,omitempty"`
+	DispatchedAt         int64           `json:"dispatchedAt,omitempty"`
+	ReconcileBy          int64           `json:"reconcileBy,omitempty"`
+	ObservedAt           int64           `json:"observedAt,omitempty"`
+	Evidence             EvidenceOutcome `json:"evidence,omitempty"`
 }
 type Transition struct {
 	State     State

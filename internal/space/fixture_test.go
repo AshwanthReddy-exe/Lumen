@@ -121,7 +121,7 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 				return fmt.Errorf("unknown command type: %q", command.Type)
 			}
 			switch command.Type {
-			case CommandPairNode, CommandAdvertiseCapability, CommandSetGrant, CommandSubmit, CommandApprove, CommandComplete, CommandRecoverAfterRestart:
+			case CommandPairNode, CommandAdvertiseCapability, CommandSetGrant, CommandSubmit, CommandApprove, CommandComplete, CommandRecoverAfterRestart, CommandDispatchHostRun, CommandReconcileHostRun, CommandRequestHostRunCancellation:
 				if command.HostID == "" {
 					return fmt.Errorf("fixture %q command %q missing host context", tc.Name, command.RequestID)
 				}
@@ -143,7 +143,7 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 
 func knownCommand(t CommandType) bool {
 	switch t {
-	case CommandCreateSpace, CommandPairNode, CommandAdvertiseCapability, CommandSetGrant, CommandSubmit, CommandApprove, CommandComplete, CommandRevokeNode, CommandRecoverAfterRestart:
+	case CommandCreateSpace, CommandPairNode, CommandAdvertiseCapability, CommandSetGrant, CommandSubmit, CommandApprove, CommandComplete, CommandRevokeNode, CommandRecoverAfterRestart, CommandDispatchHostRun, CommandReconcileHostRun, CommandRequestHostRunCancellation:
 		return true
 	}
 	return false

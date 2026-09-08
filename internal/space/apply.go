@@ -51,6 +51,12 @@ func Apply(s State, c Command) Transition {
 		tr = revoke(s, c)
 	case CommandRecoverAfterRestart:
 		tr = recover(s, c)
+	case CommandDispatchHostRun:
+		tr = dispatchHostRun(s, c)
+	case CommandReconcileHostRun:
+		tr = reconcileHostRun(s, c)
+	case CommandRequestHostRunCancellation:
+		tr = cancelHostRun(s, c)
 	default:
 		return reject(s, c, "unsupported_command")
 	}
@@ -279,7 +285,7 @@ func recover(s State, c Command) Transition {
 		return reject(s, c, "unauthorized_actor")
 	}
 	for id, t := range s.Tasks {
-		if t.Status == OutcomeQueued {
+		if t.Status == OutcomeQueued || t.Status == OutcomeDispatched || t.Status == OutcomeRunning || t.Status == OutcomeCancelling {
 			t.Status = OutcomeUnknown
 			t.TerminalReason = "host_restarted"
 			s.Tasks[id] = t
