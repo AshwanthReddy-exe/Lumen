@@ -23,9 +23,9 @@ func Apply(s State, c Command) Transition {
 				return reject(s, c, "idempotency_key_reused")
 			}
 			if old.Rejection != "" {
-				return Transition{State: audit(s, AuditCommandReplayed, id), Rejection: old.Rejection}
+				return Transition{State: audit(s, AuditCommandReplayed, id, c.ActorID, c.Type, "rejected"), Rejection: old.Rejection}
 			}
-			return Transition{State: audit(s, AuditCommandReplayed, id), Receipt: receipt(old, id)}
+			return Transition{State: audit(s, AuditCommandReplayed, id, c.ActorID, c.Type, "replayed"), Receipt: receipt(old, id)}
 		}
 	}
 	if s.Commands == nil {
@@ -69,11 +69,11 @@ func receipt(r RecordedCommand, id string) Receipt {
 }
 func reject(s State, c Command, reason string) Transition {
 	id := commandID(c)
-	return Transition{State: audit(s, AuditCommandRejected, id), Rejection: reason}
+	return Transition{State: audit(s, AuditCommandRejected, id, c.ActorID, c.Type, "rejected"), Rejection: reason}
 }
 func accepted(s State, c Command, out Outcome, subject string) Transition {
 	id := commandID(c)
-	s = audit(s, AuditCommandAccepted, id)
+	s = audit(s, AuditCommandAccepted, id, c.ActorID, c.Type, string(out))
 	return Transition{State: s, Receipt: Receipt{RequestID: id, Outcome: out, SubjectID: subject}}
 }
 func create(s State, c Command) Transition {
@@ -90,7 +90,7 @@ func create(s State, c Command) Transition {
 	s.Identities = []Identity{{c.OwnerID, IdentityOwner}, {c.HostID, IdentityHost}}
 	s.Capabilities = []Capability{{"agent.run/execute", GrantAsk}}
 	s.Nodes = map[string]Node{c.OwnerID: {c.OwnerID, "paired"}, c.HostID: {c.HostID, "paired"}}
-	s = audit(s, AuditSpaceCreated, commandID(c))
+	s = audit(s, AuditSpaceCreated, commandID(c), c.OwnerID, c.Type, string(OutcomeApplied))
 	return Transition{State: s, Receipt: Receipt{RequestID: commandID(c), Outcome: OutcomeApplied}}
 }
 func pair(s State, c Command) Transition {
@@ -143,6 +143,9 @@ func setGrant(s State, c Command) Transition {
 	return accepted(s, c, OutcomeApplied, c.NodeID)
 }
 func submit(s State, c Command) Transition {
+	if !valid(c.TaskID) || !valid(c.ActionFingerprint) {
+		return reject(s, c, "invalid_identifier")
+	}
 	if c.SpaceID != s.SpaceID {
 		return reject(s, c, "invalid_space")
 	}
@@ -235,6 +238,9 @@ func complete(s State, c Command) Transition {
 	return accepted(s, c, c.Outcome, c.TaskID)
 }
 func revoke(s State, c Command) Transition {
+	if c.SpaceID != s.SpaceID || c.HostID != s.HostID || c.Epoch == 0 || c.Epoch != s.Epoch {
+		return reject(s, c, "stale_host_epoch")
+	}
 	if !owner(s, c.ActorID) {
 		return reject(s, c, "unauthorized_actor")
 	}

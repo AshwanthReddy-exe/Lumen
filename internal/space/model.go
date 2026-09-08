@@ -112,6 +112,11 @@ type RecordedCommand struct {
 type AuditEvent struct {
 	Event     AuditEventType `json:"event"`
 	RequestID string         `json:"requestId"`
+	ActorID   string         `json:"actorId"`
+	HostID    string         `json:"hostId"`
+	Epoch     int            `json:"epoch"`
+	Operation CommandType    `json:"operation"`
+	Outcome   string         `json:"outcome"`
 }
 type Command struct {
 	Type              CommandType `json:"type"`

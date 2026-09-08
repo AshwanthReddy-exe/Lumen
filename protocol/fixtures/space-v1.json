@@ -42,7 +42,12 @@
           "audit": [
             {
               "event": "space.created",
-              "requestId": "req-1"
+              "requestId": "req-1",
+              "actorId": "owner-1",
+              "hostId": "host-1",
+              "epoch": 1,
+              "operation": "create_space",
+              "outcome": "applied"
             }
           ],
           "nodes": {
@@ -69,7 +74,12 @@
         "audit": [
           {
             "event": "space.created",
-            "requestId": "req-1"
+            "requestId": "req-1",
+            "actorId": "owner-1",
+            "hostId": "host-1",
+            "epoch": 1,
+            "operation": "create_space",
+            "outcome": "applied"
           }
         ],
         "transitions": [
@@ -106,7 +116,7 @@
       "commands": [
         {
           "type": "pair_node",
-          "spaceId": "",
+          "spaceId": "s",
           "ownerId": "",
           "hostId": "host",
           "requestId": "pair",
@@ -124,7 +134,12 @@
           "audit": [
             {
               "event": "command.rejected",
-              "requestId": "pair"
+              "requestId": "pair",
+              "actorId": "owner",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "pair_node",
+              "outcome": "rejected"
             }
           ],
           "nodes": {
@@ -140,7 +155,7 @@
           "commands": {
             "pair": {
               "type": "pair_node",
-              "content": "{\"type\":\"pair_node\",\"spaceId\":\"\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"pair\",\"actorId\":\"owner\",\"nodeId\":\"mac\"}",
+              "content": "{\"type\":\"pair_node\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"pair\",\"actorId\":\"owner\",\"nodeId\":\"mac\"}",
               "rejection": "stale_host_epoch"
             }
           }
@@ -148,7 +163,12 @@
         "audit": [
           {
             "event": "command.rejected",
-            "requestId": "pair"
+            "requestId": "pair",
+            "actorId": "owner",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "pair_node",
+            "outcome": "rejected"
           }
         ],
         "transitions": [
@@ -209,7 +229,12 @@
           "audit": [
             {
               "event": "command.rejected",
-              "requestId": "missing"
+              "requestId": "missing",
+              "actorId": "",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "submit",
+              "outcome": "rejected"
             }
           ],
           "nodes": {
@@ -237,7 +262,12 @@
         "audit": [
           {
             "event": "command.rejected",
-            "requestId": "missing"
+            "requestId": "missing",
+            "actorId": "",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "submit",
+            "outcome": "rejected"
           }
         ],
         "transitions": [
@@ -304,7 +334,12 @@
           "audit": [
             {
               "event": "command.rejected",
-              "requestId": "deny"
+              "requestId": "deny",
+              "actorId": "",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "submit",
+              "outcome": "rejected"
             }
           ],
           "nodes": {
@@ -338,7 +373,12 @@
         "audit": [
           {
             "event": "command.rejected",
-            "requestId": "deny"
+            "requestId": "deny",
+            "actorId": "",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "submit",
+            "outcome": "rejected"
           }
         ],
         "transitions": [
@@ -405,7 +445,12 @@
           "audit": [
             {
               "event": "command.accepted",
-              "requestId": "ask"
+              "requestId": "ask",
+              "actorId": "",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "submit",
+              "outcome": "awaiting_permission"
             }
           ],
           "nodes": {
@@ -456,7 +501,12 @@
         "audit": [
           {
             "event": "command.accepted",
-            "requestId": "ask"
+            "requestId": "ask",
+            "actorId": "",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "submit",
+            "outcome": "awaiting_permission"
           }
         ],
         "transitions": [
@@ -527,7 +577,12 @@
           "audit": [
             {
               "event": "command.accepted",
-              "requestId": "allow"
+              "requestId": "allow",
+              "actorId": "",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "submit",
+              "outcome": "queued"
             }
           ],
           "nodes": {
@@ -578,7 +633,12 @@
         "audit": [
           {
             "event": "command.accepted",
-            "requestId": "allow"
+            "requestId": "allow",
+            "actorId": "",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "submit",
+            "outcome": "queued"
           }
         ],
         "transitions": [
@@ -663,7 +723,12 @@
           "audit": [
             {
               "event": "command.accepted",
-              "requestId": "approval"
+              "requestId": "approval",
+              "actorId": "owner",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "approve",
+              "outcome": "queued"
             }
           ],
           "nodes": {
@@ -725,7 +790,12 @@
         "audit": [
           {
             "event": "command.accepted",
-            "requestId": "approval"
+            "requestId": "approval",
+            "actorId": "owner",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "approve",
+            "outcome": "queued"
           }
         ],
         "transitions": [
@@ -800,7 +870,12 @@
           "audit": [
             {
               "event": "command.rejected",
-              "requestId": "expired"
+              "requestId": "expired",
+              "actorId": "owner",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "approve",
+              "outcome": "rejected"
             }
           ],
           "nodes": {
@@ -837,7 +912,12 @@
         "audit": [
           {
             "event": "command.rejected",
-            "requestId": "expired"
+            "requestId": "expired",
+            "actorId": "owner",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "approve",
+            "outcome": "rejected"
           }
         ],
         "transitions": [
@@ -908,7 +988,12 @@
           "audit": [
             {
               "event": "command.rejected",
-              "requestId": "mismatch"
+              "requestId": "mismatch",
+              "actorId": "owner",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "approve",
+              "outcome": "rejected"
             }
           ],
           "nodes": {
@@ -945,7 +1030,12 @@
         "audit": [
           {
             "event": "command.rejected",
-            "requestId": "mismatch"
+            "requestId": "mismatch",
+            "actorId": "owner",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "approve",
+            "outcome": "rejected"
           }
         ],
         "transitions": [
@@ -1002,7 +1092,12 @@
           "audit": [
             {
               "event": "command.rejected",
-              "requestId": "stale"
+              "requestId": "stale",
+              "actorId": "",
+              "hostId": "host",
+              "epoch": 2,
+              "operation": "submit",
+              "outcome": "rejected"
             }
           ],
           "nodes": {
@@ -1026,7 +1121,12 @@
         "audit": [
           {
             "event": "command.rejected",
-            "requestId": "stale"
+            "requestId": "stale",
+            "actorId": "",
+            "hostId": "host",
+            "epoch": 2,
+            "operation": "submit",
+            "outcome": "rejected"
           }
         ],
         "transitions": [
@@ -1060,7 +1160,7 @@
       "commands": [
         {
           "type": "pair_node",
-          "spaceId": "",
+          "spaceId": "s",
           "ownerId": "",
           "hostId": "host",
           "requestId": "p",
@@ -1069,7 +1169,7 @@
         },
         {
           "type": "pair_node",
-          "spaceId": "",
+          "spaceId": "s",
           "ownerId": "",
           "hostId": "host",
           "requestId": "p",
@@ -1078,7 +1178,7 @@
         },
         {
           "type": "pair_node",
-          "spaceId": "",
+          "spaceId": "s",
           "ownerId": "",
           "hostId": "host",
           "requestId": "p",
@@ -1096,15 +1196,30 @@
           "audit": [
             {
               "event": "command.rejected",
-              "requestId": "p"
+              "requestId": "p",
+              "actorId": "owner",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "pair_node",
+              "outcome": "rejected"
             },
             {
               "event": "command.replayed",
-              "requestId": "p"
+              "requestId": "p",
+              "actorId": "owner",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "pair_node",
+              "outcome": "rejected"
             },
             {
               "event": "command.rejected",
-              "requestId": "p"
+              "requestId": "p",
+              "actorId": "owner",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "pair_node",
+              "outcome": "rejected"
             }
           ],
           "nodes": {
@@ -1120,7 +1235,7 @@
           "commands": {
             "p": {
               "type": "pair_node",
-              "content": "{\"type\":\"pair_node\",\"spaceId\":\"\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"p\",\"actorId\":\"owner\",\"nodeId\":\"mac\"}",
+              "content": "{\"type\":\"pair_node\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"p\",\"actorId\":\"owner\",\"nodeId\":\"mac\"}",
               "rejection": "stale_host_epoch"
             }
           }
@@ -1128,15 +1243,30 @@
         "audit": [
           {
             "event": "command.rejected",
-            "requestId": "p"
+            "requestId": "p",
+            "actorId": "owner",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "pair_node",
+            "outcome": "rejected"
           },
           {
             "event": "command.replayed",
-            "requestId": "p"
+            "requestId": "p",
+            "actorId": "owner",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "pair_node",
+            "outcome": "rejected"
           },
           {
             "event": "command.rejected",
-            "requestId": "p"
+            "requestId": "p",
+            "actorId": "owner",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "pair_node",
+            "outcome": "rejected"
           }
         ],
         "transitions": [
@@ -1195,7 +1325,7 @@
       "commands": [
         {
           "type": "revoke_node",
-          "spaceId": "",
+          "spaceId": "s",
           "ownerId": "",
           "hostId": "host",
           "requestId": "revoke",
@@ -1212,8 +1342,13 @@
           "epoch": 1,
           "audit": [
             {
-              "event": "command.accepted",
-              "requestId": "revoke"
+              "event": "command.rejected",
+              "requestId": "revoke",
+              "actorId": "owner",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "revoke_node",
+              "outcome": "rejected"
             }
           ],
           "nodes": {
@@ -1223,7 +1358,7 @@
             },
             "mac": {
               "id": "mac",
-              "status": "revoked"
+              "status": "paired"
             },
             "owner": {
               "id": "owner",
@@ -1240,36 +1375,32 @@
               "action": "",
               "actionFingerprint": "",
               "hostEpoch": 0,
-              "status": "failed",
-              "terminalReason": "node_revoked"
+              "status": "queued"
             }
           },
           "commands": {
             "revoke": {
               "type": "revoke_node",
-              "content": "{\"type\":\"revoke_node\",\"spaceId\":\"\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"revoke\",\"actorId\":\"owner\",\"nodeId\":\"mac\"}",
-              "receipt": {
-                "requestId": "revoke",
-                "outcome": "applied",
-                "subjectId": "mac"
-              }
+              "content": "{\"type\":\"revoke_node\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"revoke\",\"actorId\":\"owner\",\"nodeId\":\"mac\"}",
+              "rejection": "stale_host_epoch"
             }
           }
         },
         "audit": [
           {
-            "event": "command.accepted",
-            "requestId": "revoke"
+            "event": "command.rejected",
+            "requestId": "revoke",
+            "actorId": "owner",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "revoke_node",
+            "outcome": "rejected"
           }
         ],
         "transitions": [
           {
-            "receipt": {
-              "requestId": "revoke",
-              "outcome": "applied",
-              "subjectId": "mac"
-            },
-            "rejection": ""
+            "receipt": {},
+            "rejection": "stale_host_epoch"
           }
         ]
       }
@@ -1330,7 +1461,12 @@
           "audit": [
             {
               "event": "command.accepted",
-              "requestId": "complete"
+              "requestId": "complete",
+              "actorId": "mac",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "complete",
+              "outcome": "completed"
             }
           ],
           "nodes": {
@@ -1371,7 +1507,12 @@
         "audit": [
           {
             "event": "command.accepted",
-            "requestId": "complete"
+            "requestId": "complete",
+            "actorId": "mac",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "complete",
+            "outcome": "completed"
           }
         ],
         "transitions": [
@@ -1440,7 +1581,12 @@
           "audit": [
             {
               "event": "command.accepted",
-              "requestId": "restart"
+              "requestId": "restart",
+              "actorId": "host",
+              "hostId": "host",
+              "epoch": 1,
+              "operation": "recover_after_restart",
+              "outcome": "applied"
             }
           ],
           "nodes": {
@@ -1482,7 +1628,12 @@
         "audit": [
           {
             "event": "command.accepted",
-            "requestId": "restart"
+            "requestId": "restart",
+            "actorId": "host",
+            "hostId": "host",
+            "epoch": 1,
+            "operation": "recover_after_restart",
+            "outcome": "applied"
           }
         ],
         "transitions": [
@@ -1496,6 +1647,10 @@
           }
         ]
       }
-    }
+    },
+    {"name":"empty-task-id","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"mac":{"id":"mac","status":"paired"}},"audit":[]},"commands":[{"type":"submit","spaceId":"s","hostId":"host","epoch":1,"originNodeId":"owner","targetNodeId":"mac","capabilityId":"agent.run/execute","action":"run","actionFingerprint":"d","requestId":"empty-task"}],"expected":{"state":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"audit":[{"event":"command.rejected","requestId":"empty-task","actorId":"","hostId":"host","epoch":1,"operation":"submit","outcome":"rejected"}],"nodes":{"mac":{"id":"mac","status":"paired"},"owner":{"id":"owner","status":"paired"}},"commands":{"empty-task":{"type":"submit","content":"{\"type\":\"submit\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"empty-task\",\"epoch\":1,\"capabilityId\":\"agent.run/execute\",\"action\":\"run\",\"actionFingerprint\":\"d\",\"originNodeId\":\"owner\",\"targetNodeId\":\"mac\"}","rejection":"invalid_identifier"}}},"audit":[{"event":"command.rejected","requestId":"empty-task","actorId":"","hostId":"host","epoch":1,"operation":"submit","outcome":"rejected"}],"transitions":[{"receipt":{},"rejection":"invalid_identifier"}]}},
+    {"name":"empty-action-fingerprint","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"mac":{"id":"mac","status":"paired"}},"audit":[]},"commands":[{"type":"submit","spaceId":"s","hostId":"host","epoch":1,"originNodeId":"owner","targetNodeId":"mac","capabilityId":"agent.run/execute","action":"run","taskId":"t","requestId":"empty-fingerprint"}],"expected":{"state":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"audit":[{"event":"command.rejected","requestId":"empty-fingerprint","actorId":"","hostId":"host","epoch":1,"operation":"submit","outcome":"rejected"}],"nodes":{"mac":{"id":"mac","status":"paired"},"owner":{"id":"owner","status":"paired"}},"commands":{"empty-fingerprint":{"type":"submit","content":"{\"type\":\"submit\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"empty-fingerprint\",\"epoch\":1,\"capabilityId\":\"agent.run/execute\",\"action\":\"run\",\"taskId\":\"t\",\"originNodeId\":\"owner\",\"targetNodeId\":\"mac\"}","rejection":"invalid_identifier"}}},"audit":[{"event":"command.rejected","requestId":"empty-fingerprint","actorId":"","hostId":"host","epoch":1,"operation":"submit","outcome":"rejected"}],"transitions":[{"receipt":{},"rejection":"invalid_identifier"}]}},
+    {"name":"missing-revoke-binding","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"host":{"id":"host","status":"paired"},"mac":{"id":"mac","status":"paired"}},"audit":[]},"commands":[{"type":"revoke_node","hostId":"host","actorId":"owner","nodeId":"mac","requestId":"missing-revoke"}],"expected":{"state":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"audit":[{"event":"command.rejected","requestId":"missing-revoke","actorId":"owner","hostId":"host","epoch":1,"operation":"revoke_node","outcome":"rejected"}],"nodes":{"host":{"id":"host","status":"paired"},"mac":{"id":"mac","status":"paired"},"owner":{"id":"owner","status":"paired"}},"commands":{"missing-revoke":{"type":"revoke_node","content":"{\"type\":\"revoke_node\",\"spaceId\":\"\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"missing-revoke\",\"actorId\":\"owner\",\"nodeId\":\"mac\"}","rejection":"stale_host_epoch"}}},"audit":[{"event":"command.rejected","requestId":"missing-revoke","actorId":"owner","hostId":"host","epoch":1,"operation":"revoke_node","outcome":"rejected"}],"transitions":[{"receipt":{},"rejection":"stale_host_epoch"}]}},
+    {"name":"stale-revoke-binding","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":2,"nodes":{"owner":{"id":"owner","status":"paired"},"host":{"id":"host","status":"paired"},"mac":{"id":"mac","status":"paired"}},"audit":[]},"commands":[{"type":"revoke_node","spaceId":"s","hostId":"host","epoch":1,"actorId":"owner","nodeId":"mac","requestId":"stale-revoke"}],"expected":{"state":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":2,"audit":[{"event":"command.rejected","requestId":"stale-revoke","actorId":"owner","hostId":"host","epoch":2,"operation":"revoke_node","outcome":"rejected"}],"nodes":{"host":{"id":"host","status":"paired"},"mac":{"id":"mac","status":"paired"},"owner":{"id":"owner","status":"paired"}},"commands":{"stale-revoke":{"type":"revoke_node","content":"{\"type\":\"revoke_node\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"stale-revoke\",\"epoch\":1,\"actorId\":\"owner\",\"nodeId\":\"mac\"}","rejection":"stale_host_epoch"}}},"audit":[{"event":"command.rejected","requestId":"stale-revoke","actorId":"owner","hostId":"host","epoch":2,"operation":"revoke_node","outcome":"rejected"}],"transitions":[{"receipt":{},"rejection":"stale_host_epoch"}]}}
   ]
 }
