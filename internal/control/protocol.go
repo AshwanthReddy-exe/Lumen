@@ -18,7 +18,11 @@ const (
 	CredentialSize = 32
 )
 
-var ErrFrameTooLarge = errors.New("control request exceeds 64 KiB")
+var (
+	ErrFrameTooLarge    = errors.New("control frame exceeds 64 KiB")
+	ErrMissingDelimiter = errors.New("control frame is missing a newline delimiter")
+	ErrTrailingData     = errors.New("trailing control data")
+)
 
 type Request struct {
 	Credential string            `json:"credential,omitempty"`
@@ -33,24 +37,35 @@ type Response struct {
 
 func ReadRequest(r io.Reader) (Request, error) {
 	var q Request
-	br := bufio.NewReader(io.LimitReader(r, MaxFrameSize+1))
-	b, err := br.ReadBytes('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
+	b, err := readFrame(r)
+	if err != nil {
 		return q, err
-	}
-	if len(b) > MaxFrameSize || (err == nil && len(b) == MaxFrameSize && b[len(b)-1] != '\n') {
-		return q, ErrFrameTooLarge
-	}
-	if len(b) == 0 || err == io.EOF {
-		return q, io.ErrUnexpectedEOF
-	}
-	if extra, _ := br.Peek(1); len(extra) != 0 {
-		return q, errors.New("trailing control data")
 	}
 	if err := json.Unmarshal(b, &q); err != nil {
 		return q, fmt.Errorf("invalid request: %w", err)
 	}
 	return q, nil
+}
+
+func readFrame(r io.Reader) ([]byte, error) {
+	br := bufio.NewReader(io.LimitReader(r, MaxFrameSize+1))
+	b, err := br.ReadBytes('\n')
+	if len(b) > MaxFrameSize {
+		return nil, ErrFrameTooLarge
+	}
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			if len(b) == 0 {
+				return nil, io.ErrUnexpectedEOF
+			}
+			return nil, ErrMissingDelimiter
+		}
+		return nil, err
+	}
+	if br.Buffered() != 0 {
+		return nil, ErrTrailingData
+	}
+	return b, nil
 }
 func WriteResponse(w io.Writer, v Response) error {
 	b, err := json.Marshal(v)
@@ -89,6 +104,9 @@ func ReadCredential(path string) ([]byte, error) {
 	}
 	if !st.Mode().IsRegular() {
 		return nil, fmt.Errorf("credential must be a regular file")
+	}
+	if stat, ok := st.Sys().(*syscall.Stat_t); ok && stat.Uid != uint32(os.Getuid()) {
+		return nil, fmt.Errorf("credential file owner mismatch")
 	}
 	if st.Mode().Perm() != 0600 {
 		return nil, fmt.Errorf("credential file must be mode 0600")

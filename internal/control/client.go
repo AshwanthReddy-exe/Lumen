@@ -1,11 +1,10 @@
 package control
 
 import (
-	"bufio"
 	"encoding/base64"
 	"encoding/json"
-	"io"
 	"net"
+	"time"
 )
 
 func Call(socket, credentialPath string, q Request) (Response, error) {
@@ -22,6 +21,12 @@ func Call(socket, credentialPath string, q Request) (Response, error) {
 	if err := writeRequest(c, q); err != nil {
 		return Response{}, err
 	}
+	if cw, ok := c.(interface{ CloseWrite() error }); ok {
+		if err := cw.CloseWrite(); err != nil {
+			return Response{}, err
+		}
+	}
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
 	rr, err := ReadResponse(c)
 	return rr, err
 }
@@ -46,11 +51,4 @@ func ReadResponse(r net.Conn) (Response, error) {
 	}
 	err = json.Unmarshal(b, &v)
 	return v, err
-}
-func readFrame(r net.Conn) ([]byte, error) {
-	b, err := bufio.NewReader(io.LimitReader(r, MaxFrameSize+1)).ReadBytes('\n')
-	if len(b) > MaxFrameSize {
-		return nil, ErrFrameTooLarge
-	}
-	return b, err
 }

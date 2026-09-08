@@ -16,6 +16,22 @@ func run(args []string) int {
 	if len(args) == 0 {
 		return usage()
 	}
+	switch args[0] {
+	case "init", "serve", "status", "shutdown":
+		if len(args) != 1 {
+			return usage()
+		}
+	case "task":
+		if len(args) != 2 || (args[1] != "submit" && args[1] != "show" && args[1] != "cancel") {
+			return usage()
+		}
+	case "approval":
+		if len(args) != 2 || args[1] != "resolve" {
+			return usage()
+		}
+	default:
+		return usage()
+	}
 	c, err := host.LoadConfig()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "configuration unavailable")
@@ -23,32 +39,17 @@ func run(args []string) int {
 	}
 	switch args[0] {
 	case "init":
-		if len(args) != 1 {
-			return usage()
-		}
 		if err := host.Initialize(c); err != nil {
 			fmt.Fprintln(os.Stderr, "initialization unavailable")
 			return 3
 		}
 		return 0
 	case "serve":
-		if len(args) != 1 {
-			return usage()
-		}
 		return serve(c)
 	case "status", "shutdown":
-		if len(args) != 1 {
-			return usage()
-		}
 		return call(c, args[0])
 	default:
-		if len(args) == 2 && args[0] == "task" && (args[1] == "submit" || args[1] == "show" || args[1] == "cancel") {
-			return call(c, args[0]+" "+args[1])
-		}
-		if len(args) == 2 && args[0] == "approval" && args[1] == "resolve" {
-			return call(c, args[0]+" "+args[1])
-		}
-		return usage()
+		return call(c, args[0]+" "+args[1])
 	}
 }
 func usage() int {
@@ -69,7 +70,10 @@ func serve(c host.Config) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go func() { <-ctx.Done(); s.Shutdown() }()
-	_ = s.Wait(context.Background())
+	if err := s.Wait(context.Background()); err != nil {
+		fmt.Fprintln(os.Stderr, "runtime incompatibility")
+		return 4
+	}
 	return 0
 }
 func call(c host.Config, cmd string) int {

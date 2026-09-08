@@ -89,6 +89,11 @@ func (s *Service) Start() error {
 		return err
 	}
 	s.server = srv
+	srv.OnResponse(func(q control.Request, r control.Response) {
+		if q.Command == "shutdown" && r.OK {
+			go s.Shutdown()
+		}
+	})
 	if err := srv.Listen(); err != nil {
 		return err
 	}
@@ -100,6 +105,8 @@ func (s *Service) Wait(ctx context.Context) error {
 	select {
 	case <-s.stop:
 		return nil
+	case err := <-s.server.Errors():
+		return fmt.Errorf("control listener failed: %w", err)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -117,7 +124,6 @@ func (s *Service) handle(_ context.Context, q control.Request) control.Response 
 	case "status":
 		return control.Response{OK: true, Data: map[string]string{"status": "ready"}}
 	case "shutdown":
-		go s.Shutdown()
 		return control.Response{OK: true, Data: map[string]string{"status": "shutting_down"}}
 	default:
 		return control.Response{Error: "unsupported command"}
