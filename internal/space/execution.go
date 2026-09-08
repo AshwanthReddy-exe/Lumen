@@ -39,8 +39,15 @@ func dispatchHostRun(s State, c Command) Transition {
 	if !ok {
 		return reject(s, c, "task_unknown")
 	}
-	if t.HostEpoch != s.Epoch || t.Status != OutcomeQueued {
+	if t.HostEpoch != s.Epoch || (t.Status != OutcomeQueued && t.Status != OutcomeCreating) {
 		return reject(s, c, "invalid_task_state")
+	}
+	if intent, exists := s.HostCreates[c.TaskID]; exists {
+		if intent.IdempotencyKey != c.RuntimeIdempotencyKey || intent.RuntimeProfileDigest != c.RuntimeProfileDigest || intent.HostEpoch != c.Epoch || intent.ReconcileBy != c.ReconcileBy {
+			return reject(s, c, "create_intent_mismatch")
+		}
+	} else if c.RuntimeIdempotencyKey != "" {
+		return reject(s, c, "create_intent_missing")
 	}
 	if s.HostRuns == nil {
 		s.HostRuns = map[string]HostRun{}
@@ -54,9 +61,104 @@ func dispatchHostRun(s State, c Command) Transition {
 		}
 	}
 	s.HostRuns[c.TaskID] = HostRun{TaskID: c.TaskID, RuntimeRunID: c.RuntimeRunID, RuntimeProfileDigest: c.RuntimeProfileDigest, HostEpoch: s.Epoch, DispatchedAt: c.DispatchedAt, ReconcileBy: c.ReconcileBy}
+	delete(s.HostCreates, c.TaskID)
 	t.Status = OutcomeDispatched
 	s.Tasks[c.TaskID] = t
 	return accepted(s, c, OutcomeDispatched, c.TaskID)
+}
+
+func createHostRun(s State, c Command) Transition {
+	if reason := executionContext(s, c); reason != "" {
+		return reject(s, c, reason)
+	}
+	if c.TaskID == "" || c.RuntimeIdempotencyKey == "" || c.RuntimeProfileDigest == "" {
+		return reject(s, c, "invalid_identifier")
+	}
+	if c.DispatchedAt <= 0 || c.ReconcileBy <= c.DispatchedAt {
+		return reject(s, c, "invalid_deadline")
+	}
+	t, ok := s.Tasks[c.TaskID]
+	if !ok {
+		return reject(s, c, "task_unknown")
+	}
+	if t.HostEpoch != s.Epoch || t.Status != OutcomeQueued {
+		return reject(s, c, "invalid_task_state")
+	}
+	if s.HostCreates == nil {
+		s.HostCreates = map[string]HostCreate{}
+	}
+	if _, exists := s.HostCreates[c.TaskID]; exists {
+		return reject(s, c, "create_intent_exists")
+	}
+	for _, intent := range s.HostCreates {
+		if intent.IdempotencyKey == c.RuntimeIdempotencyKey {
+			return reject(s, c, "runtime_idempotency_collision")
+		}
+	}
+	s.HostCreates[c.TaskID] = HostCreate{TaskID: c.TaskID, IdempotencyKey: c.RuntimeIdempotencyKey, RuntimeProfileDigest: c.RuntimeProfileDigest, HostEpoch: s.Epoch, CreatedAt: c.DispatchedAt, ReconcileBy: c.ReconcileBy}
+	t.Status = OutcomeCreating
+	s.Tasks[c.TaskID] = t
+	return accepted(s, c, OutcomeCreating, c.TaskID)
+}
+
+func requestRuntimeApproval(s State, c Command) Transition {
+	if reason := executionContext(s, c); reason != "" {
+		return reject(s, c, reason)
+	}
+	run, task, reason := runMapping(s, c)
+	if reason != "" {
+		return reject(s, c, reason)
+	}
+	if task.Status != OutcomeRunning && task.Status != OutcomeDispatched {
+		return reject(s, c, "invalid_task_state")
+	}
+	if c.RuntimeApprovalID == "" || c.TargetNodeID == "" || c.ActionFingerprint == "" || c.ExpiresAt <= c.ObservedAt {
+		return reject(s, c, "invalid_runtime_approval")
+	}
+	if s.RuntimeApprovals == nil {
+		s.RuntimeApprovals = map[string]RuntimeApproval{}
+	}
+	if _, exists := s.RuntimeApprovals[c.RuntimeApprovalID]; exists {
+		return reject(s, c, "runtime_approval_exists")
+	}
+	s.RuntimeApprovals[c.RuntimeApprovalID] = RuntimeApproval{ID: c.RuntimeApprovalID, TaskID: c.TaskID, RuntimeRunID: run.RuntimeRunID, ActorNodeID: c.ActorID, TargetNodeID: c.TargetNodeID, ActionFingerprint: c.ActionFingerprint, ExpiresAt: c.ExpiresAt}
+	task.Status = OutcomeAwaitingPermission
+	s.Tasks[c.TaskID] = task
+	return accepted(s, c, OutcomeAwaitingPermission, c.TaskID)
+}
+
+func resolveRuntimeApproval(s State, c Command) Transition {
+	if c.SpaceID != s.SpaceID || c.HostID != s.HostID || c.Epoch == 0 || c.Epoch != s.Epoch {
+		return reject(s, c, "stale_host_epoch")
+	}
+	if !owner(s, c.ActorID) {
+		return reject(s, c, "unauthorized_actor")
+	}
+	approval, ok := s.RuntimeApprovals[c.RuntimeApprovalID]
+	run, runOK := s.HostRuns[c.TaskID]
+	if !ok || !runOK || run.RuntimeRunID != c.RuntimeRunID || run.RuntimeProfileDigest != c.RuntimeProfileDigest || approval.TaskID != c.TaskID || approval.RuntimeRunID != c.RuntimeRunID || approval.TargetNodeID != c.TargetNodeID || approval.ActionFingerprint != c.ActionFingerprint {
+		return reject(s, c, "runtime_approval_mismatch")
+	}
+	if c.ObservedAt <= 0 || c.ObservedAt >= approval.ExpiresAt {
+		return reject(s, c, "approval_expired")
+	}
+	if c.Decision != "once" && c.Decision != "deny" {
+		return reject(s, c, "invalid_approval")
+	}
+	task, ok := s.Tasks[c.TaskID]
+	if !ok || task.Status != OutcomeAwaitingPermission {
+		return reject(s, c, "approval_not_required")
+	}
+	approval.Decision = c.Decision
+	s.RuntimeApprovals[c.RuntimeApprovalID] = approval
+	if c.Decision == "deny" {
+		task.Status = OutcomeFailed
+		task.TerminalReason = "runtime_approval_denied"
+	} else {
+		task.Status = OutcomeRunning
+	}
+	s.Tasks[c.TaskID] = task
+	return accepted(s, c, Outcome(task.Status), c.TaskID)
 }
 
 func reconcileHostRun(s State, c Command) Transition {
@@ -78,6 +180,9 @@ func reconcileHostRun(s State, c Command) Transition {
 	}
 	if t.Status == OutcomeCancelling && c.Evidence == EvidenceRunning {
 		return reject(s, c, "cancellation_in_progress")
+	}
+	if t.Status == OutcomeAwaitingPermission && c.Evidence == EvidenceRunning {
+		return reject(s, c, "approval_pending")
 	}
 	var out Outcome
 	switch c.Evidence {

@@ -23,9 +23,9 @@ func Apply(s State, c Command) Transition {
 				return reject(s, c, "idempotency_key_reused")
 			}
 			if old.Rejection != "" {
-				return Transition{State: audit(s, AuditCommandReplayed, id, c.ActorID, c.Type, "rejected"), Rejection: old.Rejection}
+				return Transition{State: audit(s, AuditCommandReplayed, id, c.ActorID, c.Type, "rejected"), Rejection: old.Rejection, Replayed: true}
 			}
-			return Transition{State: audit(s, AuditCommandReplayed, id, c.ActorID, c.Type, "replayed"), Receipt: receipt(old, id)}
+			return Transition{State: audit(s, AuditCommandReplayed, id, c.ActorID, c.Type, "replayed"), Receipt: receipt(old, id), Replayed: true}
 		}
 	}
 	if s.Commands == nil {
@@ -57,6 +57,12 @@ func Apply(s State, c Command) Transition {
 		tr = reconcileHostRun(s, c)
 	case CommandRequestHostRunCancellation:
 		tr = cancelHostRun(s, c)
+	case CommandCreateHostRun:
+		tr = createHostRun(s, c)
+	case CommandRequestRuntimeApproval:
+		tr = requestRuntimeApproval(s, c)
+	case CommandResolveRuntimeApproval:
+		tr = resolveRuntimeApproval(s, c)
 	default:
 		return reject(s, c, "unsupported_command")
 	}
@@ -233,7 +239,7 @@ func complete(s State, c Command) Transition {
 	if c.ActorID != t.TargetNodeID {
 		return reject(s, c, "unauthorized_actor")
 	}
-	if t.Status != OutcomeQueued {
+	if t.Status != OutcomeQueued && t.Status != OutcomeCreating && t.Status != OutcomeAwaitingPermission {
 		return reject(s, c, "invalid_task_state")
 	}
 	if c.Outcome != OutcomeCompleted && c.Outcome != OutcomeFailed && c.Outcome != OutcomeUnknown {
@@ -285,7 +291,7 @@ func recover(s State, c Command) Transition {
 		return reject(s, c, "unauthorized_actor")
 	}
 	for id, t := range s.Tasks {
-		if t.Status == OutcomeQueued || t.Status == OutcomeDispatched || t.Status == OutcomeRunning || t.Status == OutcomeCancelling {
+		if t.Status == OutcomeQueued || t.Status == OutcomeCreating || t.Status == OutcomeDispatched || t.Status == OutcomeRunning || t.Status == OutcomeCancelling {
 			t.Status = OutcomeUnknown
 			t.TerminalReason = "host_restarted"
 			s.Tasks[id] = t

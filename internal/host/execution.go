@@ -2,6 +2,8 @@ package host
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +25,7 @@ var errRuntimeUnavailable = errors.New("Hermes runtime unavailable")
 
 // ErrCreateAmbiguous lets a runtime adapter distinguish a transport outcome
 // that may have created a run from a proven pre-dispatch rejection.
-var ErrCreateAmbiguous = errors.New("Hermes create outcome is ambiguous")
+var ErrCreateAmbiguous = hermes.ErrCreateAmbiguous
 
 type executionOptions struct {
 	now             func() time.Time
@@ -66,7 +68,116 @@ type ApprovalRequest struct {
 	ReconcileBy          int64
 }
 
+type RuntimeApprovalRequest struct{ Command space.Command }
+
 type CancelRequest struct{ Command space.Command }
+
+type configuredAdapter struct {
+	client *hermes.Client
+	err    error
+}
+
+func configuredRuntime(c Config) hermes.Adapter {
+	client, err := buildHermesClient(c)
+	return &configuredAdapter{client: client, err: err}
+}
+
+func buildHermesClient(c Config) (*hermes.Client, error) {
+	profile := c.HermesProfile
+	if profile == "" {
+		profile = hermes.ProfileHardened
+	}
+	cfg := hermes.Config{BaseURL: c.HermesBaseURL, ProfileMode: profile, MaxResponseBytes: 8 << 20, MaxEventBytes: 1 << 20, MaxEventStreamBytes: 8 << 20, RequestTimeout: 10 * time.Second, EventTimeout: 30 * time.Second, BearerTokenSource: func() (string, error) {
+		b, err := os.ReadFile(c.HermesBearerPath)
+		if err != nil {
+			return "", err
+		}
+		st, err := os.Stat(c.HermesBearerPath)
+		if err != nil || st.Mode().Perm() != 0600 {
+			return "", errors.New("Hermes bearer file must be mode 0600")
+		}
+		return strings.TrimSpace(string(b)), nil
+	}}
+	if profile == hermes.ProfileHardened {
+		caPEM, err := os.ReadFile(c.HermesCAPath)
+		if err != nil {
+			return nil, err
+		}
+		roots := x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(caPEM) {
+			return nil, errors.New("invalid Hermes CA file")
+		}
+		cert, err := tls.LoadX509KeyPair(c.HermesClientCertPath, c.HermesClientKeyPath)
+		if err != nil {
+			return nil, err
+		}
+		cfg.TLS = hermes.TLSConfig{RootCAs: roots, ClientCertificate: cert, ServerCertPin: c.HermesServerPin}
+	}
+	return hermes.New(cfg)
+}
+
+func (a *configuredAdapter) get() (*hermes.Client, error) {
+	if a.client == nil {
+		return nil, a.err
+	}
+	return a.client, nil
+}
+func (a *configuredAdapter) Capabilities(ctx context.Context) (hermes.Capabilities, error) {
+	c, err := a.get()
+	if err != nil {
+		return hermes.Capabilities{}, err
+	}
+	return c.Capabilities(ctx)
+}
+func (a *configuredAdapter) Health(ctx context.Context) (hermes.Health, error) {
+	c, err := a.get()
+	if err != nil {
+		return hermes.Health{}, err
+	}
+	return c.Health(ctx)
+}
+func (a *configuredAdapter) CreateRun(ctx context.Context, in hermes.CreateRunRequest, key string) (hermes.Run, error) {
+	c, err := a.get()
+	if err != nil {
+		return hermes.Run{}, err
+	}
+	return c.CreateRun(ctx, in, key)
+}
+func (a *configuredAdapter) RunStatus(ctx context.Context, id string) (hermes.Run, error) {
+	c, err := a.get()
+	if err != nil {
+		return hermes.Run{}, err
+	}
+	return c.RunStatus(ctx, id)
+}
+func (a *configuredAdapter) Events(ctx context.Context, id string) ([]hermes.Event, error) {
+	c, err := a.get()
+	if err != nil {
+		return nil, err
+	}
+	return c.Events(ctx, id)
+}
+func (a *configuredAdapter) ResolveApproval(ctx context.Context, id, decision string) error {
+	c, err := a.get()
+	if err != nil {
+		return err
+	}
+	return c.ResolveApproval(ctx, id, decision)
+}
+func (a *configuredAdapter) Steer(ctx context.Context, id string, in hermes.SteerRequest) error {
+	c, err := a.get()
+	if err != nil {
+		return err
+	}
+	return c.Steer(ctx, id, in)
+}
+func (a *configuredAdapter) Stop(ctx context.Context, id string) (hermes.Run, error) {
+	c, err := a.get()
+	if err != nil {
+		return hermes.Run{}, err
+	}
+	return c.Stop(ctx, id)
+}
 
 func (s *Service) handleTaskSubmit(ctx context.Context, args map[string]string) control.Response {
 	state, err := s.state.Read()
@@ -151,12 +262,38 @@ func (s *Service) handleApprovalResolve(ctx context.Context, args map[string]str
 	if decision != "once" && decision != "deny" {
 		return control.Response{Error: hermes.ErrInvalidApproval.Error()}
 	}
-	if decision == "deny" {
-		return control.Response{Error: "approval denial is not supported for a task without a runtime"}
-	}
 	state, err := s.state.Read()
 	if err != nil {
 		return control.Response{Error: "state unavailable"}
+	}
+	if runtimeApprovalID := strings.TrimSpace(args["runtime_approval_id"]); runtimeApprovalID != "" {
+		requestID, parseErr := parseArgument(args, "request_id")
+		if parseErr != nil {
+			return control.Response{Error: parseErr.Error()}
+		}
+		taskID, parseErr := parseArgument(args, "task_id")
+		if parseErr != nil {
+			return control.Response{Error: parseErr.Error()}
+		}
+		target, parseErr := parseArgument(args, "target_node_id")
+		if parseErr != nil {
+			return control.Response{Error: parseErr.Error()}
+		}
+		fingerprint, parseErr := parseArgument(args, "action_fingerprint")
+		if parseErr != nil {
+			return control.Response{Error: parseErr.Error()}
+		}
+		runID, parseErr := parseArgument(args, "runtime_run_id")
+		if parseErr != nil {
+			return control.Response{Error: parseErr.Error()}
+		}
+		observed, parseErr := parseIntArgument(args, "observed_at")
+		if parseErr != nil {
+			return control.Response{Error: parseErr.Error()}
+		}
+		run := state.HostRuns[taskID]
+		tr, callErr := s.ResolveRuntimeApproval(ctx, RuntimeApprovalRequest{Command: space.Command{Type: space.CommandResolveRuntimeApproval, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.OwnerID, RequestID: requestID, TaskID: taskID, RuntimeRunID: runID, RuntimeProfileDigest: run.RuntimeProfileDigest, RuntimeApprovalID: runtimeApprovalID, TargetNodeID: target, ActionFingerprint: fingerprint, Decision: decision, ObservedAt: observed}})
+		return responseForTransition(tr, callErr)
 	}
 	requestID, err := parseArgument(args, "request_id")
 	if err != nil {
@@ -190,23 +327,30 @@ func (s *Service) handleApprovalResolve(ctx context.Context, args map[string]str
 	if err != nil {
 		return control.Response{Error: err.Error()}
 	}
+	if decision == "deny" {
+		tr, callErr := s.apply(space.Command{Type: space.CommandComplete, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: target, RequestID: requestID, TaskID: taskID, Outcome: space.OutcomeFailed})
+		return responseForTransition(tr, callErr)
+	}
 	tr, callErr := s.ResolveApproval(ctx, ApprovalRequest{Command: space.Command{Type: space.CommandApprove, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.OwnerID, RequestID: requestID, TaskID: taskID, TargetNodeID: target, ActionFingerprint: fingerprint, ApprovalID: approvalID, ApprovedAt: approvedAt, ExpiresAt: expiresAt}, Runtime: hermes.CreateRunRequest{Input: args["input"], SessionID: args["session_id"], Instructions: args["instructions"]}, RuntimeProfileDigest: args["runtime_profile_digest"], ReconcileBy: by})
 	return responseForTransition(tr, callErr)
 }
 
 type executor struct {
-	service *Service
-	runtime hermes.Adapter
-	options executionOptions
-	ctx     context.Context
-	cancel  context.CancelFunc
-	seenMu  sync.Mutex
-	seen    map[string]map[string]struct{}
+	service    *Service
+	runtime    hermes.Adapter
+	options    executionOptions
+	ctx        context.Context
+	cancel     context.CancelFunc
+	seenMu     sync.Mutex
+	seen       map[string]map[string]struct{}
+	consumerMu sync.Mutex
+	consumers  map[string]struct{}
+	wg         sync.WaitGroup
 }
 
 func newExecutor(s *Service, runtime hermes.Adapter, options executionOptions) *executor {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &executor{service: s, runtime: runtime, options: options, ctx: ctx, cancel: cancel, seen: make(map[string]map[string]struct{})}
+	return &executor{service: s, runtime: runtime, options: options, ctx: ctx, cancel: cancel, seen: make(map[string]map[string]struct{}), consumers: make(map[string]struct{})}
 }
 
 func NewWithRuntime(c Config, runtime hermes.Adapter, options ...ExecutionOption) (*Service, error) {
@@ -237,32 +381,22 @@ func NewWithRuntime(c Config, runtime hermes.Adapter, options ...ExecutionOption
 }
 
 func (s *Service) SubmitTask(ctx context.Context, req ExecuteRequest) (space.Transition, error) {
-	state, readErr := s.state.Read()
-	if readErr != nil {
-		return space.Transition{}, readErr
-	}
-	_, replay := state.Commands[req.Submit.RequestID]
 	tr, err := s.apply(req.Submit)
 	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeQueued {
 		return tr, err
 	}
-	if replay {
+	if tr.Replayed {
 		return tr, nil
 	}
 	return s.startOrFail(ctx, req, tr)
 }
 
 func (s *Service) ResolveApproval(ctx context.Context, req ApprovalRequest) (space.Transition, error) {
-	stateBefore, readErr := s.state.Read()
-	if readErr != nil {
-		return space.Transition{}, readErr
-	}
-	_, replay := stateBefore.Commands[req.Command.RequestID]
 	tr, err := s.apply(req.Command)
 	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeQueued {
 		return tr, err
 	}
-	if replay {
+	if tr.Replayed {
 		return tr, nil
 	}
 	state, readErr := s.state.Read()
@@ -270,7 +404,22 @@ func (s *Service) ResolveApproval(ctx context.Context, req ApprovalRequest) (spa
 		return tr, readErr
 	}
 	task := state.Tasks[req.Command.TaskID]
-	return s.startOrFail(ctx, ExecuteRequest{Submit: space.Command{Type: space.CommandSubmit, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: req.Command.RequestID, TaskID: task.ID, OriginNodeID: task.OriginNodeID, TargetNodeID: task.TargetNodeID, CapabilityID: task.CapabilityID, Action: task.Action, ActionFingerprint: task.ActionFingerprint}, Runtime: req.Runtime, RuntimeProfileDigest: req.RuntimeProfileDigest, ReconcileBy: req.ReconcileBy}, tr)
+	return s.startOrFail(ctx, ExecuteRequest{Submit: space.Command{Type: space.CommandSubmit, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: task.CommandID, TaskID: task.ID, OriginNodeID: task.OriginNodeID, TargetNodeID: task.TargetNodeID, CapabilityID: task.CapabilityID, Action: task.Action, ActionFingerprint: task.ActionFingerprint}, Runtime: req.Runtime, RuntimeProfileDigest: req.RuntimeProfileDigest, ReconcileBy: req.ReconcileBy}, tr)
+}
+
+func (s *Service) ResolveRuntimeApproval(ctx context.Context, req RuntimeApprovalRequest) (space.Transition, error) {
+	tr, err := s.apply(req.Command)
+	if err != nil || tr.Rejection != "" || tr.Replayed {
+		return tr, err
+	}
+	run, ok := s.hostRun(req.Command.TaskID)
+	if !ok || s.executor == nil || s.executor.runtime == nil {
+		return tr, errors.New("runtime approval mapping unavailable")
+	}
+	if err := s.executor.runtime.ResolveApproval(ctx, run.RuntimeRunID, req.Command.Decision); err != nil {
+		return tr, err
+	}
+	return tr, nil
 }
 
 func (s *Service) CancelTask(ctx context.Context, req CancelRequest) (space.Transition, error) {
@@ -288,7 +437,12 @@ func (s *Service) CancelTask(ctx context.Context, req CancelRequest) (space.Tran
 	stopped, stopErr := s.executor.runtime.Stop(ctx, run.RuntimeRunID)
 	if stopErr == nil {
 		if evidence, ok := evidenceForRunStatus(stopped.Status); ok {
-			_ = s.persistEvidence(req.Command.TaskID, run, evidence, "stop")
+			if persistErr := s.persistEvidence(req.Command.TaskID, run, evidence, "stop"); persistErr != nil {
+				reconcileErr := s.reconcileAfterStop(ctx, req.Command.TaskID)
+				if reconcileErr != nil {
+					return tr, errors.Join(persistErr, reconcileErr)
+				}
+			}
 		} else {
 			return tr, s.reconcileAfterStop(ctx, req.Command.TaskID)
 		}
@@ -313,16 +467,6 @@ func (s *Service) startOrFail(ctx context.Context, req ExecuteRequest, queued sp
 	if err != nil {
 		return queued, err
 	}
-	run, err := runtime.CreateRun(ctx, req.Runtime, req.Submit.RequestID)
-	if err != nil || run.RunID == "" {
-		if err == nil {
-			err = errors.New("Hermes create returned no run ID")
-		}
-		if errors.Is(err, ErrCreateAmbiguous) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return s.finishQueued(req.Submit, space.OutcomeUnknown, err)
-		}
-		return s.failQueued(req.Submit, err)
-	}
 	digest := req.RuntimeProfileDigest
 	if digest == "" {
 		digest = "sha256:hermes-default"
@@ -335,12 +479,29 @@ func (s *Service) startOrFail(ctx context.Context, req ExecuteRequest, queued sp
 			by = now + 1
 		}
 	}
-	dispatch := space.Command{Type: space.CommandDispatchHostRun, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "dispatch:" + req.Submit.RequestID, TaskID: req.Submit.TaskID, RuntimeRunID: run.RunID, RuntimeProfileDigest: digest, DispatchedAt: now, ReconcileBy: by}
+	intent, err := s.apply(space.Command{Type: space.CommandCreateHostRun, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "create:" + req.Submit.RequestID, TaskID: req.Submit.TaskID, RuntimeIdempotencyKey: req.Submit.RequestID, RuntimeProfileDigest: digest, DispatchedAt: now, ReconcileBy: by})
+	if err != nil || intent.Rejection != "" {
+		return queued, fmt.Errorf("persist create intent: %w", errOrRejection(err, intent.Rejection))
+	}
+	run, err := runtime.CreateRun(ctx, req.Runtime, req.Submit.RequestID)
+	if err != nil || run.RunID == "" {
+		if err == nil {
+			err = errors.New("Hermes create returned no run ID")
+		}
+		if !errors.Is(err, hermes.ErrCreateRejected) {
+			return s.finishQueued(req.Submit, space.OutcomeUnknown, errOrRejection(err, "ambiguous_create"))
+		}
+		return s.failQueued(req.Submit, err)
+	}
+	dispatch := space.Command{Type: space.CommandDispatchHostRun, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "dispatch:" + req.Submit.RequestID, TaskID: req.Submit.TaskID, RuntimeRunID: run.RunID, RuntimeIdempotencyKey: req.Submit.RequestID, RuntimeProfileDigest: digest, DispatchedAt: now, ReconcileBy: by}
 	dispatched, err := s.apply(dispatch)
 	if err != nil || dispatched.Rejection != "" {
+		if err == nil && dispatched.Rejection != "" {
+			return s.finishQueued(req.Submit, space.OutcomeUnknown, errors.New(dispatched.Rejection))
+		}
 		return queued, fmt.Errorf("persist dispatch: %w", errOrRejection(err, dispatched.Rejection))
 	}
-	go s.executor.consume(req.Submit.TaskID, space.HostRun{TaskID: req.Submit.TaskID, RuntimeRunID: run.RunID, RuntimeProfileDigest: digest, HostEpoch: state.Epoch, DispatchedAt: now, ReconcileBy: by})
+	s.executor.startConsumer(req.Submit.TaskID, space.HostRun{TaskID: req.Submit.TaskID, RuntimeRunID: run.RunID, RuntimeProfileDigest: digest, HostEpoch: state.Epoch, DispatchedAt: now, ReconcileBy: by})
 	return queued, nil
 }
 
@@ -392,7 +553,7 @@ func (s *Service) recoverInFlight() {
 	inFlight := false
 	for _, task := range state.Tasks {
 		switch task.Status {
-		case space.OutcomeQueued, space.OutcomeDispatched, space.OutcomeRunning, space.OutcomeCancelling:
+		case space.OutcomeQueued, space.OutcomeCreating, space.OutcomeDispatched, space.OutcomeRunning, space.OutcomeCancelling:
 			inFlight = true
 		}
 	}
@@ -411,7 +572,7 @@ func (s *Service) recoverInFlight() {
 	for taskID, run := range state.HostRuns {
 		if state.Tasks[taskID].Status == space.OutcomeUnknown {
 			run := run
-			go s.executor.reconcile(taskID, run)
+			s.executor.startConsumer(taskID, run)
 		}
 	}
 }
@@ -426,35 +587,65 @@ func (s *Service) hostRun(taskID string) (space.HostRun, bool) {
 }
 
 func (e *executor) consume(taskID string, run space.HostRun) {
-	events, err := e.runtime.Events(e.ctx, run.RuntimeRunID)
+	streamCtx := e.ctx
+	if remaining := time.Duration(run.ReconcileBy-e.options.now().Unix()) * time.Second; remaining > 0 {
+		var cancel context.CancelFunc
+		streamCtx, cancel = context.WithTimeout(e.ctx, remaining)
+		defer cancel()
+	}
+	events, err := e.runtime.Events(streamCtx, run.RuntimeRunID)
 	terminal := false
 	for i, event := range events {
-		if event.ID != "" && !e.markSeen(taskID, event.ID) {
+		if event.ID != "" && e.isSeen(taskID, event.ID) {
+			continue
+		}
+		if approval, ok := normalizeApproval(event); ok {
+			if err := e.service.persistRuntimeApproval(taskID, run, approval); err != nil {
+				continue
+			}
+			if event.ID != "" {
+				e.markSeen(taskID, event.ID)
+			}
 			continue
 		}
 		if evidence, ok := normalizeEvent(event); ok {
-			if evidence == space.EvidenceCompleted || evidence == space.EvidenceFailed || evidence == space.EvidenceCancelled {
+			persistErr := e.service.persistEvidence(taskID, run, evidence, fmt.Sprintf("event:%s:%d", event.ID, i))
+			if persistErr == nil && event.ID != "" {
+				e.markSeen(taskID, event.ID)
+			}
+			if persistErr == nil && (evidence == space.EvidenceCompleted || evidence == space.EvidenceFailed || evidence == space.EvidenceCancelled) {
 				terminal = true
 			}
-			_ = e.service.persistEvidence(taskID, run, evidence, fmt.Sprintf("event:%s:%d", event.ID, i))
 		}
 	}
 	if err != nil || !terminal {
 		e.reconcile(taskID, run)
 	}
+	if terminal {
+		e.forgetSeen(taskID)
+	}
 }
 
-func (e *executor) markSeen(taskID, id string) bool {
+func (e *executor) isSeen(taskID, id string) bool {
+	e.seenMu.Lock()
+	defer e.seenMu.Unlock()
+	_, ok := e.seen[taskID][id]
+	return ok
+}
+
+func (e *executor) markSeen(taskID, id string) {
 	e.seenMu.Lock()
 	defer e.seenMu.Unlock()
 	if e.seen[taskID] == nil {
 		e.seen[taskID] = make(map[string]struct{})
 	}
-	if _, ok := e.seen[taskID][id]; ok {
-		return false
-	}
 	e.seen[taskID][id] = struct{}{}
-	return true
+}
+
+func (e *executor) forgetSeen(taskID string) {
+	e.seenMu.Lock()
+	delete(e.seen, taskID)
+	e.seenMu.Unlock()
 }
 
 func (s *Service) persistEvidence(taskID string, run space.HostRun, evidence space.EvidenceOutcome, suffix string) error {
@@ -466,37 +657,88 @@ func (s *Service) persistEvidence(taskID string, run space.HostRun, evidence spa
 	if observed < run.DispatchedAt {
 		observed = run.DispatchedAt
 	}
-	_, err = s.apply(space.Command{Type: space.CommandReconcileHostRun, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: fmt.Sprintf("reconcile:%s:%s", taskID, suffix), TaskID: taskID, RuntimeRunID: run.RuntimeRunID, RuntimeProfileDigest: run.RuntimeProfileDigest, Evidence: evidence, ObservedAt: observed})
-	return err
+	if evidence == space.EvidenceUnavailable && observed < run.ReconcileBy {
+		observed = run.ReconcileBy
+	}
+	command := space.Command{Type: space.CommandReconcileHostRun, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: fmt.Sprintf("reconcile:%s:%s", taskID, suffix), TaskID: taskID, RuntimeRunID: run.RuntimeRunID, RuntimeProfileDigest: run.RuntimeProfileDigest, Evidence: evidence, ObservedAt: observed}
+	var last error
+	for attempt := 0; attempt < 3; attempt++ {
+		tr, applyErr := s.apply(command)
+		if applyErr == nil && tr.Rejection == "" {
+			return nil
+		}
+		last = applyErr
+		if last == nil {
+			last = errors.New(tr.Rejection)
+		}
+		if attempt < 2 {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	return last
 }
+
+func (e *executor) startConsumer(taskID string, run space.HostRun) {
+	e.consumerMu.Lock()
+	if _, exists := e.consumers[taskID]; exists {
+		e.consumerMu.Unlock()
+		return
+	}
+	e.consumers[taskID] = struct{}{}
+	e.wg.Add(1)
+	e.consumerMu.Unlock()
+	go func() {
+		defer e.wg.Done()
+		defer func() {
+			e.consumerMu.Lock()
+			delete(e.consumers, taskID)
+			e.consumerMu.Unlock()
+		}()
+		e.consume(taskID, run)
+	}()
+}
+
+func (e *executor) waitConsumers() { e.wg.Wait() }
 
 func (e *executor) reconcile(taskID string, run space.HostRun) {
 	e.reconcileContext(e.ctx, taskID, run)
 }
 
 func (e *executor) reconcileContext(ctx context.Context, taskID string, run space.HostRun) {
-	deadline := time.Unix(run.ReconcileBy, 0)
 	sequence := 0
 	for {
 		if ctx.Err() != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				if e.service.persistEvidence(taskID, run, space.EvidenceUnavailable, "unavailable") == nil {
+					e.forgetSeen(taskID)
+				}
+			}
 			return
 		}
-		state, err := e.runtime.RunStatus(ctx, run.RuntimeRunID)
+		remaining := time.Duration(run.ReconcileBy-e.options.now().Unix()) * time.Second
+		if remaining <= 0 {
+			if e.service.persistEvidence(taskID, run, space.EvidenceUnavailable, "unavailable") == nil {
+				e.forgetSeen(taskID)
+			}
+			return
+		}
+		statusCtx, cancel := context.WithTimeout(ctx, remaining)
+		state, err := e.runtime.RunStatus(statusCtx, run.RuntimeRunID)
+		cancel()
 		if err == nil {
 			if evidence, ok := evidenceForRunStatus(state.Status); ok {
 				sequence++
-				if evidence != space.EvidenceRunning || e.options.now().Before(deadline) {
-					if persistErr := e.service.persistEvidence(taskID, run, evidence, fmt.Sprintf("status:%d", sequence)); persistErr == nil && evidence != space.EvidenceRunning {
-						return
-					}
+				if persistErr := e.service.persistEvidence(taskID, run, evidence, fmt.Sprintf("status:%d", sequence)); persistErr == nil && evidence != space.EvidenceRunning {
+					e.forgetSeen(taskID)
+					return
 				}
 			}
 		}
-		if !e.options.now().Before(deadline) {
-			_ = e.service.persistEvidence(taskID, run, space.EvidenceUnavailable, "unavailable")
-			return
+		wait := e.options.pollInterval
+		if remaining < wait {
+			wait = remaining
 		}
-		timer := time.NewTimer(e.options.pollInterval)
+		timer := time.NewTimer(wait)
 		select {
 		case <-timer.C:
 		case <-ctx.Done():
@@ -518,7 +760,21 @@ func (s *Service) reconcileAfterStop(ctx context.Context, taskID string) error {
 	bounded, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 	s.executor.reconcileContext(bounded, taskID, run)
-	return nil
+	state, err := s.state.Read()
+	if err != nil {
+		return err
+	}
+	switch state.Tasks[taskID].Status {
+	case space.OutcomeCompleted, space.OutcomeFailed, space.OutcomeCancelled, space.OutcomeUnknown:
+		return nil
+	default:
+		if time.Now().Unix() >= run.ReconcileBy {
+			if persistErr := s.persistEvidence(taskID, run, space.EvidenceUnavailable, "unavailable"); persistErr == nil {
+				return nil
+			}
+		}
+		return errors.New("bounded reconciliation did not reach a durable terminal outcome")
+	}
 }
 
 func evidenceForRunStatus(status string) (space.EvidenceOutcome, bool) {
@@ -545,16 +801,64 @@ func normalizeEvent(event hermes.Event) (space.EvidenceOutcome, bool) {
 			return evidence, true
 		}
 	}
-	var payload struct {
-		Status string `json:"status"`
-	}
+	var payload map[string]json.RawMessage
 	decoder := json.NewDecoder(strings.NewReader(string(event.Data)))
-	decoder.DisallowUnknownFields()
 	var trailing any
 	if decoder.Decode(&payload) == nil && decoder.Decode(&trailing) == io.EOF {
-		return evidenceForRunStatus(payload.Status)
+		var status string
+		if raw, ok := payload["status"]; ok && json.Unmarshal(raw, &status) == nil {
+			return evidenceForRunStatus(status)
+		}
 	}
 	return "", false
+}
+
+type runtimeApprovalEvidence struct {
+	ID                string
+	ActorNodeID       string
+	TargetNodeID      string
+	ActionFingerprint string
+	ExpiresAt         int64
+}
+
+func normalizeApproval(event hermes.Event) (runtimeApprovalEvidence, bool) {
+	var payload map[string]json.RawMessage
+	decoder := json.NewDecoder(strings.NewReader(string(event.Data)))
+	var trailing any
+	if decoder.Decode(&payload) != nil || decoder.Decode(&trailing) != io.EOF {
+		return runtimeApprovalEvidence{}, false
+	}
+	var status, id, actor, target, fingerprint string
+	var expires int64
+	if json.Unmarshal(payload["status"], &status) != nil || status != "awaiting_approval" || json.Unmarshal(payload["approval_id"], &id) != nil || json.Unmarshal(payload["target_node_id"], &target) != nil || json.Unmarshal(payload["action_fingerprint"], &fingerprint) != nil || json.Unmarshal(payload["expires_at"], &expires) != nil {
+		return runtimeApprovalEvidence{}, false
+	}
+	if raw, ok := payload["actor_node_id"]; ok && json.Unmarshal(raw, &actor) != nil {
+		return runtimeApprovalEvidence{}, false
+	}
+	return runtimeApprovalEvidence{ID: id, ActorNodeID: actor, TargetNodeID: target, ActionFingerprint: fingerprint, ExpiresAt: expires}, true
+}
+
+func (s *Service) persistRuntimeApproval(taskID string, run space.HostRun, approval runtimeApprovalEvidence) error {
+	state, err := s.state.Read()
+	if err != nil {
+		return err
+	}
+	task := state.Tasks[taskID]
+	if approval.ActorNodeID != "" && approval.ActorNodeID != state.HostID {
+		return errors.New("runtime approval actor mismatch")
+	}
+	if approval.TargetNodeID != task.TargetNodeID || approval.ActionFingerprint != task.ActionFingerprint || approval.ExpiresAt <= s.executor.options.now().Unix() {
+		return errors.New("runtime approval binding mismatch")
+	}
+	tr, err := s.apply(space.Command{Type: space.CommandRequestRuntimeApproval, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "runtime-approval:" + approval.ID, TaskID: taskID, RuntimeRunID: run.RuntimeRunID, RuntimeProfileDigest: run.RuntimeProfileDigest, RuntimeApprovalID: approval.ID, TargetNodeID: approval.TargetNodeID, ActionFingerprint: approval.ActionFingerprint, ExpiresAt: approval.ExpiresAt, ObservedAt: s.executor.options.now().Unix()})
+	if err != nil {
+		return err
+	}
+	if tr.Rejection != "" {
+		return errors.New(tr.Rejection)
+	}
+	return nil
 }
 
 func errOrRejection(err error, rejection string) error {

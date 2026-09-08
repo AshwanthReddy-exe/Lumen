@@ -14,12 +14,34 @@ func TestConfigFromEnvironment(t *testing.T) {
 	t.Setenv("LUMEN_DATA_DIR", d)
 	t.Setenv("LUMEN_SOCKET_PATH", filepath.Join(d, "host.sock"))
 	t.Setenv("LUMEN_OPERATOR_CREDENTIAL_FILE", filepath.Join(d, "operator"))
+	t.Setenv("LUMEN_HERMES_BASE_URL", "https://hermes.example.test")
+	t.Setenv("LUMEN_HERMES_PROFILE", "hardened")
+	t.Setenv("LUMEN_HERMES_BEARER_FILE", filepath.Join(d, "hermes.token"))
 	c, err := LoadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.DataDir != d {
 		t.Fatalf("data dir %q", c.DataDir)
+	}
+	if c.HermesProfile != "hardened" || c.HermesBaseURL != "https://hermes.example.test" || c.HermesBearerPath == "" {
+		t.Fatalf("Hermes config not loaded: %#v", c)
+	}
+}
+
+func TestProductionNewBuildsNonNilRuntimeAdapter(t *testing.T) {
+	d := t.TempDir()
+	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator"), HermesBaseURL: "https://hermes.example.test", HermesProfile: "hardened", HermesBearerPath: filepath.Join(d, "hermes.token")}
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Shutdown()
+	if s.executor == nil || s.executor.runtime == nil {
+		t.Fatal("production constructor left Hermes runtime nil")
 	}
 }
 

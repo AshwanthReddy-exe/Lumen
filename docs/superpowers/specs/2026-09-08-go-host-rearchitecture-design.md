@@ -54,7 +54,7 @@ awaiting_permission -> queued -> dispatched -> running
 unknown_outcome --matching runtime evidence--> completed | failed | cancelled | running
 ```
 
-Before calling Hermes, the Host commits the task-to-runtime-run mapping, dispatch timestamp, reconciliation deadline, Host epoch, and immutable runtime-profile digest. Only the active Host identity may commit Hermes evidence. Only the owner or an explicitly authorized origin may request cancellation; the Host records `cancelling` before forwarding `/stop`. The first valid terminal transition wins. A disconnect or restart never implies success, failure, or cancellation.
+Before calling Hermes, the Host commits a durable create intent containing the stable idempotency key, dispatch timestamp, reconciliation deadline, Host epoch, and immutable runtime-profile digest. After Hermes responds, the Host immediately commits the task-to-runtime-run mapping before treating dispatch as accepted. A crash or indeterminate create response never retries the intent after restart; it resolves to a proven mapping or `unknown_outcome`. Only the active Host identity may commit Hermes evidence. Only the owner or an explicitly authorized origin may request cancellation; the Host records `cancelling` before forwarding `/stop`. The first valid terminal transition wins. A disconnect or restart never implies success, failure, or cancellation.
 
 ## Compatibility migration
 

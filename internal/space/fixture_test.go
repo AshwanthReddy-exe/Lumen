@@ -121,14 +121,14 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 				return fmt.Errorf("unknown command type: %q", command.Type)
 			}
 			switch command.Type {
-			case CommandPairNode, CommandAdvertiseCapability, CommandSetGrant, CommandSubmit, CommandApprove, CommandComplete, CommandRecoverAfterRestart, CommandDispatchHostRun, CommandReconcileHostRun, CommandRequestHostRunCancellation:
+			case CommandPairNode, CommandAdvertiseCapability, CommandSetGrant, CommandSubmit, CommandApprove, CommandComplete, CommandRecoverAfterRestart, CommandDispatchHostRun, CommandReconcileHostRun, CommandRequestHostRunCancellation, CommandCreateHostRun, CommandRequestRuntimeApproval, CommandResolveRuntimeApproval:
 				if command.HostID == "" {
 					return fmt.Errorf("fixture %q command %q missing host context", tc.Name, command.RequestID)
 				}
 			}
 		}
 		for _, transition := range tc.Expected.Transitions {
-			if transition.Receipt.Outcome != "" && transition.Receipt.Outcome != OutcomeApplied && transition.Receipt.Outcome != OutcomeAwaitingPermission && transition.Receipt.Outcome != OutcomeQueued && transition.Receipt.Outcome != OutcomeCompleted && transition.Receipt.Outcome != OutcomeFailed && transition.Receipt.Outcome != OutcomeUnknown && transition.Receipt.Outcome != OutcomeDispatched && transition.Receipt.Outcome != OutcomeRunning && transition.Receipt.Outcome != OutcomeCancelling && transition.Receipt.Outcome != OutcomeCancelled {
+			if transition.Receipt.Outcome != "" && transition.Receipt.Outcome != OutcomeApplied && transition.Receipt.Outcome != OutcomeAwaitingPermission && transition.Receipt.Outcome != OutcomeQueued && transition.Receipt.Outcome != OutcomeCompleted && transition.Receipt.Outcome != OutcomeFailed && transition.Receipt.Outcome != OutcomeUnknown && transition.Receipt.Outcome != OutcomeDispatched && transition.Receipt.Outcome != OutcomeRunning && transition.Receipt.Outcome != OutcomeCancelling && transition.Receipt.Outcome != OutcomeCancelled && transition.Receipt.Outcome != OutcomeCreating {
 				return fmt.Errorf("unknown receipt outcome: %q", transition.Receipt.Outcome)
 			}
 		}
@@ -143,7 +143,7 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 
 func knownCommand(t CommandType) bool {
 	switch t {
-	case CommandCreateSpace, CommandPairNode, CommandAdvertiseCapability, CommandSetGrant, CommandSubmit, CommandApprove, CommandComplete, CommandRevokeNode, CommandRecoverAfterRestart, CommandDispatchHostRun, CommandReconcileHostRun, CommandRequestHostRunCancellation:
+	case CommandCreateSpace, CommandPairNode, CommandAdvertiseCapability, CommandSetGrant, CommandSubmit, CommandApprove, CommandComplete, CommandRevokeNode, CommandRecoverAfterRestart, CommandDispatchHostRun, CommandReconcileHostRun, CommandRequestHostRunCancellation, CommandCreateHostRun, CommandRequestRuntimeApproval, CommandResolveRuntimeApproval:
 		return true
 	}
 	return false

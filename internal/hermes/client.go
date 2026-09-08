@@ -45,6 +45,8 @@ var (
 	ErrEventStreamDisconnected = errors.New("Hermes SSE stream disconnected")
 	ErrInvalidRunID            = errors.New("invalid Hermes run id")
 	ErrInvalidEvidence         = errors.New("invalid Hermes evidence")
+	ErrCreateRejected          = errors.New("Hermes run creation was proven rejected")
+	ErrCreateAmbiguous         = errors.New("Hermes run creation outcome is ambiguous")
 )
 
 // TLSConfig is the identity material for a hardened Hermes endpoint. The
@@ -318,17 +320,20 @@ func (c *Client) Health(ctx context.Context) (Health, error) {
 func (c *Client) CreateRun(ctx context.Context, in CreateRunRequest, idempotencyKey string) (Run, error) {
 	var out Run
 	if !visibleToken(idempotencyKey) || len(idempotencyKey) > 255 {
-		return out, fmt.Errorf("%w: invalid idempotency key", ErrInvalidConfig)
+		return out, fmt.Errorf("%w: invalid idempotency key", ErrCreateRejected)
 	}
 	b, err := c.request(ctx, http.MethodPost, "/v1/runs", in, "application/json", idempotencyKey)
 	if err != nil {
-		return out, err
+		if provenHTTPRejection(err) {
+			return out, fmt.Errorf("%w: %v", ErrCreateRejected, err)
+		}
+		return out, fmt.Errorf("%w: %v", ErrCreateAmbiguous, err)
 	}
 	if err := decodeJSON(b, &out); err != nil {
-		return out, err
+		return out, fmt.Errorf("%w: %v", ErrCreateAmbiguous, err)
 	}
 	if err := validateRun(out, true); err != nil {
-		return out, err
+		return out, fmt.Errorf("%w: %v", ErrCreateAmbiguous, err)
 	}
 	return out, nil
 }
@@ -617,5 +622,22 @@ func validSteerStatus(status string) bool {
 
 func safeHTTPError(status int, body []byte) error {
 	digest := sha256.Sum256(body)
-	return fmt.Errorf("Hermes HTTP status %d (body sha256=%x)", status, digest[:8])
+	return &HTTPError{Status: status, Digest: digest[:8]}
+}
+
+type HTTPError struct {
+	Status int
+	Digest []byte
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("Hermes HTTP status %d (body sha256=%x)", e.Status, e.Digest)
+}
+
+func provenHTTPRejection(err error) bool {
+	var response *HTTPError
+	if !errors.As(err, &response) {
+		return false
+	}
+	return response.Status >= 400 && response.Status < 500 && response.Status != http.StatusRequestTimeout && response.Status != http.StatusTooManyRequests
 }

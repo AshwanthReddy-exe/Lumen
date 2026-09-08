@@ -30,6 +30,9 @@ const (
 	CommandDispatchHostRun            CommandType = "dispatch_host_run"
 	CommandReconcileHostRun           CommandType = "reconcile_host_run"
 	CommandRequestHostRunCancellation CommandType = "request_host_run_cancellation"
+	CommandCreateHostRun              CommandType = "create_host_run"
+	CommandRequestRuntimeApproval     CommandType = "request_runtime_approval"
+	CommandResolveRuntimeApproval     CommandType = "resolve_runtime_approval"
 )
 
 type Outcome string
@@ -45,6 +48,7 @@ const (
 	OutcomeRunning            Outcome = "running"
 	OutcomeCancelling         Outcome = "cancelling"
 	OutcomeCancelled          Outcome = "cancelled"
+	OutcomeCreating           Outcome = "creating"
 )
 
 type EvidenceOutcome string
@@ -67,21 +71,23 @@ const (
 )
 
 type State struct {
-	SchemaVersion  int                        `json:"schemaVersion"`
-	SpaceID        string                     `json:"spaceId,omitempty"`
-	OwnerID        string                     `json:"ownerId,omitempty"`
-	HostID         string                     `json:"hostId,omitempty"`
-	Epoch          int                        `json:"epoch,omitempty"`
-	Identities     []Identity                 `json:"identities,omitempty"`
-	Capabilities   []Capability               `json:"capabilities,omitempty"`
-	Audit          []AuditEvent               `json:"audit"`
-	Nodes          map[string]Node            `json:"nodes,omitempty"`
-	Advertisements []CapabilityKey            `json:"advertisements,omitempty"`
-	Grants         map[string]Grant           `json:"grants,omitempty"`
-	Tasks          map[string]Task            `json:"tasks,omitempty"`
-	Approvals      map[string]Approval        `json:"approvals,omitempty"`
-	Commands       map[string]RecordedCommand `json:"commands,omitempty"`
-	HostRuns       map[string]HostRun         `json:"hostRuns,omitempty"`
+	SchemaVersion    int                        `json:"schemaVersion"`
+	SpaceID          string                     `json:"spaceId,omitempty"`
+	OwnerID          string                     `json:"ownerId,omitempty"`
+	HostID           string                     `json:"hostId,omitempty"`
+	Epoch            int                        `json:"epoch,omitempty"`
+	Identities       []Identity                 `json:"identities,omitempty"`
+	Capabilities     []Capability               `json:"capabilities,omitempty"`
+	Audit            []AuditEvent               `json:"audit"`
+	Nodes            map[string]Node            `json:"nodes,omitempty"`
+	Advertisements   []CapabilityKey            `json:"advertisements,omitempty"`
+	Grants           map[string]Grant           `json:"grants,omitempty"`
+	Tasks            map[string]Task            `json:"tasks,omitempty"`
+	Approvals        map[string]Approval        `json:"approvals,omitempty"`
+	HostCreates      map[string]HostCreate      `json:"hostCreates,omitempty"`
+	RuntimeApprovals map[string]RuntimeApproval `json:"runtimeApprovals,omitempty"`
+	Commands         map[string]RecordedCommand `json:"commands,omitempty"`
+	HostRuns         map[string]HostRun         `json:"hostRuns,omitempty"`
 }
 type Identity struct {
 	ID   string       `json:"id"`
@@ -120,6 +126,24 @@ type HostRun struct {
 	DispatchedAt         int64  `json:"dispatchedAt"`
 	ReconcileBy          int64  `json:"reconcileBy"`
 }
+type HostCreate struct {
+	TaskID               string `json:"taskId"`
+	IdempotencyKey       string `json:"idempotencyKey"`
+	RuntimeProfileDigest string `json:"runtimeProfileDigest"`
+	HostEpoch            int    `json:"hostEpoch"`
+	CreatedAt            int64  `json:"createdAt"`
+	ReconcileBy          int64  `json:"reconcileBy"`
+}
+type RuntimeApproval struct {
+	ID                string `json:"id"`
+	TaskID            string `json:"taskId"`
+	RuntimeRunID      string `json:"runtimeRunId"`
+	ActorNodeID       string `json:"actorNodeId"`
+	TargetNodeID      string `json:"targetNodeId"`
+	ActionFingerprint string `json:"actionFingerprint"`
+	ExpiresAt         int64  `json:"expiresAt"`
+	Decision          string `json:"decision,omitempty"`
+}
 type Approval struct {
 	ID                string `json:"id"`
 	TaskID            string `json:"taskId"`
@@ -145,37 +169,41 @@ type AuditEvent struct {
 	Outcome   string         `json:"outcome"`
 }
 type Command struct {
-	Type                 CommandType     `json:"type"`
-	SpaceID              string          `json:"spaceId"`
-	OwnerID              string          `json:"ownerId"`
-	HostID               string          `json:"hostId"`
-	RequestID            string          `json:"requestId"`
-	Epoch                int             `json:"epoch,omitempty"`
-	OperationID          string          `json:"operationId,omitempty"`
-	ActorID              string          `json:"actorId,omitempty"`
-	NodeID               string          `json:"nodeId,omitempty"`
-	CapabilityID         string          `json:"capabilityId,omitempty"`
-	Action               string          `json:"action,omitempty"`
-	ActionFingerprint    string          `json:"actionFingerprint,omitempty"`
-	TaskID               string          `json:"taskId,omitempty"`
-	OriginNodeID         string          `json:"originNodeId,omitempty"`
-	TargetNodeID         string          `json:"targetNodeId,omitempty"`
-	Grant                Grant           `json:"grant,omitempty"`
-	ApprovalID           string          `json:"approvalId,omitempty"`
-	ExpiresAt            int64           `json:"expiresAt,omitempty"`
-	ApprovedAt           int64           `json:"approvedAt,omitempty"`
-	Outcome              Outcome         `json:"outcome,omitempty"`
-	RuntimeRunID         string          `json:"runtimeRunId,omitempty"`
-	RuntimeProfileDigest string          `json:"runtimeProfileDigest,omitempty"`
-	DispatchedAt         int64           `json:"dispatchedAt,omitempty"`
-	ReconcileBy          int64           `json:"reconcileBy,omitempty"`
-	ObservedAt           int64           `json:"observedAt,omitempty"`
-	Evidence             EvidenceOutcome `json:"evidence,omitempty"`
+	Type                  CommandType     `json:"type"`
+	SpaceID               string          `json:"spaceId"`
+	OwnerID               string          `json:"ownerId"`
+	HostID                string          `json:"hostId"`
+	RequestID             string          `json:"requestId"`
+	Epoch                 int             `json:"epoch,omitempty"`
+	OperationID           string          `json:"operationId,omitempty"`
+	ActorID               string          `json:"actorId,omitempty"`
+	NodeID                string          `json:"nodeId,omitempty"`
+	CapabilityID          string          `json:"capabilityId,omitempty"`
+	Action                string          `json:"action,omitempty"`
+	ActionFingerprint     string          `json:"actionFingerprint,omitempty"`
+	TaskID                string          `json:"taskId,omitempty"`
+	OriginNodeID          string          `json:"originNodeId,omitempty"`
+	TargetNodeID          string          `json:"targetNodeId,omitempty"`
+	Grant                 Grant           `json:"grant,omitempty"`
+	ApprovalID            string          `json:"approvalId,omitempty"`
+	ExpiresAt             int64           `json:"expiresAt,omitempty"`
+	ApprovedAt            int64           `json:"approvedAt,omitempty"`
+	Outcome               Outcome         `json:"outcome,omitempty"`
+	RuntimeRunID          string          `json:"runtimeRunId,omitempty"`
+	RuntimeIdempotencyKey string          `json:"runtimeIdempotencyKey,omitempty"`
+	RuntimeProfileDigest  string          `json:"runtimeProfileDigest,omitempty"`
+	DispatchedAt          int64           `json:"dispatchedAt,omitempty"`
+	ReconcileBy           int64           `json:"reconcileBy,omitempty"`
+	ObservedAt            int64           `json:"observedAt,omitempty"`
+	Evidence              EvidenceOutcome `json:"evidence,omitempty"`
+	RuntimeApprovalID     string          `json:"runtimeApprovalId,omitempty"`
+	Decision              string          `json:"decision,omitempty"`
 }
 type Transition struct {
 	State     State
 	Receipt   Receipt
 	Rejection string
+	Replayed  bool
 }
 type Receipt struct {
 	RequestID string  `json:"requestId,omitempty"`

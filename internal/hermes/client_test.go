@@ -94,6 +94,32 @@ func TestCreateRunUsesIdempotencyKeyAndDecodesRun(t *testing.T) {
 	}
 }
 
+func TestCreateRunClassifiesProvenAndAmbiguousFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		code int
+		want error
+	}{
+		{name: "proven rejection", code: http.StatusBadRequest, want: ErrCreateRejected},
+		{name: "ambiguous server failure", code: http.StatusBadGateway, want: ErrCreateAmbiguous},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.code)
+				_, _ = w.Write([]byte("failure"))
+			}))
+			c, err := New(testConfig(srv.URL))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = c.CreateRun(context.Background(), CreateRunRequest{Input: "x"}, "create-key")
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("error=%v want=%v", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestEventsParseBoundedSSEWithoutDeduplicatingEvidence(t *testing.T) {
 	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

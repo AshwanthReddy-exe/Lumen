@@ -3,30 +3,36 @@ package host
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
+	"github.com/AshwanthReddy-exe/Lumen/internal/store"
 )
 
 type fakeRuntime struct {
-	mu          sync.Mutex
-	create      hermes.Run
-	createErr   error
-	status      []hermes.Run
-	statusErr   error
-	events      []hermes.Event
-	eventsErr   error
-	stop        hermes.Run
-	stopErr     error
-	capErr      error
-	healthErr   error
-	created     int
-	eventCalls  int
-	statusCalls int
-	stopCalls   int
+	mu                sync.Mutex
+	create            hermes.Run
+	createErr         error
+	status            []hermes.Run
+	statusErr         error
+	events            []hermes.Event
+	eventsErr         error
+	stop              hermes.Run
+	stopErr           error
+	capErr            error
+	healthErr         error
+	created           int
+	eventCalls        int
+	statusCalls       int
+	stopCalls         int
+	beforeCreate      func()
+	approvalDecisions []string
+	eventsBlock       <-chan struct{}
 }
 
 func (f *fakeRuntime) Capabilities(context.Context) (hermes.Capabilities, error) {
@@ -38,6 +44,9 @@ func (f *fakeRuntime) Health(context.Context) (hermes.Health, error) {
 	return hermes.Health{Status: "ok"}, f.healthErr
 }
 func (f *fakeRuntime) CreateRun(context.Context, hermes.CreateRunRequest, string) (hermes.Run, error) {
+	if f.beforeCreate != nil {
+		f.beforeCreate()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.created++
@@ -54,13 +63,27 @@ func (f *fakeRuntime) RunStatus(context.Context, string) (hermes.Run, error) {
 	f.status = f.status[1:]
 	return r, f.statusErr
 }
-func (f *fakeRuntime) Events(context.Context, string) ([]hermes.Event, error) {
+func (f *fakeRuntime) Events(ctx context.Context, _ string) ([]hermes.Event, error) {
+	f.mu.Lock()
+	f.eventCalls++
+	f.mu.Unlock()
+	if f.eventsBlock != nil {
+		select {
+		case <-f.eventsBlock:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.eventCalls++
 	return append([]hermes.Event(nil), f.events...), f.eventsErr
 }
-func (f *fakeRuntime) ResolveApproval(context.Context, string, string) error    { return nil }
+func (f *fakeRuntime) ResolveApproval(_ context.Context, _ string, decision string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.approvalDecisions = append(f.approvalDecisions, decision)
+	return nil
+}
 func (f *fakeRuntime) Steer(context.Context, string, hermes.SteerRequest) error { return nil }
 func (f *fakeRuntime) Stop(context.Context, string) (hermes.Run, error) {
 	f.mu.Lock()
@@ -119,8 +142,76 @@ func TestDurableExecutionPersistsDispatchBeforeSSEAndFirstTerminalWins(t *testin
 	}
 }
 
+func TestCreateIntentIsDurableBeforeRuntimePOST(t *testing.T) {
+	var service *Service
+	r := &fakeRuntime{create: hermes.Run{RunID: "run-intent", Status: "started"}}
+	r.beforeCreate = func() {
+		state, err := service.state.Read()
+		if err != nil {
+			t.Errorf("read create intent: %v", err)
+			return
+		}
+		intent, ok := state.HostCreates["task-intent"]
+		if !ok || intent.IdempotencyKey != "submit-intent" || state.Tasks["task-intent"].Status != space.OutcomeCreating {
+			t.Errorf("create intent not durable before POST: %#v task=%#v", intent, state.Tasks["task-intent"])
+		}
+	}
+	service = executionService(t, r)
+	req := submitRequest("submit-intent", "task-intent")
+	if _, err := service.SubmitTask(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateIntentRecoversToUnknownWithoutRetryAfterRestart(t *testing.T) {
+	d := t.TempDir()
+	c := Config{DataDir: d, SocketPath: d + "/host.sock", CredentialPath: d + "/operator"}
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeRuntime{create: hermes.Run{RunID: "must-not-be-created"}}
+	s, err := NewWithRuntime(c, r, WithExecutionTiming(5*time.Millisecond, 35*time.Millisecond), WithClock(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := space.State{SchemaVersion: 1, SpaceID: "space", OwnerID: "owner", HostID: "host", Epoch: 1,
+		Nodes:          map[string]space.Node{"owner": {ID: "owner", Status: "paired"}, "host": {ID: "host", Status: "paired"}},
+		Advertisements: []space.CapabilityKey{{NodeID: "host", CapabilityID: "agent.run/execute", Action: "run"}},
+		Grants:         map[string]space.Grant{"host|agent.run/execute|run": space.GrantAllow}, Audit: []space.AuditEvent{}}
+	if _, err := s.state.Update(func(space.State) space.Transition { return space.Transition{State: state} }); err != nil {
+		s.Shutdown()
+		t.Fatal(err)
+	}
+	req := submitRequest("submit-crash", "task-crash")
+	if tr, err := s.ApplyCommand(req.Submit); err != nil || tr.Rejection != "" {
+		s.Shutdown()
+		t.Fatalf("submit: %#v %v", tr, err)
+	}
+	if tr, err := s.ApplyCommand(space.Command{Type: space.CommandCreateHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "create:submit-crash", TaskID: "task-crash", RuntimeIdempotencyKey: "submit-crash", RuntimeProfileDigest: "sha256:profile", DispatchedAt: 100, ReconcileBy: 130}); err != nil || tr.Rejection != "" {
+		s.Shutdown()
+		t.Fatalf("create intent: %#v %v", tr, err)
+	}
+	s.Shutdown()
+
+	recovered, err := NewWithRuntime(c, r, WithExecutionTiming(5*time.Millisecond, 35*time.Millisecond), WithClock(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recovered.Shutdown()
+	task, ok, err := recovered.Task("task-crash")
+	if err != nil || !ok {
+		t.Fatalf("recovered task: %#v %v %v", task, ok, err)
+	}
+	if task.Status != space.OutcomeUnknown || task.TerminalReason != "host_restarted" {
+		t.Fatalf("create intent recovery = %#v", task)
+	}
+	if r.created != 0 {
+		t.Fatalf("restarted service retried create %d times", r.created)
+	}
+}
+
 func TestCreateFailureIsDurablyFailedBeforeReply(t *testing.T) {
-	r := &fakeRuntime{createErr: errors.New("runtime unavailable")}
+	r := &fakeRuntime{createErr: fmt.Errorf("%w: invalid request", hermes.ErrCreateRejected)}
 	s := executionService(t, r)
 	trn, err := s.SubmitTask(context.Background(), submitRequest("submit-2", "task-2"))
 	if err != nil || trn.Rejection != "" || trn.Receipt.Outcome != space.OutcomeFailed {
@@ -132,6 +223,15 @@ func TestCreateFailureIsDurablyFailedBeforeReply(t *testing.T) {
 	}
 	if state.Tasks["task-2"].Status != space.OutcomeFailed || r.created != 1 {
 		t.Fatalf("failure was not durable: %#v", state.Tasks["task-2"])
+	}
+}
+
+func TestAmbiguousCreateIsDurablyUnknown(t *testing.T) {
+	r := &fakeRuntime{createErr: errors.New("connection reset after send")}
+	s := executionService(t, r)
+	trn, err := s.SubmitTask(context.Background(), submitRequest("submit-ambiguous", "task-ambiguous"))
+	if err != nil || trn.Rejection != "" || trn.Receipt.Outcome != space.OutcomeUnknown {
+		t.Fatalf("ambiguous create: %#v %v", trn, err)
 	}
 }
 
@@ -150,6 +250,23 @@ func TestDuplicateSubmitReturnsDurableReceiptWithoutCreatingAnotherRun(t *testin
 	waitForTask(t, s, "task-duplicate", space.OutcomeCompleted)
 	if r.created != 1 {
 		t.Fatalf("duplicate created %d runs", r.created)
+	}
+}
+
+func TestConcurrentSubmitReplayCreatesOneRun(t *testing.T) {
+	r := &fakeRuntime{create: hermes.Run{RunID: "run-concurrent", Status: "started"}, events: []hermes.Event{{ID: "done", Data: []byte(`{"status":"completed"}`)}}}
+	s := executionService(t, r)
+	req := submitRequest("submit-concurrent", "task-concurrent")
+	results := make(chan error, 2)
+	go func() { _, err := s.SubmitTask(context.Background(), req); results <- err }()
+	go func() { _, err := s.SubmitTask(context.Background(), req); results <- err }()
+	for i := 0; i < 2; i++ {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r.created != 1 {
+		t.Fatalf("concurrent replay created %d runs", r.created)
 	}
 }
 
@@ -211,7 +328,7 @@ func TestStopFailureReconcilesToUnknownAtBoundedDeadline(t *testing.T) {
 	r := &fakeRuntime{create: hermes.Run{RunID: "run-stop-fail", Status: "started"}, eventsErr: hermes.ErrEventStreamDisconnected, statusErr: errors.New("status unavailable"), stopErr: errors.New("stop unavailable")}
 	s := executionService(t, r)
 	s.executor.options.now = time.Now
-	by := time.Now().Unix() + 1
+	by := time.Now().Unix() + 2
 	if _, err := s.SubmitTask(context.Background(), func() ExecuteRequest {
 		request := submitRequest("submit-stop-fail", "task-stop-fail")
 		request.ReconcileBy = by
@@ -226,6 +343,92 @@ func TestStopFailureReconcilesToUnknownAtBoundedDeadline(t *testing.T) {
 	waitForTask(t, s, "task-stop-fail", space.OutcomeUnknown)
 	if r.stopCalls != 1 {
 		t.Fatalf("stop calls=%d", r.stopCalls)
+	}
+}
+
+func TestRuntimeApprovalIsBoundAndForwardsOnceOrDeny(t *testing.T) {
+	r := &fakeRuntime{create: hermes.Run{RunID: "run-approval", Status: "started"}, events: []hermes.Event{{ID: "approval", Type: "approval.requested", Data: []byte(`{"status":"awaiting_approval","approval_id":"runtime-1","target_node_id":"host","action_fingerprint":"digest","expires_at":120}`)}}}
+	s := executionService(t, r)
+	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-runtime-approval", "task-runtime-approval")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if task, ok, _ := s.Task("task-runtime-approval"); ok && task.Status == space.OutcomeAwaitingPermission {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	state, _ := s.state.Read()
+	if state.Tasks["task-runtime-approval"].Status != space.OutcomeAwaitingPermission {
+		t.Fatalf("runtime approval state=%#v audit=%#v commands=%#v", state.Tasks["task-runtime-approval"], state.Audit, state.Commands)
+	}
+	tr, err := s.ResolveRuntimeApproval(context.Background(), RuntimeApprovalRequest{Command: space.Command{Type: space.CommandResolveRuntimeApproval, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "resolve-runtime-approval", TaskID: "task-runtime-approval", RuntimeRunID: "run-approval", RuntimeProfileDigest: "sha256:profile", RuntimeApprovalID: "runtime-1", TargetNodeID: "host", ActionFingerprint: "digest", Decision: "once", ObservedAt: 110}})
+	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeRunning {
+		t.Fatalf("runtime approval: %#v %v", tr, err)
+	}
+	if len(r.approvalDecisions) != 1 || r.approvalDecisions[0] != "once" {
+		t.Fatalf("forwarded approvals=%#v", r.approvalDecisions)
+	}
+}
+
+func TestEvidencePersistenceFailureIsNotConsumedOrTerminal(t *testing.T) {
+	d := t.TempDir()
+	c := Config{DataDir: d, SocketPath: d + "/host.sock", CredentialPath: d + "/operator"}
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	state, err := store.Open(d+"/state.json", d+"/state.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := space.State{SchemaVersion: 1, SpaceID: "space", OwnerID: "owner", HostID: "host", Epoch: 1, Nodes: map[string]space.Node{"owner": {ID: "owner", Status: "paired"}, "host": {ID: "host", Status: "paired"}}, Tasks: map[string]space.Task{"task": {ID: "task", TargetNodeID: "host", HostEpoch: 1, Status: space.OutcomeDispatched}}, HostRuns: map[string]space.HostRun{"task": {TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "sha256:p", HostEpoch: 1, DispatchedAt: 100, ReconcileBy: 200}}, Audit: []space.AuditEvent{}}
+	if _, err := state.Update(func(space.State) space.Transition { return space.Transition{State: initial} }); err != nil {
+		t.Fatal(err)
+	}
+	_ = state.Close()
+	failing, err := store.NewWithHooks(d+"/state.json", store.Hooks{Write: func(*os.File, []byte) error { return errors.New("injected persistence failure") }}, d+"/state.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &Service{state: failing, ready: make(chan struct{}), stop: make(chan struct{})}
+	s.executor = newExecutor(s, nil, executionOptions{now: func() time.Time { return time.Unix(110, 0) }, pollInterval: time.Millisecond, reconcileWindow: time.Second})
+	t.Cleanup(s.Shutdown)
+	if err := s.persistEvidence("task", initial.HostRuns["task"], space.EvidenceCompleted, "failure"); err == nil {
+		t.Fatal("expected persistence failure")
+	}
+	got, err := failing.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Tasks["task"].Status != space.OutcomeDispatched {
+		t.Fatalf("evidence became terminal despite failed persistence: %#v", got.Tasks["task"])
+	}
+}
+
+func TestShutdownCancelsAndJoinsConsumer(t *testing.T) {
+	block := make(chan struct{})
+	r := &fakeRuntime{create: hermes.Run{RunID: "run-shutdown", Status: "started"}, eventsBlock: block}
+	s := executionService(t, r)
+	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-shutdown", "task-shutdown")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		r.mu.Lock()
+		calls := r.eventCalls
+		r.mu.Unlock()
+		if calls > 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	done := make(chan struct{})
+	go func() { s.Shutdown(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("shutdown did not join event consumer")
 	}
 }
 

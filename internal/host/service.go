@@ -9,11 +9,18 @@ import (
 	"sync"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
+	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
 	"github.com/AshwanthReddy-exe/Lumen/internal/store"
 )
 
-type Config struct{ DataDir, SocketPath, CredentialPath string }
+type Config struct {
+	DataDir, SocketPath, CredentialPath  string
+	HermesBaseURL, HermesProfile         string
+	HermesBearerPath                     string
+	HermesCAPath, HermesClientCertPath   string
+	HermesClientKeyPath, HermesServerPin string
+}
 
 var (
 	markerSyncFile   = func(f *os.File) error { return f.Sync() }
@@ -33,7 +40,15 @@ func LoadConfig() (Config, error) {
 	if c == "" {
 		c = filepath.Join(d, "operator.credential")
 	}
-	return Config{d, s, c}, nil
+	p := os.Getenv("LUMEN_HERMES_PROFILE")
+	if p == "" {
+		p = hermes.ProfileHardened
+	}
+	bearer := os.Getenv("LUMEN_HERMES_BEARER_FILE")
+	if bearer == "" {
+		bearer = filepath.Join(d, "hermes.token")
+	}
+	return Config{DataDir: d, SocketPath: s, CredentialPath: c, HermesBaseURL: os.Getenv("LUMEN_HERMES_BASE_URL"), HermesProfile: p, HermesBearerPath: bearer, HermesCAPath: os.Getenv("LUMEN_HERMES_CA_FILE"), HermesClientCertPath: os.Getenv("LUMEN_HERMES_CLIENT_CERT_FILE"), HermesClientKeyPath: os.Getenv("LUMEN_HERMES_CLIENT_KEY_FILE"), HermesServerPin: os.Getenv("LUMEN_HERMES_SERVER_CERT_PIN")}, nil
 }
 func (c Config) valid() error {
 	if c.DataDir == "" || c.SocketPath == "" || c.CredentialPath == "" {
@@ -43,6 +58,9 @@ func (c Config) valid() error {
 		if !filepath.IsAbs(p) || filepath.Clean(p) != p {
 			return errors.New("configuration paths must be absolute and clean")
 		}
+	}
+	if c.HermesProfile != "" && c.HermesProfile != hermes.ProfileDevelopment && c.HermesProfile != hermes.ProfileHardened {
+		return errors.New("invalid Hermes profile")
 	}
 	return nil
 }
@@ -172,7 +190,7 @@ type Service struct {
 }
 
 func New(c Config) (*Service, error) {
-	return NewWithRuntime(c, nil)
+	return NewWithRuntime(c, configuredRuntime(c))
 }
 func (s *Service) Start() error {
 	srv, err := control.NewServer(s.cfg.SocketPath, s.cfg.CredentialPath, s.handle)
@@ -218,6 +236,7 @@ func (s *Service) Shutdown() {
 	s.once.Do(func() {
 		if s.executor != nil {
 			s.executor.cancel()
+			s.executor.waitConsumers()
 		}
 		if s.server != nil {
 			_ = s.server.Close()
