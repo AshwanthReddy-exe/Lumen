@@ -162,36 +162,26 @@ func exists(path string) bool {
 }
 
 type Service struct {
-	cfg    Config
-	server *control.Server
-	state  *store.Store
-	ready  chan struct{}
-	stop   chan struct{}
-	once   sync.Once
+	cfg      Config
+	server   *control.Server
+	state    *store.Store
+	executor *executor
+	ready    chan struct{}
+	stop     chan struct{}
+	once     sync.Once
 }
 
 func New(c Config) (*Service, error) {
-	if err := c.valid(); err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(filepath.Join(c.DataDir, "initialized")); err != nil {
-		return nil, fmt.Errorf("state unavailable: %w", err)
-	}
-	state, err := store.New(filepath.Join(c.DataDir, "state.json"), filepath.Join(c.DataDir, "state.key"))
-	if err != nil {
-		return nil, fmt.Errorf("state unavailable: %w", err)
-	}
-	if _, err := state.Read(); err != nil {
-		_ = state.Close()
-		return nil, fmt.Errorf("state unavailable: %w", err)
-	}
-	return &Service{cfg: c, state: state, ready: make(chan struct{}), stop: make(chan struct{})}, nil
+	return NewWithRuntime(c, nil)
 }
 func (s *Service) Start() error {
 	srv, err := control.NewServer(s.cfg.SocketPath, s.cfg.CredentialPath, s.handle)
 	if err != nil {
 		if s.state != nil {
 			_ = s.state.Close()
+		}
+		if s.executor != nil {
+			s.executor.cancel()
 		}
 		return err
 	}
@@ -204,6 +194,9 @@ func (s *Service) Start() error {
 	if err := srv.Listen(); err != nil {
 		if s.state != nil {
 			_ = s.state.Close()
+		}
+		if s.executor != nil {
+			s.executor.cancel()
 		}
 		return err
 	}
@@ -223,6 +216,9 @@ func (s *Service) Wait(ctx context.Context) error {
 }
 func (s *Service) Shutdown() {
 	s.once.Do(func() {
+		if s.executor != nil {
+			s.executor.cancel()
+		}
 		if s.server != nil {
 			_ = s.server.Close()
 		}
@@ -232,12 +228,24 @@ func (s *Service) Shutdown() {
 		close(s.stop)
 	})
 }
-func (s *Service) handle(_ context.Context, q control.Request) control.Response {
+func (s *Service) handle(ctx context.Context, q control.Request) control.Response {
 	switch q.Command {
 	case "status":
-		return control.Response{OK: true, Data: map[string]string{"status": "ready"}}
+		state, err := s.state.Read()
+		if err != nil {
+			return control.Response{Error: "state unavailable"}
+		}
+		return control.Response{OK: true, Data: map[string]any{"status": "ready", "space_id": state.SpaceID, "tasks": state.Tasks}}
 	case "shutdown":
 		return control.Response{OK: true, Data: map[string]string{"status": "shutting_down"}}
+	case "task submit":
+		return s.handleTaskSubmit(ctx, q.Arguments)
+	case "task show":
+		return s.handleTaskShow(q.Arguments)
+	case "task cancel":
+		return s.handleTaskCancel(ctx, q.Arguments)
+	case "approval resolve":
+		return s.handleApprovalResolve(ctx, q.Arguments)
 	default:
 		return control.Response{Error: "unsupported command"}
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
@@ -22,11 +23,11 @@ func run(args []string) int {
 			return usage()
 		}
 	case "task":
-		if len(args) != 2 || (args[1] != "submit" && args[1] != "show" && args[1] != "cancel") {
+		if len(args) < 2 || (args[1] != "submit" && args[1] != "show" && args[1] != "cancel") {
 			return usage()
 		}
 	case "approval":
-		if len(args) != 2 || args[1] != "resolve" {
+		if len(args) < 2 || args[1] != "resolve" {
 			return usage()
 		}
 	default:
@@ -49,7 +50,11 @@ func run(args []string) int {
 	case "status", "shutdown":
 		return call(c, args[0])
 	default:
-		return call(c, args[0]+" "+args[1])
+		arguments, ok := parseArguments(args[2:])
+		if !ok {
+			return usage()
+		}
+		return callWithArguments(c, args[0]+" "+args[1], arguments)
 	}
 }
 func usage() int {
@@ -77,7 +82,10 @@ func serve(c host.Config) int {
 	return 0
 }
 func call(c host.Config, cmd string) int {
-	r, err := control.Call(c.SocketPath, c.CredentialPath, control.Request{Command: cmd})
+	return callWithArguments(c, cmd, nil)
+}
+func callWithArguments(c host.Config, cmd string, arguments map[string]string) int {
+	r, err := control.Call(c.SocketPath, c.CredentialPath, control.Request{Command: cmd, Arguments: arguments})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "host unavailable")
 		return 3
@@ -90,4 +98,23 @@ func call(c host.Config, cmd string) int {
 		fmt.Println(r.Data)
 	}
 	return 0
+}
+
+func parseArguments(args []string) (map[string]string, bool) {
+	arguments := make(map[string]string)
+	for i := 0; i < len(args); i++ {
+		key := strings.TrimPrefix(args[i], "--")
+		if key == args[i] || key == "" {
+			return nil, false
+		}
+		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
+			return nil, false
+		}
+		if _, exists := arguments[key]; exists {
+			return nil, false
+		}
+		arguments[key] = args[i+1]
+		i++
+	}
+	return arguments, true
 }
