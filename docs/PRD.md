@@ -16,7 +16,7 @@ Lumen makes a person’s devices feel like one understandable, permission-contro
 
 ## First reference deployment
 
-The initial working Space starts with a headless Host service and a separately supervised Hermes runtime. A co-located plaintext loopback profile may prove compatibility only with synthetic state; the release proof isolates Hermes behind pinned mutual TLS. The Host runs from a terminal under an external service manager on a development computer, Linux/VPS, or Android Termux. The old Android phone is a companion and capability node; it is never the Host merely because the companion app is installed. Mac and iPhone nodes follow only after the Host-to-Hermes execution loop is complete.
+The initial working Space starts with a native Go headless Host service and a separately supervised Hermes runtime. A co-located plaintext loopback profile may prove compatibility only with synthetic state; the release proof isolates Hermes behind pinned mutual TLS. The same Host command contract runs from a terminal under an external service manager on macOS, Linux/VPS, or Android Termux. The old Android phone is a companion and capability node; it is never the Host merely because the companion app is installed. Mac and iPhone nodes follow only after the Host-to-Hermes execution loop is complete.
 
 ## Core journeys
 
@@ -79,6 +79,7 @@ The initial working Space starts with a headless Host service and a separately s
 | FR-38 | Integrate Hermes through a versioned adapter that discovers capabilities, submits and observes runs, forwards only exact approved runtime decisions, supports cancellation, and treats every Hermes result as untrusted evidence. |
 | FR-39 | Use approved Hermes features—including model routing, built-in tools, skills, MCP, browser, voice, delegation, and remote execution—through immutable per-run profiles and Lumen capabilities without duplicating those subsystems. Delegation is disabled unless the parent grant covers its full transitive runtime surface. |
 | FR-40 | Perform no background model or tool work by default; pre-activation wake-word and voice-activity detection run only on the node with zero outbound audio or model traffic, while schedules and event triggers require explicit, inspectable grants. |
+| FR-41 | Expose Host-local Hermes orchestration first as `agent.run/execute` with an `ask` default; enabling it cannot grant any transitive browser, shell, device, account, coding, or remote-execution authority. |
 
 ## Initial capability set
 

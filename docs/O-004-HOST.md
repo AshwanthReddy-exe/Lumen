@@ -2,7 +2,7 @@
 
 ## Decision
 
-The Host is a headless Kotlin/JVM 21 process with encrypted durable state and an authenticated local operator boundary. It runs in the foreground and delegates restart, boot, log capture, resource limits, and background supervision to systemd, launchd, Docker, or Termux/runit.
+The Host is a headless native Go process with encrypted durable state and an authenticated local operator boundary. It runs in the foreground and delegates restart, boot, log capture, resource limits, and background supervision to systemd, launchd, Docker, or Termux/runit.
 
 The same distribution must run on Linux/VPS, macOS, and Android Termux. Deployment adapters may provide service definitions and secret sources, but they cannot change Space authority, lifecycle semantics, task outcomes, or the Hermes adapter contract. A native Android companion is a client even when Termux runs the Host on the same phone.
 

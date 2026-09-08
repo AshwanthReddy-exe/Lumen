@@ -6,7 +6,7 @@
 
 ## Goal
 
-Run one durable Lumen Host as a terminal service, connect it to a separately supervised Hermes runtime, and complete one bounded task with honest policy, events, approval, cancellation, failure, and restart behavior. The same Host distribution must work on Linux/VPS, macOS, and Android Termux.
+Run one durable native Go Lumen Host as a terminal service, connect it to a separately supervised Hermes runtime, and complete one bounded task with honest policy, events, approval, cancellation, failure, and restart behavior. The same Host command contract must work on Linux/VPS, macOS, and Android Termux.
 
 ## Observable live proof
 
@@ -28,13 +28,13 @@ The `fix/android-authority-quarantine` slice removes the Android foreground serv
 
 ### Host-local execution core increment
 
-Retain `core/space` as the only owner of Space transitions, policy, approval consumption, task outcomes, audit rules, and restart recovery. Extend it before service work with an explicit Host-local execution target, durable dispatch/run mapping, `dispatched`, `running`, `cancelling`, and `cancelled` states, timeout behavior, terminal compare-and-set rules, and an evidence-bound reconciliation operation that can resolve `unknown_outcome`. Hermes may propose events; only the active Host principal commits them. The state codec uses migration fixtures for the expanded schema. The core still imports no CLI, filesystem, HTTP, service-manager, or Hermes code.
+Implement `internal/space` in Go as the only owner of Space transitions, policy, approval consumption, task outcomes, audit rules, and restart recovery. Freeze language-neutral fixtures from the Kotlin reference before replacing it. Add an explicit Host-local execution target, durable dispatch/run mapping, `dispatched`, `running`, `cancelling`, and `cancelled` states, timeout behavior, terminal compare-and-set rules, and an evidence-bound reconciliation operation that can resolve `unknown_outcome`. Hermes may propose events; only the active Host principal commits them. The core imports no CLI, filesystem, HTTP, service-manager, or Hermes code.
 
 Initialization creates distinct recoverable owner and active Host identities. The active Host identity is the first local execution target and advertises the Hermes-backed capability. The loopback operator credential authenticates control requests and maps them to the owner principal, but it is not reused as an identity or encryption key.
 
 ### Headless Host service
 
-Create `services/host` as a Kotlin/JVM 21 application. Its foreground process has explicit initialization, serve, readiness, graceful shutdown, and exit-code behavior. It serializes state changes through `SpaceHost`, exposes an owner-restricted authenticated Unix-domain operator socket, and emits redacted structured diagnostics. It never backgrounds or restarts itself.
+Create `cmd/lumen-host` as a native Go application. Its foreground process has explicit initialization, serve, readiness, graceful shutdown, and exit-code behavior. It serializes state changes through the Go Space core, exposes an owner-restricted authenticated Unix-domain operator socket, and emits redacted structured diagnostics. It never backgrounds or restarts itself.
 
 ### Durable Host storage
 
@@ -88,20 +88,20 @@ Ship examples for systemd, launchd, Docker, and Termux/runit. All invoke the sam
 - Contract tests use a fake Hermes server for capability mismatch, authentication failure, run creation, SSE duplication/reordering/disconnect, approval, cancellation, timeout, and recovery.
 - An opt-in real-Hermes test verifies the documented capability, run, event, exact `once`/`deny` approval, stop, and health surface under deny-by-default configuration without relying on Hermes internals.
 - `mise run phase1-check` remains green.
-- Gradle must compile with an explicit Java 21 toolchain and release target. A new `mise run phase2-check` must run on Java 21, build the distribution, and run core, Host, adapter, persistence, CLI, and scenario tests. Android Termux aarch64 is a required compatibility run with its exact Termux and OpenJDK versions recorded; it is not assumed equivalent to desktop Linux.
+- `mise run phase2-check` must pin Go, build native Host distributions, and run core, Host, adapter, persistence, CLI, fixture, and scenario tests. Android Termux ARM64 is a required compatibility run with its exact Termux and Go versions recorded; it is not assumed equivalent to desktop Linux.
 - Owner evidence records one supervised desktop/server run and one Android Termux run with no manual state repair.
 
 ## Delivery sequence and PR stack
 
 1. `docs/host-first-plan`: canonical architecture correction and this plan.
 2. `fix/android-authority-quarantine`, based on the planning branch: complete; remove the Android foreground Host entry points and prevent the superseded test Space from presenting as authority.
-3. `feat/host-execution-contract`, based on the prior slice: freeze owner/Host-executor identity, dispatch/run evidence, running/cancellation states, reconciliation, codec migration, and core tests.
-4. `feat/host-service-bootstrap`, based on the prior slice: JVM 21 distribution, CLI lifecycle, configuration, health, and supervisor examples.
+3. `feat/go-host-core`, based on the prior slice: freeze cross-language fixtures and implement owner/Host-executor identity, `agent.run/execute`, dispatch/run evidence, running/cancellation states, reconciliation, codec migration, and Go core tests.
+4. `feat/host-service-bootstrap`, based on the prior slice: native Go distribution, CLI lifecycle, configuration, health, and supervisor examples.
 5. `feat/host-durable-store`, based on the prior slice: version 1 encrypted envelope, key separation, locking, atomic commits, recovery, and failure tests.
 6. `feat/hermes-runtime-adapter`, based on the prior slice: mutual endpoint identity, isolated deployment profile, pinned behavioral compatibility, authenticated Runs API client, normalized events, and fake-server contract tests.
 7. `feat/host-hermes-loop`, based on the prior slice: task submission, approval, cancellation, reconciliation, end-to-end scenario, `phase2-check`, and real-Hermes smoke evidence.
 
-The owner explicitly requested a stacked series that can be reviewed before any merge. Each PR targets the preceding branch and is merged bottom-up. After a lower PR merges, fetch and fast-forward `main`, retarget the next PR to `main`, and update it without force-pushing or rewriting shared history. Protocol, persistence, authorization, and migration changes require independent review before merge.
+The owner requested one combined Block 2 pull request. Intermediate branches are pushed only as recoverable checkpoints; the final Block 2 branch targets `main` without force-pushing or rewriting shared history. Protocol, persistence, authorization, and migration changes require independent review before the combined pull request is merged.
 
 ## Exit
 

@@ -27,16 +27,15 @@ The Host is a headless service, not a companion application. The same Host artif
 ## Planned repository structure
 
 ```text
+cmd/                native Go Host executable
+internal/           Go Space core, Host composition, storage, control, Hermes adapter
+protocol/           versioned schemas and cross-language fixtures
 apps/               android-companion, ios-node, macos-node
-core/               space, context, policy, tasks, scheduler
-packages/           protocol and shared capability contracts
-adapters/           Hermes and platform capability adapters
-services/           headless Host, optional relay, notification transport
-tests/              contract, integration, security, recovery
-infra/              development and deployment configuration
+test/               contract, integration, security, recovery
+deploy/             service-manager and container configuration
 ```
 
-Phase 0 selected a Kotlin Multiplatform core with native Android and Apple applications. Production directories are created only as each delivery phase implements them. The canonical documents are in [docs/](./docs/); contribution rules are in [AGENTS.md](./AGENTS.md).
+Phase 0's Kotlin Multiplatform core remains migration evidence while Block 2 replaces production authority with Go. Android remains Kotlin and Apple applications remain Swift. Production directories are created only as each delivery phase implements them. The canonical documents are in [docs/](./docs/); contribution rules are in [AGENTS.md](./AGENTS.md).
 
 Run the Phase 0 contract baseline with `mise run phase0-check`. It uses the pinned Java and Gradle environment and the system-managed Swift toolchain.
 
