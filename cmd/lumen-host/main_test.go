@@ -35,6 +35,12 @@ func TestCLIProcessLifecycleAndBoundary(t *testing.T) {
 		"LUMEN_DATA_DIR=" + dataDir,
 		"LUMEN_SOCKET_PATH=" + filepath.Join(runtimeDir, "s"),
 		"LUMEN_OPERATOR_CREDENTIAL_FILE=" + filepath.Join(runtimeDir, "c"),
+		"LUMEN_HERMES_BASE_URL=http://127.0.0.1:1",
+		"LUMEN_HERMES_PROFILE=development",
+		"LUMEN_HERMES_BEARER_FILE=" + filepath.Join(runtimeDir, "hermes.token"),
+	}
+	if err := os.WriteFile(filepath.Join(runtimeDir, "hermes.token"), []byte("test-token"), 0600); err != nil {
+		t.Fatal(err)
 	}
 	if out, code := runHost(t, bin, cfg, "bogus"); code != 2 || !strings.Contains(out, "usage:") {
 		t.Fatalf("usage: code=%d output=%q", code, out)

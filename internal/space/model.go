@@ -33,6 +33,7 @@ const (
 	CommandCreateHostRun              CommandType = "create_host_run"
 	CommandRequestRuntimeApproval     CommandType = "request_runtime_approval"
 	CommandResolveRuntimeApproval     CommandType = "resolve_runtime_approval"
+	CommandRecordRuntimeApproval      CommandType = "record_runtime_approval"
 )
 
 type Outcome string
@@ -143,6 +144,7 @@ type RuntimeApproval struct {
 	ActionFingerprint string `json:"actionFingerprint"`
 	ExpiresAt         int64  `json:"expiresAt"`
 	Decision          string `json:"decision,omitempty"`
+	DeliveryState     string `json:"deliveryState,omitempty"`
 }
 type Approval struct {
 	ID                string `json:"id"`
@@ -198,6 +200,7 @@ type Command struct {
 	Evidence              EvidenceOutcome `json:"evidence,omitempty"`
 	RuntimeApprovalID     string          `json:"runtimeApprovalId,omitempty"`
 	Decision              string          `json:"decision,omitempty"`
+	DeliveryState         string          `json:"deliveryState,omitempty"`
 }
 type Transition struct {
 	State     State

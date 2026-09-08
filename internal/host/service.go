@@ -190,7 +190,11 @@ type Service struct {
 }
 
 func New(c Config) (*Service, error) {
-	return NewWithRuntime(c, configuredRuntime(c))
+	runtime, err := configuredRuntime(c)
+	if err != nil {
+		return nil, fmt.Errorf("Hermes configuration unavailable: %w", err)
+	}
+	return NewWithRuntime(c, runtime)
 }
 func (s *Service) Start() error {
 	srv, err := control.NewServer(s.cfg.SocketPath, s.cfg.CredentialPath, s.handle)
@@ -235,8 +239,7 @@ func (s *Service) Wait(ctx context.Context) error {
 func (s *Service) Shutdown() {
 	s.once.Do(func() {
 		if s.executor != nil {
-			s.executor.cancel()
-			s.executor.waitConsumers()
+			s.executor.shutdown()
 		}
 		if s.server != nil {
 			_ = s.server.Close()

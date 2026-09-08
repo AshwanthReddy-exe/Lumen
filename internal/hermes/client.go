@@ -639,5 +639,10 @@ func provenHTTPRejection(err error) bool {
 	if !errors.As(err, &response) {
 		return false
 	}
-	return response.Status >= 400 && response.Status < 500 && response.Status != http.StatusRequestTimeout && response.Status != http.StatusTooManyRequests
+	switch response.Status {
+	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusUnprocessableEntity:
+		return true
+	default:
+		return false
+	}
 }

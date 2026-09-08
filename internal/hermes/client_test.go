@@ -102,6 +102,7 @@ func TestCreateRunClassifiesProvenAndAmbiguousFailures(t *testing.T) {
 	}{
 		{name: "proven rejection", code: http.StatusBadRequest, want: ErrCreateRejected},
 		{name: "ambiguous server failure", code: http.StatusBadGateway, want: ErrCreateAmbiguous},
+		{name: "conflict is ambiguous", code: http.StatusConflict, want: ErrCreateAmbiguous},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,6 +138,34 @@ func TestEventsParseBoundedSSEWithoutDeduplicatingEvidence(t *testing.T) {
 	if len(events) != 3 || events[0].ID != "2" || events[1].ID != "1" || events[2].ID != "1" {
 		t.Fatalf("events = %#v", events)
 	}
+}
+
+func TestEventsStreamDeliversApprovalBeforeConnectionCloses(t *testing.T) {
+	release := make(chan struct{})
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("test server does not support flush")
+		}
+		_, _ = w.Write([]byte("id: approval\nevent: approval.requested\ndata: {\"status\":\"awaiting_approval\"}\n\n"))
+		flusher.Flush()
+		<-release
+	}))
+	c, err := New(testConfig(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := c.EventsStream(context.Background(), "run_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, err := stream.Next(context.Background())
+	if err != nil || event.ID != "approval" {
+		t.Fatalf("first incremental event = %#v, %v", event, err)
+	}
+	close(release)
+	_ = stream.Close()
 }
 
 func TestEventsRejectsIncompleteRecordAndBoundsStream(t *testing.T) {

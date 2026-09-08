@@ -87,3 +87,37 @@ func TestHostRunRejectsPreDispatchEvidenceAndStaleRunningAfterCancellation(t *te
 		t.Fatalf("stale running evidence: %#v", stale)
 	}
 }
+
+func TestPendingRuntimeApprovalBlocksTerminalEvidenceUntilExpiry(t *testing.T) {
+	s := executionState(OutcomeAwaitingPermission)
+	task := s.Tasks["task"]
+	task.ActionFingerprint = "digest"
+	s.Tasks["task"] = task
+	s.HostRuns = map[string]HostRun{"task": {TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", HostEpoch: 7, DispatchedAt: 100, ReconcileBy: 200}}
+	s.RuntimeApprovals = map[string]RuntimeApproval{"approval": {ID: "approval", TaskID: "task", RuntimeRunID: "run", TargetNodeID: "host", ActionFingerprint: "digest", ExpiresAt: 150, DeliveryState: "pending"}}
+	terminal := Apply(s, Command{Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "terminal", TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", Evidence: EvidenceCompleted, ObservedAt: 120})
+	if terminal.Rejection != "approval_pending" || terminal.State.Tasks["task"].Status != OutcomeAwaitingPermission {
+		t.Fatalf("terminal while approval pending: %#v", terminal)
+	}
+	expired := Apply(s, Command{Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "expired", TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", Evidence: EvidenceUnavailable, ObservedAt: 200})
+	if expired.Rejection != "" || expired.State.Tasks["task"].Status != OutcomeUnknown {
+		t.Fatalf("expiry transition: %#v", expired)
+	}
+}
+
+func TestRuntimeApprovalDeliveryIsDurableBeforeTaskResolution(t *testing.T) {
+	s := executionState(OutcomeAwaitingPermission)
+	task := s.Tasks["task"]
+	task.ActionFingerprint = "digest"
+	s.Tasks["task"] = task
+	s.HostRuns = map[string]HostRun{"task": {TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", HostEpoch: 7, DispatchedAt: 100, ReconcileBy: 200}}
+	s.RuntimeApprovals = map[string]RuntimeApproval{"approval": {ID: "approval", TaskID: "task", RuntimeRunID: "run", TargetNodeID: "host", ActionFingerprint: "digest", ExpiresAt: 150, Decision: "once", DeliveryState: "pending"}}
+	uncertain := Apply(s, Command{Type: CommandRecordRuntimeApproval, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "delivery-uncertain", TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", RuntimeApprovalID: "approval", TargetNodeID: "host", ActionFingerprint: "digest", Decision: "once", DeliveryState: "uncertain"})
+	if uncertain.Rejection != "" || uncertain.State.Tasks["task"].Status != OutcomeAwaitingPermission {
+		t.Fatalf("uncertain delivery resolved task: %#v", uncertain)
+	}
+	delivered := Apply(uncertain.State, Command{Type: CommandRecordRuntimeApproval, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "delivery-ok", TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", RuntimeApprovalID: "approval", TargetNodeID: "host", ActionFingerprint: "digest", Decision: "once", DeliveryState: "delivered"})
+	if delivered.Rejection != "" || delivered.State.Tasks["task"].Status != OutcomeRunning {
+		t.Fatalf("delivered approval: %#v", delivered)
+	}
+}

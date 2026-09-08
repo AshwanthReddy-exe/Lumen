@@ -11,11 +11,41 @@ import (
 	"strings"
 )
 
+// EventIterator exposes bounded SSE records without waiting for the stream to
+// close. The Host owns lifecycle and deduplication; the adapter only parses.
+type EventIterator interface {
+	Next(context.Context) (Event, error)
+	Close() error
+}
+
+type StreamAdapter interface {
+	EventsStream(context.Context, string) (EventIterator, error)
+}
+
 // Events returns evidence in transport order. It deliberately does not
 // deduplicate or reorder IDs; lifecycle compare-and-set belongs to the Host.
 // EOF is reported as a disconnect because a Runs event stream is expected to
 // remain open while work is active. Events parsed before EOF are returned too.
 func (c *Client) Events(ctx context.Context, runID string) ([]Event, error) {
+	stream, err := c.EventsStream(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+	var events []Event
+	for {
+		event, nextErr := stream.Next(ctx)
+		if nextErr != nil {
+			return events, nextErr
+		}
+		events = append(events, event)
+	}
+}
+
+// EventsStream opens a bounded, incremental SSE reader. It returns as soon as
+// the first complete record arrives and keeps the HTTP response open for the
+// next record, allowing approval requests to be handled interactively.
+func (c *Client) EventsStream(ctx context.Context, runID string) (EventIterator, error) {
 	path, err := runPath(runID, "/events")
 	if err != nil {
 		return nil, err
@@ -28,29 +58,136 @@ func (c *Client) Events(ctx context.Context, runID string) ([]Event, error) {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.eventTimeout)
-	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "text/event-stream")
 	resp, err := c.http.Do(req)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, readErr := boundedRead(resp.Body, c.maxResponseBytes, ErrResponseTooLarge)
 		if readErr != nil {
+			_ = resp.Body.Close()
+			cancel()
 			return nil, readErr
 		}
+		_ = resp.Body.Close()
+		cancel()
 		return nil, safeHTTPError(resp.StatusCode, b)
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(strings.ToLower(ct), "text/event-stream") {
+		_ = resp.Body.Close()
+		cancel()
 		return nil, fmt.Errorf("unexpected Hermes events content type %q", ct)
 	}
-	return parseSSEBounded(resp.Body, c.maxEventBytes, c.maxEvents, c.maxEventStreamBytes)
+	return &sseIterator{body: resp.Body, cancel: cancel, scanner: newSSEScanner(resp.Body, c.maxEventBytes), maxEventBytes: c.maxEventBytes, maxEvents: c.maxEvents, maxStreamBytes: c.maxEventStreamBytes}, nil
+}
+
+type sseIterator struct {
+	body           io.ReadCloser
+	cancel         context.CancelFunc
+	scanner        *bufio.Scanner
+	maxEventBytes  int64
+	maxEvents      int
+	maxStreamBytes int64
+	eventCount     int
+	streamSize     int64
+	id, typ, data  string
+	retry          int
+	hasField       bool
+	eventSize      int64
+}
+
+func newSSEScanner(r io.Reader, max int64) *bufio.Scanner {
+	scanner := bufio.NewScanner(r)
+	maxToken := max + 2
+	if maxToken < max || maxToken > int64(int(^uint(0)>>1)) {
+		maxToken = int64(int(^uint(0) >> 1))
+	}
+	scanner.Buffer(make([]byte, 1024), int(maxToken))
+	return scanner
+}
+
+func (s *sseIterator) Next(_ context.Context) (Event, error) {
+	for s.scanner.Scan() {
+		line := s.scanner.Bytes()
+		if int64(len(line))+s.eventSize+1 > s.maxEventBytes || s.streamSize+int64(len(line))+1 > s.maxStreamBytes {
+			return Event{}, ErrEventStreamTooLarge
+		}
+		s.eventSize += int64(len(line)) + 1
+		s.streamSize += int64(len(line)) + 1
+		if len(line) == 0 {
+			if !s.hasField {
+				continue
+			}
+			if s.data == "" {
+				s.reset()
+				continue
+			}
+			if !json.Valid([]byte(s.data)) {
+				return Event{}, errors.New("invalid Hermes SSE JSON data")
+			}
+			if s.eventCount >= s.maxEvents {
+				return Event{}, ErrEventStreamTooLarge
+			}
+			event := Event{ID: s.id, Type: s.typ, Retry: s.retry, Data: json.RawMessage(s.data)}
+			s.eventCount++
+			s.reset()
+			return event, nil
+		}
+		if line[0] == ':' {
+			continue
+		}
+		field, value, found := strings.Cut(string(line), ":")
+		if found && strings.HasPrefix(value, " ") {
+			value = value[1:]
+		}
+		if !found {
+			field, value = string(line), ""
+		}
+		s.hasField = true
+		switch field {
+		case "id":
+			s.id = value
+		case "event":
+			s.typ = value
+		case "data":
+			if s.data != "" {
+				s.data += "\n"
+			}
+			s.data += value
+		case "retry":
+			parsed, err := parseRetry(value)
+			if err != nil {
+				return Event{}, err
+			}
+			s.retry = parsed
+		default:
+			return Event{}, fmt.Errorf("unsupported Hermes SSE field %q", field)
+		}
+	}
+	if err := s.scanner.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			return Event{}, ErrEventTooLarge
+		}
+		return Event{}, err
+	}
+	return Event{}, ErrEventStreamDisconnected
+}
+
+func (s *sseIterator) reset() {
+	s.id, s.typ, s.data, s.retry, s.hasField, s.eventSize = "", "", "", 0, false, 0
+}
+
+func (s *sseIterator) Close() error {
+	s.cancel()
+	return s.body.Close()
 }
 
 func parseSSE(r io.Reader, maxEventBytes int64) ([]Event, error) {

@@ -63,6 +63,8 @@ func Apply(s State, c Command) Transition {
 		tr = requestRuntimeApproval(s, c)
 	case CommandResolveRuntimeApproval:
 		tr = resolveRuntimeApproval(s, c)
+	case CommandRecordRuntimeApproval:
+		tr = recordRuntimeApproval(s, c)
 	default:
 		return reject(s, c, "unsupported_command")
 	}
@@ -214,6 +216,9 @@ func approve(s State, c Command) Transition {
 	if c.ApprovalID == "" || c.ApprovedAt <= 0 || c.ExpiresAt <= 0 || c.ApprovedAt >= c.ExpiresAt {
 		return reject(s, c, "approval_expired")
 	}
+	if c.Decision != "" && c.Decision != "once" && c.Decision != "deny" {
+		return reject(s, c, "invalid_approval")
+	}
 	if s.Approvals == nil {
 		s.Approvals = map[string]Approval{}
 	}
@@ -221,9 +226,14 @@ func approve(s State, c Command) Transition {
 		return reject(s, c, "approval_already_consumed")
 	}
 	s.Approvals[c.ApprovalID] = Approval{ID: c.ApprovalID, TaskID: c.TaskID, ActorNodeID: c.ActorID, TargetNodeID: c.TargetNodeID, ActionFingerprint: c.ActionFingerprint, ExpiresAt: c.ExpiresAt, ConsumedAt: c.ApprovedAt}
-	t.Status = OutcomeQueued
+	if c.Decision == "deny" {
+		t.Status = OutcomeFailed
+		t.TerminalReason = "approval_denied"
+	} else {
+		t.Status = OutcomeQueued
+	}
 	s.Tasks[c.TaskID] = t
-	return accepted(s, c, OutcomeQueued, c.TaskID)
+	return accepted(s, c, t.Status, c.TaskID)
 }
 func complete(s State, c Command) Transition {
 	t, ok := s.Tasks[c.TaskID]
@@ -239,7 +249,7 @@ func complete(s State, c Command) Transition {
 	if c.ActorID != t.TargetNodeID {
 		return reject(s, c, "unauthorized_actor")
 	}
-	if t.Status != OutcomeQueued && t.Status != OutcomeCreating && t.Status != OutcomeAwaitingPermission {
+	if t.Status != OutcomeQueued && t.Status != OutcomeCreating {
 		return reject(s, c, "invalid_task_state")
 	}
 	if c.Outcome != OutcomeCompleted && c.Outcome != OutcomeFailed && c.Outcome != OutcomeUnknown {

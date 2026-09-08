@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
+	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 )
 
 func TestConfigFromEnvironment(t *testing.T) {
@@ -31,7 +32,11 @@ func TestConfigFromEnvironment(t *testing.T) {
 
 func TestProductionNewBuildsNonNilRuntimeAdapter(t *testing.T) {
 	d := t.TempDir()
-	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator"), HermesBaseURL: "https://hermes.example.test", HermesProfile: "hardened", HermesBearerPath: filepath.Join(d, "hermes.token")}
+	tokenPath := filepath.Join(d, "hermes.token")
+	if err := os.WriteFile(tokenPath, []byte("test-token"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator"), HermesBaseURL: "http://127.0.0.1:1", HermesProfile: "development", HermesBearerPath: tokenPath}
 	if err := Initialize(c); err != nil {
 		t.Fatal(err)
 	}
@@ -42,6 +47,33 @@ func TestProductionNewBuildsNonNilRuntimeAdapter(t *testing.T) {
 	defer s.Shutdown()
 	if s.executor == nil || s.executor.runtime == nil {
 		t.Fatal("production constructor left Hermes runtime nil")
+	}
+}
+
+func TestProductionNewFailsReadinessForInvalidHermesConfiguration(t *testing.T) {
+	d := t.TempDir()
+	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator"), HermesProfile: hermes.ProfileHardened}
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(c); err == nil {
+		t.Fatal("expected invalid Hermes configuration to fail readiness")
+	}
+}
+
+func TestHermesSecretReadRejectsSymlink(t *testing.T) {
+	d := t.TempDir()
+	realPath := filepath.Join(d, "real.token")
+	linkPath := filepath.Join(d, "link.token")
+	if err := os.WriteFile(realPath, []byte("token"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realPath, linkPath); err != nil {
+		t.Fatal(err)
+	}
+	_, err := buildHermesClient(Config{HermesBaseURL: "http://127.0.0.1:1", HermesProfile: hermes.ProfileDevelopment, HermesBearerPath: linkPath})
+	if err == nil {
+		t.Fatal("expected symlinked Hermes secret to be rejected")
 	}
 }
 

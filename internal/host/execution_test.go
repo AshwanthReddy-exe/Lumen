@@ -32,6 +32,8 @@ type fakeRuntime struct {
 	stopCalls         int
 	beforeCreate      func()
 	approvalDecisions []string
+	approvalErr       error
+	approvalErrors    []error
 	eventsBlock       <-chan struct{}
 }
 
@@ -82,7 +84,12 @@ func (f *fakeRuntime) ResolveApproval(_ context.Context, _ string, decision stri
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.approvalDecisions = append(f.approvalDecisions, decision)
-	return nil
+	if len(f.approvalErrors) > 0 {
+		err := f.approvalErrors[0]
+		f.approvalErrors = f.approvalErrors[1:]
+		return err
+	}
+	return f.approvalErr
 }
 func (f *fakeRuntime) Steer(context.Context, string, hermes.SteerRequest) error { return nil }
 func (f *fakeRuntime) Stop(context.Context, string) (hermes.Run, error) {
@@ -301,6 +308,43 @@ func TestAskRequiresExactApprovalAndStartsOnlyOnce(t *testing.T) {
 	}
 }
 
+func TestInitialApprovalDenyRequiresExactPendingBinding(t *testing.T) {
+	r := &fakeRuntime{}
+	s := executionService(t, r)
+	if _, err := s.state.Update(func(state space.State) space.Transition {
+		state.Grants["host|agent.run/execute|run"] = space.GrantAsk
+		return space.Transition{State: state}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	req := submitRequest("submit-deny", "task-deny")
+	if _, err := s.SubmitTask(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	bad := req.Submit
+	bad.Type = space.CommandApprove
+	bad.RequestID = "deny-bad"
+	bad.ActorID = "owner"
+	bad.ApprovalID = "approval"
+	bad.ApprovedAt = 101
+	bad.ExpiresAt = 120
+	bad.Decision = "deny"
+	bad.ActionFingerprint = "wrong"
+	if tr, err := s.ResolveApproval(context.Background(), ApprovalRequest{Command: bad}); err != nil || tr.Rejection != "approval_mismatch" {
+		t.Fatalf("unbound deny: %#v %v", tr, err)
+	}
+	good := bad
+	good.RequestID = "deny-good"
+	good.ActionFingerprint = "digest"
+	tr, err := s.ResolveApproval(context.Background(), ApprovalRequest{Command: good})
+	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeFailed {
+		t.Fatalf("bound deny: %#v %v", tr, err)
+	}
+	if r.created != 0 {
+		t.Fatalf("deny created runtime run %d", r.created)
+	}
+}
+
 func TestCancellationPersistsBeforeStopAndTerminalRaceWins(t *testing.T) {
 	r := &fakeRuntime{create: hermes.Run{RunID: "run-cancel", Status: "started"}, events: []hermes.Event{{ID: "done", Data: []byte(`{"status":"completed"}`)}}, stop: hermes.Run{RunID: "run-cancel", Status: "cancelled"}}
 	s := executionService(t, r)
@@ -369,6 +413,87 @@ func TestRuntimeApprovalIsBoundAndForwardsOnceOrDeny(t *testing.T) {
 	}
 	if len(r.approvalDecisions) != 1 || r.approvalDecisions[0] != "once" {
 		t.Fatalf("forwarded approvals=%#v", r.approvalDecisions)
+	}
+}
+
+func TestRuntimeApprovalDeliveryFailureRemainsPendingAndRetries(t *testing.T) {
+	r := &fakeRuntime{create: hermes.Run{RunID: "run-approval-retry", Status: "started"}, approvalErrors: []error{errors.New("approval delivery uncertain")}, events: []hermes.Event{{ID: "approval", Type: "approval.requested", Data: []byte(`{"status":"awaiting_approval","approval_id":"runtime-retry","target_node_id":"host","action_fingerprint":"digest","expires_at":120}`)}}}
+	s := executionService(t, r)
+	req := submitRequest("submit-runtime-retry", "task-runtime-retry")
+	if _, err := s.SubmitTask(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	waitForTask(t, s, "task-runtime-retry", space.OutcomeAwaitingPermission)
+	command := space.Command{Type: space.CommandResolveRuntimeApproval, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "resolve-runtime-retry", TaskID: "task-runtime-retry", RuntimeRunID: "run-approval-retry", RuntimeProfileDigest: "sha256:profile", RuntimeApprovalID: "runtime-retry", TargetNodeID: "host", ActionFingerprint: "digest", Decision: "once", ObservedAt: 110}
+	if _, err := s.ResolveRuntimeApproval(context.Background(), RuntimeApprovalRequest{Command: command}); err == nil {
+		t.Fatal("expected uncertain approval delivery error")
+	}
+	if task, _, _ := s.Task("task-runtime-retry"); task.Status != space.OutcomeAwaitingPermission {
+		t.Fatalf("uncertain delivery changed task: %#v", task)
+	}
+	tr, err := s.ResolveRuntimeApproval(context.Background(), RuntimeApprovalRequest{Command: command})
+	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeRunning {
+		t.Fatalf("approval retry: %#v %v", tr, err)
+	}
+	if len(r.approvalDecisions) != 2 {
+		t.Fatalf("approval forward attempts=%d", len(r.approvalDecisions))
+	}
+}
+
+func TestPendingRuntimeApprovalReattachesConsumerAfterRestart(t *testing.T) {
+	d := t.TempDir()
+	c := Config{DataDir: d, SocketPath: d + "/host.sock", CredentialPath: d + "/operator"}
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeRuntime{eventsErr: errors.New("approval stream unavailable"), statusErr: errors.New("status unavailable")}
+	s, err := NewWithRuntime(c, r, WithExecutionTiming(time.Millisecond, 50*time.Millisecond), WithClock(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := space.State{SchemaVersion: 1, SpaceID: "space", OwnerID: "owner", HostID: "host", Epoch: 1,
+		Nodes:            map[string]space.Node{"owner": {ID: "owner", Status: "paired"}, "host": {ID: "host", Status: "paired"}},
+		Tasks:            map[string]space.Task{"task": {ID: "task", TargetNodeID: "host", HostEpoch: 1, Status: space.OutcomeAwaitingPermission}},
+		HostRuns:         map[string]space.HostRun{"task": {TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", HostEpoch: 1, DispatchedAt: 100, ReconcileBy: 130}},
+		RuntimeApprovals: map[string]space.RuntimeApproval{"approval": {ID: "approval", TaskID: "task", RuntimeRunID: "run", TargetNodeID: "host", ActionFingerprint: "digest", ExpiresAt: 120, DeliveryState: "pending"}}, Audit: []space.AuditEvent{}}
+	if _, err := s.state.Update(func(space.State) space.Transition { return space.Transition{State: state} }); err != nil {
+		s.Shutdown()
+		t.Fatal(err)
+	}
+	s.Shutdown()
+	recovered, err := NewWithRuntime(c, r, WithExecutionTiming(time.Millisecond, 50*time.Millisecond), WithClock(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recovered.Shutdown()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		r.mu.Lock()
+		calls := r.eventCalls
+		r.mu.Unlock()
+		if calls > 0 {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("pending approval consumer was not reattached")
+}
+
+func TestExpiredRunSkipsSSEAndPersistsUnknown(t *testing.T) {
+	r := &fakeRuntime{events: []hermes.Event{{ID: "terminal", Data: []byte(`{"status":"completed"}`)}}}
+	s := executionService(t, r)
+	if _, err := s.state.Update(func(state space.State) space.Transition {
+		state.Tasks = map[string]space.Task{}
+		state.Tasks["expired"] = space.Task{ID: "expired", TargetNodeID: "host", HostEpoch: 1, Status: space.OutcomeDispatched}
+		state.HostRuns = map[string]space.HostRun{"expired": {TaskID: "expired", RuntimeRunID: "run-expired", RuntimeProfileDigest: "profile", HostEpoch: 1, DispatchedAt: 90, ReconcileBy: 99}}
+		return space.Transition{State: state}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.executor.startConsumer("expired", space.HostRun{TaskID: "expired", RuntimeRunID: "run-expired", RuntimeProfileDigest: "profile", HostEpoch: 1, DispatchedAt: 90, ReconcileBy: 99})
+	waitForTask(t, s, "expired", space.OutcomeUnknown)
+	if r.eventCalls != 0 {
+		t.Fatalf("expired run opened SSE %d times", r.eventCalls)
 	}
 }
 

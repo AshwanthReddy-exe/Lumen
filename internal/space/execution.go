@@ -121,7 +121,7 @@ func requestRuntimeApproval(s State, c Command) Transition {
 	if _, exists := s.RuntimeApprovals[c.RuntimeApprovalID]; exists {
 		return reject(s, c, "runtime_approval_exists")
 	}
-	s.RuntimeApprovals[c.RuntimeApprovalID] = RuntimeApproval{ID: c.RuntimeApprovalID, TaskID: c.TaskID, RuntimeRunID: run.RuntimeRunID, ActorNodeID: c.ActorID, TargetNodeID: c.TargetNodeID, ActionFingerprint: c.ActionFingerprint, ExpiresAt: c.ExpiresAt}
+	s.RuntimeApprovals[c.RuntimeApprovalID] = RuntimeApproval{ID: c.RuntimeApprovalID, TaskID: c.TaskID, RuntimeRunID: run.RuntimeRunID, ActorNodeID: c.ActorID, TargetNodeID: c.TargetNodeID, ActionFingerprint: c.ActionFingerprint, ExpiresAt: c.ExpiresAt, DeliveryState: "pending"}
 	task.Status = OutcomeAwaitingPermission
 	s.Tasks[c.TaskID] = task
 	return accepted(s, c, OutcomeAwaitingPermission, c.TaskID)
@@ -149,16 +149,53 @@ func resolveRuntimeApproval(s State, c Command) Transition {
 	if !ok || task.Status != OutcomeAwaitingPermission {
 		return reject(s, c, "approval_not_required")
 	}
-	approval.Decision = c.Decision
-	s.RuntimeApprovals[c.RuntimeApprovalID] = approval
-	if c.Decision == "deny" {
-		task.Status = OutcomeFailed
-		task.TerminalReason = "runtime_approval_denied"
-	} else {
-		task.Status = OutcomeRunning
+	if approval.Decision != "" && approval.Decision != c.Decision {
+		return reject(s, c, "runtime_approval_decision_mismatch")
 	}
-	s.Tasks[c.TaskID] = task
-	return accepted(s, c, Outcome(task.Status), c.TaskID)
+	if approval.DeliveryState == "delivered" {
+		return reject(s, c, "runtime_approval_already_delivered")
+	}
+	approval.Decision = c.Decision
+	approval.DeliveryState = "pending"
+	s.RuntimeApprovals[c.RuntimeApprovalID] = approval
+	return accepted(s, c, OutcomeAwaitingPermission, c.TaskID)
+}
+
+func recordRuntimeApproval(s State, c Command) Transition {
+	if reason := executionContext(s, c); reason != "" {
+		return reject(s, c, reason)
+	}
+	approval, ok := s.RuntimeApprovals[c.RuntimeApprovalID]
+	run, runOK := s.HostRuns[c.TaskID]
+	if !ok || !runOK || approval.TaskID != c.TaskID || approval.RuntimeRunID != c.RuntimeRunID || run.RuntimeProfileDigest != c.RuntimeProfileDigest || approval.Decision != c.Decision || approval.TargetNodeID != c.TargetNodeID || approval.ActionFingerprint != c.ActionFingerprint {
+		return reject(s, c, "runtime_approval_mismatch")
+	}
+	if c.DeliveryState != "delivered" && c.DeliveryState != "uncertain" {
+		return reject(s, c, "invalid_runtime_approval_delivery")
+	}
+	if approval.DeliveryState == "delivered" {
+		return reject(s, c, "runtime_approval_already_delivered")
+	}
+	if c.DeliveryState == "delivered" {
+		task, exists := s.Tasks[c.TaskID]
+		if !exists || task.Status != OutcomeAwaitingPermission {
+			return reject(s, c, "approval_not_required")
+		}
+		if c.Decision == "deny" {
+			task.Status = OutcomeFailed
+			task.TerminalReason = "runtime_approval_denied"
+		} else {
+			task.Status = OutcomeRunning
+		}
+		s.Tasks[c.TaskID] = task
+	}
+	approval.DeliveryState = c.DeliveryState
+	s.RuntimeApprovals[c.RuntimeApprovalID] = approval
+	out := OutcomeAwaitingPermission
+	if c.DeliveryState == "delivered" {
+		out = s.Tasks[c.TaskID].Status
+	}
+	return accepted(s, c, out, c.TaskID)
 }
 
 func reconcileHostRun(s State, c Command) Transition {
@@ -183,6 +220,18 @@ func reconcileHostRun(s State, c Command) Transition {
 	}
 	if t.Status == OutcomeAwaitingPermission && c.Evidence == EvidenceRunning {
 		return reject(s, c, "approval_pending")
+	}
+	if t.Status == OutcomeAwaitingPermission && c.Evidence != EvidenceRunning {
+		pending := false
+		for _, approval := range s.RuntimeApprovals {
+			if approval.TaskID == c.TaskID && approval.DeliveryState != "delivered" {
+				pending = c.ObservedAt < approval.ExpiresAt && !(c.Evidence == EvidenceUnavailable && c.ObservedAt >= r.ReconcileBy)
+				break
+			}
+		}
+		if pending {
+			return reject(s, c, "approval_pending")
+		}
 	}
 	var out Outcome
 	switch c.Evidence {
