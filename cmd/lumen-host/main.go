@@ -13,13 +13,13 @@ import (
 
 func main() { os.Exit(run(os.Args[1:])) }
 func run(args []string) int {
+	if len(args) == 0 {
+		return usage()
+	}
 	c, err := host.LoadConfig()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "configuration unavailable")
 		return 3
-	}
-	if len(args) == 0 {
-		return usage()
 	}
 	switch args[0] {
 	case "init":
@@ -42,7 +42,10 @@ func run(args []string) int {
 		}
 		return call(c, args[0])
 	default:
-		if len(args) >= 2 && (args[0] == "task" || args[0] == "approval") {
+		if len(args) == 2 && args[0] == "task" && (args[1] == "submit" || args[1] == "show" || args[1] == "cancel") {
+			return call(c, args[0]+" "+args[1])
+		}
+		if len(args) == 2 && args[0] == "approval" && args[1] == "resolve" {
 			return call(c, args[0]+" "+args[1])
 		}
 		return usage()

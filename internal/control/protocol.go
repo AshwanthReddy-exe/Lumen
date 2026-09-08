@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"syscall"
 )
 
 const (
@@ -32,15 +33,19 @@ type Response struct {
 
 func ReadRequest(r io.Reader) (Request, error) {
 	var q Request
-	b, err := bufio.NewReader(io.LimitReader(r, MaxFrameSize+1)).ReadBytes('\n')
+	br := bufio.NewReader(io.LimitReader(r, MaxFrameSize+1))
+	b, err := br.ReadBytes('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return q, err
 	}
 	if len(b) > MaxFrameSize || (err == nil && len(b) == MaxFrameSize && b[len(b)-1] != '\n') {
 		return q, ErrFrameTooLarge
 	}
-	if len(b) == 0 {
+	if len(b) == 0 || err == io.EOF {
 		return q, io.ErrUnexpectedEOF
+	}
+	if extra, _ := br.Peek(1); len(extra) != 0 {
+		return q, errors.New("trailing control data")
 	}
 	if err := json.Unmarshal(b, &q); err != nil {
 		return q, fmt.Errorf("invalid request: %w", err)
@@ -73,14 +78,22 @@ func CredentialMatches(encoded string, expected []byte) bool {
 	return err == nil && len(got) == len(candidate)
 }
 func ReadCredential(path string) ([]byte, error) {
-	st, err := os.Stat(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("credential must be a regular file")
 	}
 	if st.Mode().Perm() != 0600 {
 		return nil, fmt.Errorf("credential file must be mode 0600")
 	}
-	b, err := os.ReadFile(path)
+	b, err := io.ReadAll(io.LimitReader(f, CredentialSize+1))
 	if err != nil {
 		return nil, err
 	}

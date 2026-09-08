@@ -16,7 +16,7 @@ type Config struct{ DataDir, SocketPath, CredentialPath string }
 func LoadConfig() (Config, error) {
 	d := os.Getenv("LUMEN_DATA_DIR")
 	if d == "" {
-		d = filepath.Join(os.TempDir(), "lumen")
+		return Config{}, errors.New("LUMEN_DATA_DIR is required")
 	}
 	s := os.Getenv("LUMEN_SOCKET_PATH")
 	if s == "" {
@@ -31,6 +31,11 @@ func LoadConfig() (Config, error) {
 func (c Config) valid() error {
 	if c.DataDir == "" || c.SocketPath == "" || c.CredentialPath == "" {
 		return errors.New("incomplete configuration")
+	}
+	for _, p := range []string{c.DataDir, c.SocketPath, c.CredentialPath} {
+		if !filepath.IsAbs(p) || filepath.Clean(p) != p {
+			return errors.New("configuration paths must be absolute and clean")
+		}
 	}
 	return nil
 }
