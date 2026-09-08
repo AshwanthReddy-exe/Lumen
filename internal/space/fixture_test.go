@@ -27,11 +27,6 @@ func TestFixtures(t *testing.T) {
 			if len(tc.Commands) != len(tc.Expected.Transitions) {
 				t.Fatalf("command/transition cardinality mismatch: %d != %d", len(tc.Commands), len(tc.Expected.Transitions))
 			}
-			for i := range tc.Commands {
-				if tc.Commands[i].HostID == "" && tc.Initial.HostID != "" {
-					tc.Commands[i].HostID = tc.Initial.HostID
-				}
-			}
 			state := tc.Initial
 			for i, command := range tc.Commands {
 				transition := Apply(state, command)
@@ -41,10 +36,10 @@ func TestFixtures(t *testing.T) {
 				}
 				state = transition.State
 			}
-			if tc.Expected.State.SchemaVersion != 0 && !equalJSON(state, tc.Expected.State) {
+			if !equalJSON(state, tc.Expected.State) {
 				t.Fatalf("state mismatch: got %#v want %#v", state, tc.Expected.State)
 			}
-			if len(tc.Expected.Audit) != 0 && !equalJSONSlice(state.Audit, tc.Expected.Audit) {
+			if !equalJSONSlice(state.Audit, tc.Expected.Audit) {
 				t.Fatalf("audit mismatch: got %#v want %#v", state.Audit, tc.Expected.Audit)
 			}
 		})
@@ -64,6 +59,22 @@ func TestFixtureDecoderRejectsUnknownField(t *testing.T) {
 	err := decodeFixture([]byte(`{"schemaVersion":1,"cases":[],"unexpected":true}`), &suite)
 	if err == nil {
 		t.Fatal("expected unknown field error")
+	}
+}
+
+func TestFixtureDecoderRejectsMissingExpectedProjections(t *testing.T) {
+	var suite FixtureSuite
+	err := decodeFixture([]byte(`{"schemaVersion":1,"cases":[{"name":"missing","initial":{"schemaVersion":1,"audit":[]},"commands":[],"expected":{"transitions":[]}}]}`), &suite)
+	if err == nil {
+		t.Fatal("expected missing state/audit projection error")
+	}
+}
+
+func TestFixtureDecoderRejectsMissingHostContext(t *testing.T) {
+	var suite FixtureSuite
+	err := decodeFixture([]byte(`{"schemaVersion":1,"cases":[{"name":"missing-host","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"o","hostId":"h","epoch":1,"audit":[]},"commands":[{"type":"pair_node","spaceId":"s","epoch":1,"actorId":"o","nodeId":"n","requestId":"r"}],"expected":{"state":{"schemaVersion":1,"spaceId":"s","ownerId":"o","hostId":"h","epoch":1,"audit":[]},"audit":[],"transitions":[{"receipt":{},"rejection":"stale_host_epoch"}]}}]}`), &suite)
+	if err == nil {
+		t.Fatal("expected missing host context error")
 	}
 }
 
@@ -96,6 +107,9 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 		return fmt.Errorf("unsupported fixture schema version: %d", suite.SchemaVersion)
 	}
 	for _, tc := range suite.Cases {
+		if tc.Expected.State.SchemaVersion == 0 || tc.Expected.Audit == nil {
+			return fmt.Errorf("fixture %q missing literal state or audit projection", tc.Name)
+		}
 		if err := validateState(tc.Initial); err != nil {
 			return err
 		}
@@ -106,6 +120,12 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 			if !knownCommand(command.Type) {
 				return fmt.Errorf("unknown command type: %q", command.Type)
 			}
+			switch command.Type {
+			case CommandPairNode, CommandAdvertiseCapability, CommandSetGrant, CommandSubmit, CommandApprove, CommandComplete, CommandRecoverAfterRestart:
+				if command.HostID == "" {
+					return fmt.Errorf("fixture %q command %q missing host context", tc.Name, command.RequestID)
+				}
+			}
 		}
 		for _, transition := range tc.Expected.Transitions {
 			if transition.Receipt.Outcome != "" && transition.Receipt.Outcome != OutcomeApplied && transition.Receipt.Outcome != OutcomeAwaitingPermission && transition.Receipt.Outcome != OutcomeQueued && transition.Receipt.Outcome != OutcomeCompleted && transition.Receipt.Outcome != OutcomeFailed && transition.Receipt.Outcome != OutcomeUnknown {
@@ -113,7 +133,7 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 			}
 		}
 		for _, event := range tc.Expected.Audit {
-			if event.Event != AuditSpaceCreated {
+			if event.Event != AuditSpaceCreated && event.Event != AuditCommandAccepted && event.Event != AuditCommandRejected && event.Event != AuditCommandReplayed {
 				return fmt.Errorf("unknown audit event: %q", event.Event)
 			}
 		}
@@ -141,7 +161,7 @@ func validateState(state State) error {
 		}
 	}
 	for _, event := range state.Audit {
-		if event.Event != AuditSpaceCreated {
+		if event.Event != AuditSpaceCreated && event.Event != AuditCommandAccepted && event.Event != AuditCommandRejected && event.Event != AuditCommandReplayed {
 			return fmt.Errorf("unknown audit event: %q", event.Event)
 		}
 	}

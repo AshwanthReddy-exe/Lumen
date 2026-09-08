@@ -1,19 +1,1501 @@
 {
   "schemaVersion": 1,
   "cases": [
-    {"name":"create-space","initial":{"schemaVersion":1,"audit":[]},"commands":[{"type":"create_space","spaceId":"space-1","ownerId":"owner-1","hostId":"host-1","requestId":"req-1"}],"expected":{"state":{"schemaVersion":1,"spaceId":"space-1","ownerId":"owner-1","hostId":"host-1","epoch":1,"identities":[{"id":"owner-1","kind":"owner"},{"id":"host-1","kind":"host"}],"capabilities":[{"id":"agent.run/execute","grant":"ask"}],"audit":[{"event":"space.created","requestId":"req-1"}],"nodes":{"host-1":{"id":"host-1","status":"paired"},"owner-1":{"id":"owner-1","status":"paired"}},"commands":{"req-1":{"type":"create_space","content":"{\"type\":\"create_space\",\"spaceId\":\"space-1\",\"ownerId\":\"owner-1\",\"hostId\":\"host-1\",\"requestId\":\"req-1\"}","receipt":{"requestId":"req-1","outcome":"applied"}}}},"audit":[{"event":"space.created","requestId":"req-1"}],"transitions":[{"receipt":{"requestId":"req-1","outcome":"applied"},"rejection":""}]}},
-    {"name":"pair-node","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"host":{"id":"host","status":"paired"}},"audit":[]},"commands":[{"type":"pair_node","actorId":"owner","nodeId":"mac","requestId":"pair"}],"expected":{"transitions":[{"receipt":{"requestId":"pair","outcome":"applied","subjectId":"mac"},"rejection":""}]}},
-    {"name":"missing-advertisement","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"host":{"id":"host","status":"paired"},"mac":{"id":"mac","status":"paired"}},"audit":[]},"commands":[{"type":"submit","spaceId":"s","epoch":1,"originNodeId":"owner","targetNodeId":"mac","capabilityId":"agent.run/execute","action":"run","actionFingerprint":"d","taskId":"t","requestId":"missing"}],"expected":{"transitions":[{"receipt":{},"rejection":"capability_not_advertised"}]}},
-    {"name":"deny","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"mac":{"id":"mac","status":"paired"}},"advertisements":[{"nodeId":"mac","capabilityId":"agent.run/execute","action":"run"}],"grants":{"mac|agent.run/execute|run":"deny"},"audit":[]},"commands":[{"type":"submit","spaceId":"s","epoch":1,"originNodeId":"owner","targetNodeId":"mac","capabilityId":"agent.run/execute","action":"run","actionFingerprint":"d","taskId":"t","requestId":"deny"}],"expected":{"transitions":[{"receipt":{},"rejection":"grant_denied"}]}},
-    {"name":"ask","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"mac":{"id":"mac","status":"paired"}},"advertisements":[{"nodeId":"mac","capabilityId":"agent.run/execute","action":"run"}],"grants":{"mac|agent.run/execute|run":"ask"},"audit":[]},"commands":[{"type":"submit","spaceId":"s","epoch":1,"originNodeId":"owner","targetNodeId":"mac","capabilityId":"agent.run/execute","action":"run","actionFingerprint":"d","taskId":"t","requestId":"ask"}],"expected":{"transitions":[{"receipt":{"requestId":"ask","outcome":"awaiting_permission","subjectId":"t"},"rejection":""}]}},
-    {"name":"allow","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"mac":{"id":"mac","status":"paired"}},"advertisements":[{"nodeId":"mac","capabilityId":"agent.run/execute","action":"run"}],"grants":{"mac|agent.run/execute|run":"allow"},"audit":[]},"commands":[{"type":"submit","spaceId":"s","epoch":1,"originNodeId":"owner","targetNodeId":"mac","capabilityId":"agent.run/execute","action":"run","actionFingerprint":"d","taskId":"t","requestId":"allow"}],"expected":{"transitions":[{"receipt":{"requestId":"allow","outcome":"queued","subjectId":"t"},"rejection":""}]}},
-    {"name":"exact-approval","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"mac":{"id":"mac","status":"paired"}},"advertisements":[{"nodeId":"mac","capabilityId":"agent.run/execute","action":"run"}],"grants":{"mac|agent.run/execute|run":"ask"},"tasks":{"t":{"id":"t","targetNodeId":"mac","capabilityId":"agent.run/execute","action":"run","actionFingerprint":"d","status":"awaiting_permission"}},"audit":[]},"commands":[{"type":"approve","spaceId":"s","epoch":1,"actorId":"owner","targetNodeId":"mac","actionFingerprint":"d","taskId":"t","approvalId":"a","approvedAt":1,"expiresAt":10,"requestId":"approval"}],"expected":{"transitions":[{"receipt":{"requestId":"approval","outcome":"queued","subjectId":"t"},"rejection":""}]}},
-    {"name":"expired-approval","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"mac":{"id":"mac","status":"paired"}},"tasks":{"t":{"id":"t","targetNodeId":"mac","capabilityId":"agent.run/execute","action":"run","actionFingerprint":"d","status":"awaiting_permission"}},"audit":[]},"commands":[{"type":"approve","spaceId":"s","epoch":1,"actorId":"owner","targetNodeId":"mac","actionFingerprint":"d","taskId":"t","approvalId":"a","approvedAt":10,"expiresAt":10,"requestId":"expired"}],"expected":{"transitions":[{"receipt":{},"rejection":"approval_expired"}]}},
-    {"name":"mismatched-approval","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"mac":{"id":"mac","status":"paired"}},"tasks":{"t":{"id":"t","targetNodeId":"mac","capabilityId":"agent.run/execute","action":"run","actionFingerprint":"d","status":"awaiting_permission"}},"audit":[]},"commands":[{"type":"approve","spaceId":"s","epoch":1,"actorId":"owner","targetNodeId":"mac","actionFingerprint":"other","taskId":"t","approvalId":"a","approvedAt":1,"expiresAt":10,"requestId":"mismatch"}],"expected":{"transitions":[{"receipt":{},"rejection":"approval_mismatch"}]}},
-    {"name":"stale-epoch","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":2,"nodes":{"owner":{"id":"owner","status":"paired"},"mac":{"id":"mac","status":"paired"}},"audit":[]},"commands":[{"type":"submit","spaceId":"s","epoch":1,"originNodeId":"owner","targetNodeId":"mac","capabilityId":"agent.run/execute","action":"run","actionFingerprint":"d","taskId":"t","requestId":"stale"}],"expected":{"transitions":[{"receipt":{},"rejection":"stale_host_epoch"}]}},
-    {"name":"duplicate-and-collision","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"host":{"id":"host","status":"paired"}},"audit":[]},"commands":[{"type":"pair_node","actorId":"owner","nodeId":"mac","requestId":"p"},{"type":"pair_node","actorId":"owner","nodeId":"mac","requestId":"p"},{"type":"pair_node","actorId":"owner","nodeId":"other","requestId":"p"}],"expected":{"transitions":[{"receipt":{"requestId":"p","outcome":"applied","subjectId":"mac"},"rejection":""},{"receipt":{"requestId":"p","outcome":"applied","subjectId":"mac"},"rejection":""},{"receipt":{},"rejection":"idempotency_key_reused"}]}},
-    {"name":"revocation","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"host":{"id":"host","status":"paired"},"mac":{"id":"mac","status":"paired"}},"tasks":{"t":{"id":"t","originNodeId":"owner","targetNodeId":"mac","status":"queued"}},"audit":[]},"commands":[{"type":"revoke_node","actorId":"owner","nodeId":"mac","requestId":"revoke"}],"expected":{"transitions":[{"receipt":{"requestId":"revoke","outcome":"applied","subjectId":"mac"},"rejection":""}]}},
-    {"name":"completion","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"mac":{"id":"mac","status":"paired"}},"tasks":{"t":{"id":"t","targetNodeId":"mac","status":"queued"}},"audit":[]},"commands":[{"type":"complete","spaceId":"s","epoch":1,"actorId":"mac","taskId":"t","outcome":"completed","requestId":"complete"}],"expected":{"transitions":[{"receipt":{"requestId":"complete","outcome":"completed","subjectId":"t"},"rejection":""}]}},
-    {"name":"restart-recovery","initial":{"schemaVersion":1,"spaceId":"s","ownerId":"owner","hostId":"host","epoch":1,"nodes":{"owner":{"id":"owner","status":"paired"},"host":{"id":"host","status":"paired"}},"tasks":{"t":{"id":"t","targetNodeId":"host","status":"queued"}},"audit":[]},"commands":[{"type":"recover_after_restart","spaceId":"s","epoch":1,"actorId":"host","requestId":"restart"}],"expected":{"transitions":[{"receipt":{"requestId":"restart","outcome":"applied","subjectId":"s"},"rejection":""}]}}
+    {
+      "name": "create-space",
+      "initial": {
+        "schemaVersion": 1,
+        "audit": []
+      },
+      "commands": [
+        {
+          "type": "create_space",
+          "spaceId": "space-1",
+          "ownerId": "owner-1",
+          "hostId": "host-1",
+          "requestId": "req-1"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "space-1",
+          "ownerId": "owner-1",
+          "hostId": "host-1",
+          "epoch": 1,
+          "identities": [
+            {
+              "id": "owner-1",
+              "kind": "owner"
+            },
+            {
+              "id": "host-1",
+              "kind": "host"
+            }
+          ],
+          "capabilities": [
+            {
+              "id": "agent.run/execute",
+              "grant": "ask"
+            }
+          ],
+          "audit": [
+            {
+              "event": "space.created",
+              "requestId": "req-1"
+            }
+          ],
+          "nodes": {
+            "host-1": {
+              "id": "host-1",
+              "status": "paired"
+            },
+            "owner-1": {
+              "id": "owner-1",
+              "status": "paired"
+            }
+          },
+          "commands": {
+            "req-1": {
+              "type": "create_space",
+              "content": "{\"type\":\"create_space\",\"spaceId\":\"space-1\",\"ownerId\":\"owner-1\",\"hostId\":\"host-1\",\"requestId\":\"req-1\"}",
+              "receipt": {
+                "requestId": "req-1",
+                "outcome": "applied"
+              }
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "space.created",
+            "requestId": "req-1"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {
+              "requestId": "req-1",
+              "outcome": "applied"
+            },
+            "rejection": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "pair-node",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "host": {
+            "id": "host",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        }
+      },
+      "commands": [
+        {
+          "type": "pair_node",
+          "spaceId": "",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "pair",
+          "actorId": "owner",
+          "nodeId": "mac"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.rejected",
+              "requestId": "pair"
+            }
+          ],
+          "nodes": {
+            "host": {
+              "id": "host",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "commands": {
+            "pair": {
+              "type": "pair_node",
+              "content": "{\"type\":\"pair_node\",\"spaceId\":\"\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"pair\",\"actorId\":\"owner\",\"nodeId\":\"mac\"}",
+              "rejection": "stale_host_epoch"
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.rejected",
+            "requestId": "pair"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {},
+            "rejection": "stale_host_epoch"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing-advertisement",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "host": {
+            "id": "host",
+            "status": "paired"
+          },
+          "mac": {
+            "id": "mac",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        }
+      },
+      "commands": [
+        {
+          "type": "submit",
+          "spaceId": "s",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "missing",
+          "epoch": 1,
+          "capabilityId": "agent.run/execute",
+          "action": "run",
+          "actionFingerprint": "d",
+          "taskId": "t",
+          "originNodeId": "owner",
+          "targetNodeId": "mac"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.rejected",
+              "requestId": "missing"
+            }
+          ],
+          "nodes": {
+            "host": {
+              "id": "host",
+              "status": "paired"
+            },
+            "mac": {
+              "id": "mac",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "commands": {
+            "missing": {
+              "type": "submit",
+              "content": "{\"type\":\"submit\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"missing\",\"epoch\":1,\"capabilityId\":\"agent.run/execute\",\"action\":\"run\",\"actionFingerprint\":\"d\",\"taskId\":\"t\",\"originNodeId\":\"owner\",\"targetNodeId\":\"mac\"}",
+              "rejection": "capability_not_advertised"
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.rejected",
+            "requestId": "missing"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {},
+            "rejection": "capability_not_advertised"
+          }
+        ]
+      }
+    },
+    {
+      "name": "deny",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "mac": {
+            "id": "mac",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        },
+        "advertisements": [
+          {
+            "nodeId": "mac",
+            "capabilityId": "agent.run/execute",
+            "action": "run"
+          }
+        ],
+        "grants": {
+          "mac|agent.run/execute|run": "deny"
+        }
+      },
+      "commands": [
+        {
+          "type": "submit",
+          "spaceId": "s",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "deny",
+          "epoch": 1,
+          "capabilityId": "agent.run/execute",
+          "action": "run",
+          "actionFingerprint": "d",
+          "taskId": "t",
+          "originNodeId": "owner",
+          "targetNodeId": "mac"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.rejected",
+              "requestId": "deny"
+            }
+          ],
+          "nodes": {
+            "mac": {
+              "id": "mac",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "advertisements": [
+            {
+              "nodeId": "mac",
+              "capabilityId": "agent.run/execute",
+              "action": "run"
+            }
+          ],
+          "grants": {
+            "mac|agent.run/execute|run": "deny"
+          },
+          "commands": {
+            "deny": {
+              "type": "submit",
+              "content": "{\"type\":\"submit\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"deny\",\"epoch\":1,\"capabilityId\":\"agent.run/execute\",\"action\":\"run\",\"actionFingerprint\":\"d\",\"taskId\":\"t\",\"originNodeId\":\"owner\",\"targetNodeId\":\"mac\"}",
+              "rejection": "grant_denied"
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.rejected",
+            "requestId": "deny"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {},
+            "rejection": "grant_denied"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ask",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "mac": {
+            "id": "mac",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        },
+        "advertisements": [
+          {
+            "nodeId": "mac",
+            "capabilityId": "agent.run/execute",
+            "action": "run"
+          }
+        ],
+        "grants": {
+          "mac|agent.run/execute|run": "ask"
+        }
+      },
+      "commands": [
+        {
+          "type": "submit",
+          "spaceId": "s",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "ask",
+          "epoch": 1,
+          "capabilityId": "agent.run/execute",
+          "action": "run",
+          "actionFingerprint": "d",
+          "taskId": "t",
+          "originNodeId": "owner",
+          "targetNodeId": "mac"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.accepted",
+              "requestId": "ask"
+            }
+          ],
+          "nodes": {
+            "mac": {
+              "id": "mac",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "advertisements": [
+            {
+              "nodeId": "mac",
+              "capabilityId": "agent.run/execute",
+              "action": "run"
+            }
+          ],
+          "grants": {
+            "mac|agent.run/execute|run": "ask"
+          },
+          "tasks": {
+            "t": {
+              "id": "t",
+              "commandId": "ask",
+              "originNodeId": "owner",
+              "targetNodeId": "mac",
+              "capabilityId": "agent.run/execute",
+              "action": "run",
+              "actionFingerprint": "d",
+              "hostEpoch": 1,
+              "status": "awaiting_permission"
+            }
+          },
+          "commands": {
+            "ask": {
+              "type": "submit",
+              "content": "{\"type\":\"submit\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"ask\",\"epoch\":1,\"capabilityId\":\"agent.run/execute\",\"action\":\"run\",\"actionFingerprint\":\"d\",\"taskId\":\"t\",\"originNodeId\":\"owner\",\"targetNodeId\":\"mac\"}",
+              "receipt": {
+                "requestId": "ask",
+                "outcome": "awaiting_permission",
+                "subjectId": "t"
+              }
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.accepted",
+            "requestId": "ask"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {
+              "requestId": "ask",
+              "outcome": "awaiting_permission",
+              "subjectId": "t"
+            },
+            "rejection": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "allow",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "mac": {
+            "id": "mac",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        },
+        "advertisements": [
+          {
+            "nodeId": "mac",
+            "capabilityId": "agent.run/execute",
+            "action": "run"
+          }
+        ],
+        "grants": {
+          "mac|agent.run/execute|run": "allow"
+        }
+      },
+      "commands": [
+        {
+          "type": "submit",
+          "spaceId": "s",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "allow",
+          "epoch": 1,
+          "capabilityId": "agent.run/execute",
+          "action": "run",
+          "actionFingerprint": "d",
+          "taskId": "t",
+          "originNodeId": "owner",
+          "targetNodeId": "mac"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.accepted",
+              "requestId": "allow"
+            }
+          ],
+          "nodes": {
+            "mac": {
+              "id": "mac",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "advertisements": [
+            {
+              "nodeId": "mac",
+              "capabilityId": "agent.run/execute",
+              "action": "run"
+            }
+          ],
+          "grants": {
+            "mac|agent.run/execute|run": "allow"
+          },
+          "tasks": {
+            "t": {
+              "id": "t",
+              "commandId": "allow",
+              "originNodeId": "owner",
+              "targetNodeId": "mac",
+              "capabilityId": "agent.run/execute",
+              "action": "run",
+              "actionFingerprint": "d",
+              "hostEpoch": 1,
+              "status": "queued"
+            }
+          },
+          "commands": {
+            "allow": {
+              "type": "submit",
+              "content": "{\"type\":\"submit\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"allow\",\"epoch\":1,\"capabilityId\":\"agent.run/execute\",\"action\":\"run\",\"actionFingerprint\":\"d\",\"taskId\":\"t\",\"originNodeId\":\"owner\",\"targetNodeId\":\"mac\"}",
+              "receipt": {
+                "requestId": "allow",
+                "outcome": "queued",
+                "subjectId": "t"
+              }
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.accepted",
+            "requestId": "allow"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {
+              "requestId": "allow",
+              "outcome": "queued",
+              "subjectId": "t"
+            },
+            "rejection": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "exact-approval",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "mac": {
+            "id": "mac",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        },
+        "advertisements": [
+          {
+            "nodeId": "mac",
+            "capabilityId": "agent.run/execute",
+            "action": "run"
+          }
+        ],
+        "grants": {
+          "mac|agent.run/execute|run": "ask"
+        },
+        "tasks": {
+          "t": {
+            "id": "t",
+            "commandId": "",
+            "originNodeId": "",
+            "targetNodeId": "mac",
+            "capabilityId": "agent.run/execute",
+            "action": "run",
+            "actionFingerprint": "d",
+            "hostEpoch": 0,
+            "status": "awaiting_permission"
+          }
+        }
+      },
+      "commands": [
+        {
+          "type": "approve",
+          "spaceId": "s",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "approval",
+          "epoch": 1,
+          "actorId": "owner",
+          "actionFingerprint": "d",
+          "taskId": "t",
+          "targetNodeId": "mac",
+          "approvalId": "a",
+          "expiresAt": 10,
+          "approvedAt": 1
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.accepted",
+              "requestId": "approval"
+            }
+          ],
+          "nodes": {
+            "mac": {
+              "id": "mac",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "advertisements": [
+            {
+              "nodeId": "mac",
+              "capabilityId": "agent.run/execute",
+              "action": "run"
+            }
+          ],
+          "grants": {
+            "mac|agent.run/execute|run": "ask"
+          },
+          "tasks": {
+            "t": {
+              "id": "t",
+              "commandId": "",
+              "originNodeId": "",
+              "targetNodeId": "mac",
+              "capabilityId": "agent.run/execute",
+              "action": "run",
+              "actionFingerprint": "d",
+              "hostEpoch": 0,
+              "status": "queued"
+            }
+          },
+          "approvals": {
+            "a": {
+              "id": "a",
+              "taskId": "t",
+              "actorNodeId": "owner",
+              "targetNodeId": "mac",
+              "actionFingerprint": "d",
+              "expiresAt": 10,
+              "consumedAt": 1
+            }
+          },
+          "commands": {
+            "approval": {
+              "type": "approve",
+              "content": "{\"type\":\"approve\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"approval\",\"epoch\":1,\"actorId\":\"owner\",\"actionFingerprint\":\"d\",\"taskId\":\"t\",\"targetNodeId\":\"mac\",\"approvalId\":\"a\",\"expiresAt\":10,\"approvedAt\":1}",
+              "receipt": {
+                "requestId": "approval",
+                "outcome": "queued",
+                "subjectId": "t"
+              }
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.accepted",
+            "requestId": "approval"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {
+              "requestId": "approval",
+              "outcome": "queued",
+              "subjectId": "t"
+            },
+            "rejection": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "expired-approval",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "mac": {
+            "id": "mac",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        },
+        "tasks": {
+          "t": {
+            "id": "t",
+            "commandId": "",
+            "originNodeId": "",
+            "targetNodeId": "mac",
+            "capabilityId": "agent.run/execute",
+            "action": "run",
+            "actionFingerprint": "d",
+            "hostEpoch": 0,
+            "status": "awaiting_permission"
+          }
+        }
+      },
+      "commands": [
+        {
+          "type": "approve",
+          "spaceId": "s",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "expired",
+          "epoch": 1,
+          "actorId": "owner",
+          "actionFingerprint": "d",
+          "taskId": "t",
+          "targetNodeId": "mac",
+          "approvalId": "a",
+          "expiresAt": 10,
+          "approvedAt": 10
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.rejected",
+              "requestId": "expired"
+            }
+          ],
+          "nodes": {
+            "mac": {
+              "id": "mac",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "tasks": {
+            "t": {
+              "id": "t",
+              "commandId": "",
+              "originNodeId": "",
+              "targetNodeId": "mac",
+              "capabilityId": "agent.run/execute",
+              "action": "run",
+              "actionFingerprint": "d",
+              "hostEpoch": 0,
+              "status": "awaiting_permission"
+            }
+          },
+          "commands": {
+            "expired": {
+              "type": "approve",
+              "content": "{\"type\":\"approve\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"expired\",\"epoch\":1,\"actorId\":\"owner\",\"actionFingerprint\":\"d\",\"taskId\":\"t\",\"targetNodeId\":\"mac\",\"approvalId\":\"a\",\"expiresAt\":10,\"approvedAt\":10}",
+              "rejection": "approval_expired"
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.rejected",
+            "requestId": "expired"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {},
+            "rejection": "approval_expired"
+          }
+        ]
+      }
+    },
+    {
+      "name": "mismatched-approval",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "mac": {
+            "id": "mac",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        },
+        "tasks": {
+          "t": {
+            "id": "t",
+            "commandId": "",
+            "originNodeId": "",
+            "targetNodeId": "mac",
+            "capabilityId": "agent.run/execute",
+            "action": "run",
+            "actionFingerprint": "d",
+            "hostEpoch": 0,
+            "status": "awaiting_permission"
+          }
+        }
+      },
+      "commands": [
+        {
+          "type": "approve",
+          "spaceId": "s",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "mismatch",
+          "epoch": 1,
+          "actorId": "owner",
+          "actionFingerprint": "other",
+          "taskId": "t",
+          "targetNodeId": "mac",
+          "approvalId": "a",
+          "expiresAt": 10,
+          "approvedAt": 1
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.rejected",
+              "requestId": "mismatch"
+            }
+          ],
+          "nodes": {
+            "mac": {
+              "id": "mac",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "tasks": {
+            "t": {
+              "id": "t",
+              "commandId": "",
+              "originNodeId": "",
+              "targetNodeId": "mac",
+              "capabilityId": "agent.run/execute",
+              "action": "run",
+              "actionFingerprint": "d",
+              "hostEpoch": 0,
+              "status": "awaiting_permission"
+            }
+          },
+          "commands": {
+            "mismatch": {
+              "type": "approve",
+              "content": "{\"type\":\"approve\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"mismatch\",\"epoch\":1,\"actorId\":\"owner\",\"actionFingerprint\":\"other\",\"taskId\":\"t\",\"targetNodeId\":\"mac\",\"approvalId\":\"a\",\"expiresAt\":10,\"approvedAt\":1}",
+              "rejection": "approval_mismatch"
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.rejected",
+            "requestId": "mismatch"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {},
+            "rejection": "approval_mismatch"
+          }
+        ]
+      }
+    },
+    {
+      "name": "stale-epoch",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 2,
+        "audit": [],
+        "nodes": {
+          "mac": {
+            "id": "mac",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        }
+      },
+      "commands": [
+        {
+          "type": "submit",
+          "spaceId": "s",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "stale",
+          "epoch": 1,
+          "capabilityId": "agent.run/execute",
+          "action": "run",
+          "actionFingerprint": "d",
+          "taskId": "t",
+          "originNodeId": "owner",
+          "targetNodeId": "mac"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 2,
+          "audit": [
+            {
+              "event": "command.rejected",
+              "requestId": "stale"
+            }
+          ],
+          "nodes": {
+            "mac": {
+              "id": "mac",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "commands": {
+            "stale": {
+              "type": "submit",
+              "content": "{\"type\":\"submit\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"stale\",\"epoch\":1,\"capabilityId\":\"agent.run/execute\",\"action\":\"run\",\"actionFingerprint\":\"d\",\"taskId\":\"t\",\"originNodeId\":\"owner\",\"targetNodeId\":\"mac\"}",
+              "rejection": "stale_host_epoch"
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.rejected",
+            "requestId": "stale"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {},
+            "rejection": "stale_host_epoch"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate-and-collision",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "host": {
+            "id": "host",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        }
+      },
+      "commands": [
+        {
+          "type": "pair_node",
+          "spaceId": "",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "p",
+          "actorId": "owner",
+          "nodeId": "mac"
+        },
+        {
+          "type": "pair_node",
+          "spaceId": "",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "p",
+          "actorId": "owner",
+          "nodeId": "mac"
+        },
+        {
+          "type": "pair_node",
+          "spaceId": "",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "p",
+          "actorId": "owner",
+          "nodeId": "other"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.rejected",
+              "requestId": "p"
+            },
+            {
+              "event": "command.replayed",
+              "requestId": "p"
+            },
+            {
+              "event": "command.rejected",
+              "requestId": "p"
+            }
+          ],
+          "nodes": {
+            "host": {
+              "id": "host",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "commands": {
+            "p": {
+              "type": "pair_node",
+              "content": "{\"type\":\"pair_node\",\"spaceId\":\"\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"p\",\"actorId\":\"owner\",\"nodeId\":\"mac\"}",
+              "rejection": "stale_host_epoch"
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.rejected",
+            "requestId": "p"
+          },
+          {
+            "event": "command.replayed",
+            "requestId": "p"
+          },
+          {
+            "event": "command.rejected",
+            "requestId": "p"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {},
+            "rejection": "stale_host_epoch"
+          },
+          {
+            "receipt": {},
+            "rejection": "stale_host_epoch"
+          },
+          {
+            "receipt": {},
+            "rejection": "idempotency_key_reused"
+          }
+        ]
+      }
+    },
+    {
+      "name": "revocation",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "host": {
+            "id": "host",
+            "status": "paired"
+          },
+          "mac": {
+            "id": "mac",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        },
+        "tasks": {
+          "t": {
+            "id": "t",
+            "commandId": "",
+            "originNodeId": "owner",
+            "targetNodeId": "mac",
+            "capabilityId": "",
+            "action": "",
+            "actionFingerprint": "",
+            "hostEpoch": 0,
+            "status": "queued"
+          }
+        }
+      },
+      "commands": [
+        {
+          "type": "revoke_node",
+          "spaceId": "",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "revoke",
+          "actorId": "owner",
+          "nodeId": "mac"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.accepted",
+              "requestId": "revoke"
+            }
+          ],
+          "nodes": {
+            "host": {
+              "id": "host",
+              "status": "paired"
+            },
+            "mac": {
+              "id": "mac",
+              "status": "revoked"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "tasks": {
+            "t": {
+              "id": "t",
+              "commandId": "",
+              "originNodeId": "owner",
+              "targetNodeId": "mac",
+              "capabilityId": "",
+              "action": "",
+              "actionFingerprint": "",
+              "hostEpoch": 0,
+              "status": "failed",
+              "terminalReason": "node_revoked"
+            }
+          },
+          "commands": {
+            "revoke": {
+              "type": "revoke_node",
+              "content": "{\"type\":\"revoke_node\",\"spaceId\":\"\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"revoke\",\"actorId\":\"owner\",\"nodeId\":\"mac\"}",
+              "receipt": {
+                "requestId": "revoke",
+                "outcome": "applied",
+                "subjectId": "mac"
+              }
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.accepted",
+            "requestId": "revoke"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {
+              "requestId": "revoke",
+              "outcome": "applied",
+              "subjectId": "mac"
+            },
+            "rejection": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "completion",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "mac": {
+            "id": "mac",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        },
+        "tasks": {
+          "t": {
+            "id": "t",
+            "commandId": "",
+            "originNodeId": "",
+            "targetNodeId": "mac",
+            "capabilityId": "",
+            "action": "",
+            "actionFingerprint": "",
+            "hostEpoch": 0,
+            "status": "queued"
+          }
+        }
+      },
+      "commands": [
+        {
+          "type": "complete",
+          "spaceId": "s",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "complete",
+          "epoch": 1,
+          "actorId": "mac",
+          "taskId": "t",
+          "outcome": "completed"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.accepted",
+              "requestId": "complete"
+            }
+          ],
+          "nodes": {
+            "mac": {
+              "id": "mac",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "tasks": {
+            "t": {
+              "id": "t",
+              "commandId": "",
+              "originNodeId": "",
+              "targetNodeId": "mac",
+              "capabilityId": "",
+              "action": "",
+              "actionFingerprint": "",
+              "hostEpoch": 0,
+              "status": "completed"
+            }
+          },
+          "commands": {
+            "complete": {
+              "type": "complete",
+              "content": "{\"type\":\"complete\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"complete\",\"epoch\":1,\"actorId\":\"mac\",\"taskId\":\"t\",\"outcome\":\"completed\"}",
+              "receipt": {
+                "requestId": "complete",
+                "outcome": "completed",
+                "subjectId": "t"
+              }
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.accepted",
+            "requestId": "complete"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {
+              "requestId": "complete",
+              "outcome": "completed",
+              "subjectId": "t"
+            },
+            "rejection": ""
+          }
+        ]
+      }
+    },
+    {
+      "name": "restart-recovery",
+      "initial": {
+        "schemaVersion": 1,
+        "spaceId": "s",
+        "ownerId": "owner",
+        "hostId": "host",
+        "epoch": 1,
+        "audit": [],
+        "nodes": {
+          "host": {
+            "id": "host",
+            "status": "paired"
+          },
+          "owner": {
+            "id": "owner",
+            "status": "paired"
+          }
+        },
+        "tasks": {
+          "t": {
+            "id": "t",
+            "commandId": "",
+            "originNodeId": "",
+            "targetNodeId": "host",
+            "capabilityId": "",
+            "action": "",
+            "actionFingerprint": "",
+            "hostEpoch": 0,
+            "status": "queued"
+          }
+        }
+      },
+      "commands": [
+        {
+          "type": "recover_after_restart",
+          "spaceId": "s",
+          "ownerId": "",
+          "hostId": "host",
+          "requestId": "restart",
+          "epoch": 1,
+          "actorId": "host"
+        }
+      ],
+      "expected": {
+        "state": {
+          "schemaVersion": 1,
+          "spaceId": "s",
+          "ownerId": "owner",
+          "hostId": "host",
+          "epoch": 1,
+          "audit": [
+            {
+              "event": "command.accepted",
+              "requestId": "restart"
+            }
+          ],
+          "nodes": {
+            "host": {
+              "id": "host",
+              "status": "paired"
+            },
+            "owner": {
+              "id": "owner",
+              "status": "paired"
+            }
+          },
+          "tasks": {
+            "t": {
+              "id": "t",
+              "commandId": "",
+              "originNodeId": "",
+              "targetNodeId": "host",
+              "capabilityId": "",
+              "action": "",
+              "actionFingerprint": "",
+              "hostEpoch": 0,
+              "status": "unknown_outcome",
+              "terminalReason": "host_restarted"
+            }
+          },
+          "commands": {
+            "restart": {
+              "type": "recover_after_restart",
+              "content": "{\"type\":\"recover_after_restart\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"restart\",\"epoch\":1,\"actorId\":\"host\"}",
+              "receipt": {
+                "requestId": "restart",
+                "outcome": "applied",
+                "subjectId": "s"
+              }
+            }
+          }
+        },
+        "audit": [
+          {
+            "event": "command.accepted",
+            "requestId": "restart"
+          }
+        ],
+        "transitions": [
+          {
+            "receipt": {
+              "requestId": "restart",
+              "outcome": "applied",
+              "subjectId": "s"
+            },
+            "rejection": ""
+          }
+        ]
+      }
+    }
   ]
 }

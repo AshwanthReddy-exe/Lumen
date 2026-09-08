@@ -94,6 +94,9 @@ func create(s State, c Command) Transition {
 	return Transition{State: s, Receipt: Receipt{RequestID: commandID(c), Outcome: OutcomeApplied}}
 }
 func pair(s State, c Command) Transition {
+	if c.SpaceID != s.SpaceID || c.HostID != s.HostID || c.Epoch == 0 || c.Epoch != s.Epoch {
+		return reject(s, c, "stale_host_epoch")
+	}
 	if !owner(s, c.ActorID) || !valid(c.NodeID) {
 		return reject(s, c, "unauthorized_actor")
 	}
@@ -107,6 +110,9 @@ func pair(s State, c Command) Transition {
 	return accepted(s, c, OutcomeApplied, c.NodeID)
 }
 func advertise(s State, c Command) Transition {
+	if c.SpaceID != s.SpaceID || c.HostID != s.HostID || c.Epoch == 0 || c.Epoch != s.Epoch {
+		return reject(s, c, "stale_host_epoch")
+	}
 	if c.ActorID != c.NodeID || !paired(s, c.NodeID) || !valid(c.CapabilityID) || !valid(c.Action) {
 		return reject(s, c, "unauthorized_actor")
 	}
@@ -114,6 +120,9 @@ func advertise(s State, c Command) Transition {
 	return accepted(s, c, OutcomeApplied, c.NodeID)
 }
 func setGrant(s State, c Command) Transition {
+	if c.SpaceID != s.SpaceID || c.HostID != s.HostID || c.Epoch == 0 || c.Epoch != s.Epoch {
+		return reject(s, c, "stale_host_epoch")
+	}
 	k := c.NodeID + "|" + c.CapabilityID + "|" + c.Action
 	if !owner(s, c.ActorID) {
 		return reject(s, c, "unauthorized_actor")

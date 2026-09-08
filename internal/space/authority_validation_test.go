@@ -20,6 +20,18 @@ func TestAuthorityRequiresHostEpochAndCompletionActor(t *testing.T) {
 	}
 }
 
+func TestPolicyCommandsRequireCurrentHostContext(t *testing.T) {
+	for _, c := range []Command{
+		{Type: CommandPairNode, SpaceID: "s", HostID: "", Epoch: 1, ActorID: "owner", NodeID: "x", RequestID: "p"},
+		{Type: CommandAdvertiseCapability, SpaceID: "s", HostID: "other", Epoch: 1, ActorID: "mac", NodeID: "mac", CapabilityID: "cap", Action: "run", RequestID: "a"},
+		{Type: CommandSetGrant, SpaceID: "wrong", HostID: "host", Epoch: 0, ActorID: "owner", NodeID: "mac", CapabilityID: "cap", Action: "run", Grant: GrantAllow, RequestID: "g"},
+	} {
+		if tr := Apply(validState(), c); tr.Rejection != "stale_host_epoch" {
+			t.Fatalf("context rejection: %#v", tr)
+		}
+	}
+}
+
 func TestUnknownGrantDefaultsDeny(t *testing.T) {
 	s := validState()
 	s.Grants["mac|cap|run"] = "allow_all"
