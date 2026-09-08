@@ -74,3 +74,16 @@ func TestHostRunTimeoutRestartUnknownAndEvidenceBoundResolution(t *testing.T) {
 		t.Fatalf("bound resolution: %#v", good)
 	}
 }
+
+func TestHostRunRejectsPreDispatchEvidenceAndStaleRunningAfterCancellation(t *testing.T) {
+	d := Apply(executionState(OutcomeQueued), Command{Type: CommandDispatchHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "d", TaskID: "task", RuntimeRunID: "r", RuntimeProfileDigest: "p", DispatchedAt: 100, ReconcileBy: 200})
+	pre := Apply(d.State, Command{Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "pre", TaskID: "task", RuntimeRunID: "r", RuntimeProfileDigest: "p", Evidence: EvidenceRunning, ObservedAt: 99})
+	if pre.Rejection != "invalid_timestamp" {
+		t.Fatalf("pre-dispatch evidence: %#v", pre)
+	}
+	c := Apply(d.State, Command{Type: CommandRequestHostRunCancellation, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "owner", RequestID: "c", TaskID: "task", RuntimeRunID: "r", RuntimeProfileDigest: "p", ObservedAt: 100})
+	stale := Apply(c.State, Command{Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "stale", TaskID: "task", RuntimeRunID: "r", RuntimeProfileDigest: "p", Evidence: EvidenceRunning, ObservedAt: 101})
+	if stale.Rejection != "cancellation_in_progress" || stale.State.Tasks["task"].Status != OutcomeCancelling {
+		t.Fatalf("stale running evidence: %#v", stale)
+	}
+}

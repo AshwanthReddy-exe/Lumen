@@ -67,7 +67,7 @@ func reconcileHostRun(s State, c Command) Transition {
 	if reason != "" {
 		return reject(s, c, reason)
 	}
-	if c.ObservedAt <= 0 {
+	if c.ObservedAt < r.DispatchedAt {
 		return reject(s, c, "invalid_timestamp")
 	}
 	if c.Evidence != EvidenceRunning && c.Evidence != EvidenceCompleted && c.Evidence != EvidenceFailed && c.Evidence != EvidenceCancelled && c.Evidence != EvidenceUnavailable {
@@ -75,6 +75,9 @@ func reconcileHostRun(s State, c Command) Transition {
 	}
 	if t.Status == OutcomeCompleted || t.Status == OutcomeFailed || t.Status == OutcomeCancelled {
 		return reject(s, c, "terminal_task_state")
+	}
+	if t.Status == OutcomeCancelling && c.Evidence == EvidenceRunning {
+		return reject(s, c, "cancellation_in_progress")
 	}
 	var out Outcome
 	switch c.Evidence {

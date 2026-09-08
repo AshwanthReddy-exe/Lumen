@@ -128,7 +128,7 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 			}
 		}
 		for _, transition := range tc.Expected.Transitions {
-			if transition.Receipt.Outcome != "" && transition.Receipt.Outcome != OutcomeApplied && transition.Receipt.Outcome != OutcomeAwaitingPermission && transition.Receipt.Outcome != OutcomeQueued && transition.Receipt.Outcome != OutcomeCompleted && transition.Receipt.Outcome != OutcomeFailed && transition.Receipt.Outcome != OutcomeUnknown {
+			if transition.Receipt.Outcome != "" && transition.Receipt.Outcome != OutcomeApplied && transition.Receipt.Outcome != OutcomeAwaitingPermission && transition.Receipt.Outcome != OutcomeQueued && transition.Receipt.Outcome != OutcomeCompleted && transition.Receipt.Outcome != OutcomeFailed && transition.Receipt.Outcome != OutcomeUnknown && transition.Receipt.Outcome != OutcomeDispatched && transition.Receipt.Outcome != OutcomeRunning && transition.Receipt.Outcome != OutcomeCancelling && transition.Receipt.Outcome != OutcomeCancelled {
 				return fmt.Errorf("unknown receipt outcome: %q", transition.Receipt.Outcome)
 			}
 		}
