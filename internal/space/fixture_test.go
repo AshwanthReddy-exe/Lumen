@@ -91,20 +91,45 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 		return fmt.Errorf("unsupported fixture schema version: %d", suite.SchemaVersion)
 	}
 	for _, tc := range suite.Cases {
-		for _, identity := range tc.Initial.Identities {
-			if identity.Kind != IdentityOwner && identity.Kind != IdentityHost {
-				return fmt.Errorf("unknown identity kind: %q", identity.Kind)
+		if err := validateState(tc.Initial); err != nil {
+			return err
+		}
+		if err := validateState(tc.Expected.State); err != nil {
+			return err
+		}
+		for _, command := range tc.Commands {
+			if command.Type != CommandCreateSpace {
+				return fmt.Errorf("unknown command type: %q", command.Type)
 			}
 		}
-		for _, capability := range tc.Initial.Capabilities {
-			if capability.Grant != GrantDeny && capability.Grant != GrantAsk && capability.Grant != GrantAllow {
-				return fmt.Errorf("unknown grant: %q", capability.Grant)
+		for _, transition := range tc.Expected.Transitions {
+			if transition.Receipt.Outcome != "" && transition.Receipt.Outcome != OutcomeApplied {
+				return fmt.Errorf("unknown receipt outcome: %q", transition.Receipt.Outcome)
 			}
 		}
-		for _, event := range tc.Initial.Audit {
+		for _, event := range tc.Expected.Audit {
 			if event.Event != AuditSpaceCreated {
 				return fmt.Errorf("unknown audit event: %q", event.Event)
 			}
+		}
+	}
+	return nil
+}
+
+func validateState(state State) error {
+	for _, identity := range state.Identities {
+		if identity.Kind != IdentityOwner && identity.Kind != IdentityHost {
+			return fmt.Errorf("unknown identity kind: %q", identity.Kind)
+		}
+	}
+	for _, capability := range state.Capabilities {
+		if capability.Grant != GrantDeny && capability.Grant != GrantAsk && capability.Grant != GrantAllow {
+			return fmt.Errorf("unknown grant: %q", capability.Grant)
+		}
+	}
+	for _, event := range state.Audit {
+		if event.Event != AuditSpaceCreated {
+			return fmt.Errorf("unknown audit event: %q", event.Event)
 		}
 	}
 	return nil
