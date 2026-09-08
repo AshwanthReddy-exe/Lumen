@@ -27,6 +27,7 @@ type Server struct {
 	socketInfo  os.FileInfo
 	onResponse  func(Request, Response)
 	mu          sync.Mutex
+	ownershipMu sync.Mutex
 	closeOnce   sync.Once
 }
 
@@ -208,6 +209,8 @@ func writeLockIdentity(lock *os.File, info os.FileInfo) error {
 }
 
 func (s *Server) releaseOwnership() {
+	s.ownershipMu.Lock()
+	defer s.ownershipMu.Unlock()
 	if s.lock != nil {
 		_ = syscall.Flock(int(s.lock.Fd()), syscall.LOCK_UN)
 		_ = s.lock.Close()

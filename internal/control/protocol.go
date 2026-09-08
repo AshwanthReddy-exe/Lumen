@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"syscall"
 )
 
@@ -22,6 +23,11 @@ var (
 	ErrFrameTooLarge    = errors.New("control frame exceeds 64 KiB")
 	ErrMissingDelimiter = errors.New("control frame is missing a newline delimiter")
 	ErrTrailingData     = errors.New("trailing control data")
+)
+
+var (
+	credentialSyncFile   = func(f *os.File) error { return f.Sync() }
+	credentialSyncParent = syncCredentialParent
 )
 
 type Request struct {
@@ -135,11 +141,32 @@ func WriteCredential(path string, b []byte) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	if _, err = f.Write(b); err != nil {
+		_ = f.Close()
 		return err
 	}
-	return f.Chmod(0600)
+	if err = f.Chmod(0600); err == nil {
+		err = credentialSyncFile(f)
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	return credentialSyncParent(path)
+}
+
+func syncCredentialParent(path string) error {
+	d, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	err = d.Sync()
+	if closeErr := d.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 func NewCredential() ([]byte, error) {
 	b := make([]byte, CredentialSize)

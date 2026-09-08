@@ -40,6 +40,23 @@ func TestCredentialFileIsRestrictedAndConstantTimeServerAuth(t *testing.T) {
 	}
 }
 
+func TestWriteCredentialPropagatesFileAndParentSyncFailures(t *testing.T) {
+	d := t.TempDir()
+	path := filepath.Join(d, "operator")
+	originalFile, originalParent := credentialSyncFile, credentialSyncParent
+	defer func() { credentialSyncFile, credentialSyncParent = originalFile, originalParent }()
+	credentialSyncFile = func(*os.File) error { return errors.New("injected credential file sync failure") }
+	if err := WriteCredential(path, bytes.Repeat([]byte{1}, CredentialSize)); err == nil {
+		t.Fatal("expected credential file sync failure")
+	}
+	_ = os.Remove(path)
+	credentialSyncFile = originalFile
+	credentialSyncParent = func(string) error { return errors.New("injected credential parent sync failure") }
+	if err := WriteCredential(path, bytes.Repeat([]byte{1}, CredentialSize)); err == nil {
+		t.Fatal("expected credential parent sync failure")
+	}
+}
+
 func TestReadRequestReturnsAtDelimiterWithoutWaitingForEOF(t *testing.T) {
 	r, w := net.Pipe()
 	defer r.Close()
