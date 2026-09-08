@@ -1,6 +1,7 @@
 [tools]
 gradle = "9.5.0"
 java = "25.0.2"
+go = "1.27.1"
 
 [tasks.phase0-check]
 description = "Run the Phase 0 cross-platform contract baseline"

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "cases": [{
+    "name": "create-space",
+    "initial": {"schemaVersion": 1, "audit": []},
+    "commands": [{"type":"create_space","spaceId":"space-1","ownerId":"owner-1","hostId":"host-1","requestId":"req-1"}],
+    "expected": {"state":{"schemaVersion":1,"spaceId":"space-1","ownerId":"owner-1","hostId":"host-1","epoch":1,"identities":[{"id":"owner-1","kind":"owner"},{"id":"host-1","kind":"host"}],"capabilities":[{"id":"agent.run/execute","grant":"ask"}],"audit":[{"event":"space.created","requestId":"req-1"}]},"audit":[{"event":"space.created","requestId":"req-1"}]}
+  }]
+}
