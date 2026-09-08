@@ -24,7 +24,7 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 **Execution sequence:** superseded Android authority quarantine → Host-local execution contract → Host process and CLI → encrypted durable store → authenticated Hermes adapter → run/events → approval and cancellation → recovery and reconciliation → supervisor parity → Android Termux proof.
 
-**Build:** one Kotlin/JVM 21 `lumen-host` distribution; foreground `serve` command; owner-restricted authenticated operator socket; encrypted, locked, atomic Host state; redacted health; a versioned Hermes Runs API adapter; and systemd, launchd, Docker, and Termux/runit examples.
+**Build:** one Kotlin/JVM 21 `lumen-host` distribution; foreground `serve` command; owner-restricted authenticated operator socket; encrypted, locked, atomic Host state; redacted health; a versioned Hermes runtime adapter and capability registry; and systemd, launchd, Docker, and Termux/runit examples.
 
 **Live proof:** initialize and supervise the Host, submit a task from its CLI, observe a real Hermes event stream, resolve one exact approval, cancel one run, interrupt another, restart, and confirm the Host records a proven terminal state or `unknown_outcome`. Repeat the service lifecycle and one task in Android Termux.
 
@@ -46,7 +46,7 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 **Goal:** make the old Android phone a useful desk companion and capability node for the already-running Host.
 
-**Build:** finish the Android companion module/package rename after the earlier authority quarantine; add node identity, pairing, Host connection, task and approval views, and local text-to-speech. Microphone and camera remain separate foreground capabilities with explicit Android permission and local policy checks.
+**Build:** finish the Android companion module/package rename after the earlier authority quarantine; add node identity, pairing, Host connection, task and approval views, and reactive local voice. Pre-activation wake-word/VAD runs entirely on the node with Hermes client-capture disabled and zero outbound audio; microphone, camera, and speaker remain separate foreground capabilities with explicit Android permission and local policy checks.
 
 **Live proof:** install with `adb install -r`, pair with the Host, follow the Host/Hermes task from the desk display, deny and grant each hardware capability separately, force-stop the app, and prove the Host continues running.
 
@@ -56,9 +56,9 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 **Goal:** make the Host/Hermes system useful daily without creating a surveillance archive or an unsupervised account operator.
 
-**Build:** typed Host-owned context with provenance, retention, expiry, inspect/edit/delete/export controls; read-only `browser.run` research on allowlisted public sites; then separately gated `draft` and `submit` with exact preview, one-time approval, receipt, cancellation, and uncertain outcomes.
+**Build:** typed Host-owned context with provenance, retention, expiry, inspect/edit/delete/export controls; import approved Hermes tools, skills, MCP servers, browser automation, model routing, delegation, and remote execution into the Lumen capability registry; begin `browser.run` with read-only research on allowlisted public sites, then separately gate `draft` and `submit` with exact preview, one-time approval, receipt, cancellation, and uncertain outcomes. Use Hermes implementations instead of parallel Lumen subsystems.
 
-**Checks:** a runtime cannot persist memory or expand grants; deletion and expiry are durable; blocked domains, changed targets, credential entry, upload, download, payment, and 2FA fail closed or ask again; retries do not duplicate a submission.
+**Checks:** a runtime cannot persist memory or expand grants; every run profile contains only approved tools, credentials, models, and remote backend; delegation is disabled unless the parent grant covers the complete inherited surface; deletion and expiry are durable; blocked domains, changed targets, credential entry, upload, download, payment, and 2FA fail closed or ask again; retries do not duplicate a submission.
 
 **Live proof:** complete repeated research tasks, inspect and delete retained context, block one domain, reject one stale approval, submit one harmless approved action, and interrupt another.
 
@@ -78,7 +78,7 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 **Goal:** make the iPhone a useful approval, notification, and reminder node.
 
-**Build:** pairing, Keychain-backed identity, Host connection, task and approval views, notifications, App Intents, and `reminder.manage`.
+**Build:** pairing, Keychain-backed identity, Host connection, reactive text and voice, task and approval views, notifications, App Intents, and `reminder.manage`.
 
 **Exit:** OS permission denial and Host unavailability have clear, testable behavior.
 
@@ -95,3 +95,7 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 ## Coordination rule
 
 For independent work, use a coordinator plus at most three lanes: portable core, platform adapter, and verification. Freeze shared schemas first. Only the coordinator changes shared schemas during integration; verification independently reviews protocol, authorization, persistence, migration, and sandbox changes.
+
+## Hermes adoption rule
+
+Hermes is the preferred implementation for reasoning, model routing, tools, skills, MCP, browser, post-activation voice adapters, delegation, and remote execution. Each feature is adopted behind an existing or newly frozen Lumen capability contract and immutable verified runtime profile; discovery never grants authority. Delegation stays disabled unless the parent grant covers Hermes's full inherited runtime surface. Block 2 proves the common run boundary only. Later blocks enable Hermes features incrementally with capability-specific policy, negative tests, live evidence, and rollback rather than forking or recreating Hermes internals.

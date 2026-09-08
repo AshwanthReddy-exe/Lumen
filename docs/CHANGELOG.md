@@ -5,6 +5,8 @@
 - Corrected the Host boundary: the Host is a headless Kotlin/JVM service supervised by systemd, launchd, Docker, or Termux/runit; Android remains a companion/node application.
 - Reordered delivery so the durable Host-to-Hermes execution loop completes before pairing, node transport, or companion work.
 - Marked the merged Android foreground-Host implementation as superseded evidence instead of rewriting published history.
+- Adopted Lumen authority plus deep Hermes intelligence: Hermes supplies model routing, tools, skills, MCP, browser, voice adapters, delegation, and remote execution behind Lumen-owned capability and task contracts.
+- Made invocation reactive by default and removed superseded Android-Host and duplicate design documents from the active tree; their history remains recoverable in Git.
 
 - Implemented the now-superseded Android foreground-Host experiment: Android Keystore AES-GCM state, atomic replacement, owner-driven setup, and a visible foreground service.
 - Added and physically verified the experimental Android Host health and stop controls on the Xiaomi reference phone; this remains historical evidence rather than the production Host direction.

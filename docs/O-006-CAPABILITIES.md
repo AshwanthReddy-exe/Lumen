@@ -126,3 +126,5 @@ context, or consume a newly issued approval until it reconnects to the Host.
    handling, and no authority through deep links.
 7. Context fixtures prove the O-002 level is enforced before serialization and
    at Host persistence for all four capabilities.
+
+`browser.run` and later Hermes-backed capabilities are deliberately not frozen by this Phase 0 contract. They must reuse the same manifest, policy, approval, idempotency, context, and audit rules and receive their own action-level contract before implementation.

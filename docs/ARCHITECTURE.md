@@ -24,7 +24,7 @@ The Host owns the Space identity, node registry, capability grants, canonical sh
 
 The first production composition is a Kotlin/JVM Host service that combines the portable `SpaceHost` with encrypted durable storage, a local operator control boundary, structured health, and a versioned Hermes Runtime Adapter. JVM 21 is the deployment baseline so one distribution can run on Linux/VPS, macOS, and Android Termux. Host correctness never depends on Hermes availability.
 
-The previously merged Android foreground service and Android-owned canonical store proved the portable boundary on a phone but assigned authority to the wrong process. They are superseded and must be removed from the companion application. See [PHASE-2-ANDROID-HOST.md](./PHASE-2-ANDROID-HOST.md) for the historical evidence and [PHASE-2-HOST-HERMES.md](./PHASE-2-HOST-HERMES.md) for the replacement slice.
+The previously merged Android foreground service and Android-owned canonical store proved the portable boundary on a phone but assigned authority to the wrong process. They are superseded, must be removed from the companion application, and remain available only through Git history. [PHASE-2-HOST-HERMES.md](./PHASE-2-HOST-HERMES.md) defines the replacement slice.
 
 The portable core is Kotlin Multiplatform and owns Space semantics, policy, task state, recovery, and context rules. The headless service owns Host composition, durable authority storage, lifecycle, and runtime adapters. Platform apps own only their node identity, local cache, connection, UI, capabilities, and OS permissions.
 
@@ -61,7 +61,7 @@ The Android desk companion and Mac pet are UI shells over the same node contract
 
 1. The user invokes Lumen on a node.
 2. The node resolves a local capability and checks its cached policy.
-3. The node talks directly to its configured model or adapter and executes locally.
+3. The node talks directly to a local Hermes runtime or another explicitly approved local runtime adapter and executes under node-local policy.
 4. It stores a local event stream and context delta.
 5. It synchronizes the permitted delta with the Host asynchronously.
 
@@ -112,11 +112,17 @@ Any active state may move to `cancelling`, `failed`, `paused`, `expired`, or `un
 
 The implemented in-memory subset uses conservative [restart recovery](./PHASE-1-CONTRACT.md#restart-recovery-increment): queued tasks become unknown because there is no durable dispatch record yet. Historical command receipts never authorize redispatch. Storage and startup must commit recovery before accepting work; encrypted storage and target reconciliation remain unimplemented.
 
-## Runtime and platform adapters
+## Hermes intelligence boundary
 
-Hermes is the first execution adapter used to prove the Host before node networking begins. Integrate through its [documented Runs API](https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration) for start, status, SSE events, stop, approval, health, capability discovery, steering where policy permits, and idempotency. Lumen normalizes Hermes events and keeps independent task and context state.
+Hermes is Lumen's preferred intelligence runtime. Lumen reuses rather than reimplements Hermes model selection, built-in tools, skills, MCP clients, browser automation, voice adapters, delegated agents, remote execution, and run steering. Each surface enters the Space through a versioned Lumen capability and the [documented Hermes API](https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration); Lumen may replace the runtime without migrating Space authority.
 
-Hermes receives only the task, capability-scoped context, deadline, and cancellation identity that a Host policy approved. Its output is evidence: events, proposed actions, and artifacts never become authority records by themselves.
+Hermes receives only the task, target, capability-scoped context, model/provider constraints, deadline, and cancellation identity that Host or node policy approved. It may propose plans, tools, model choices, child runs, remote targets, memory, speech, events, and artifacts. Only Lumen validates authority, resolves the execution node, brokers credentials, consumes approval, persists context, and commits final task state.
+
+The Host imports Hermes capability metadata into a deny-by-default registry. Discovery is descriptive, never a grant. MCP servers, skills, and tools are pinned and reviewed executable dependencies. Each run uses an immutable, verifiable runtime profile or isolated worker containing only its approved tool allowlist, model/provider configuration, remote backend, and scoped credential handles. A Hermes remote-execution backend is deployment configuration for that worker, not a node transport or authorization shortcut.
+
+Every delegated Hermes run maps to one Host-owned parent task. Hermes currently inherits a parent's enabled toolsets and provider credentials when delegating, so Lumen enables delegation only inside a worker whose entire transitive tool, credential, model, remote-backend, context, budget, deadline, and cancellation surface has been granted to the parent task. If that aggregate grant is too broad or the worker profile cannot be verified, delegation is disabled. Children cannot approve themselves or create untracked durable tasks. Model routing is constrained by the immutable profile and Lumen policy for data classification, allowed provider and location, cost, latency, and capability requirements.
+
+Lumen is reactive by default. A button, text command, shortcut, or node-local wake-word activates a conversation. Wake-word and voice-activity detection before activation run entirely on the node without model calls; Hermes client-capture and remote wake detection are prohibited. No audio or activation metadata leaves the node and no model or tool call starts before activation. Explicit schedules and event rules are ordinary revocable capabilities, not ambient autonomy.
 
 `browser.run` is a capability adapter, not a general browser attached to the runtime. The first actions are read-only research, navigation, and extraction on allowlisted public sites. A browser profile is a protected credential boundary: the Host stores only an opaque profile reference, never cookies or passwords as context. Draft and submit actions require an exact preview, one-time approval, durable receipt, and an honest unknown outcome when completion cannot be verified.
 
@@ -137,4 +143,4 @@ Platform features use narrow adapters. For example, Apple Reminders may be imple
 
 ## Target code boundaries
 
-`core/` contains portable Space semantics and must not import UI, service managers, HTTP clients, or Hermes packages. `services/host/` composes the Host process and owns its operator boundary and durable adapters. `adapters/hermes/` implements only the versioned Hermes contract. `packages/protocol/` is created when node transport begins. Platform apps remain clients and expose OS-specific permissions. The optional relay transports opaque envelopes and owns no Space authority.
+`core/` contains portable Space semantics and must not import UI, service managers, HTTP clients, or Hermes packages. Planned `services/host/` composes the Host process and owns its operator boundary and durable adapters. Planned `adapters/hermes/` implements only the versioned Hermes contract. `packages/protocol/` is created when node transport begins. Platform apps remain clients and expose OS-specific permissions. The optional relay transports opaque envelopes and owns no Space authority.

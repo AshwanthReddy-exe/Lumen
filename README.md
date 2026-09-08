@@ -46,4 +46,4 @@ Run the Space-core contract and simulated restart scenario with `mise run phase1
 
 ## Current priority
 
-**Finish the headless Host and its Hermes execution loop before implementing pairing, nodes, or companion features.** The active plan and exit gate are in [PHASE-2-HOST-HERMES.md](./docs/PHASE-2-HOST-HERMES.md). The merged Android foreground-Host slice is retained only as superseded implementation evidence in [PHASE-2-ANDROID-HOST.md](./docs/PHASE-2-ANDROID-HOST.md); it is not the architecture to extend.
+**Finish the headless Host and its Hermes execution loop before implementing pairing, nodes, or companion features.** The active plan and exit gate are in [PHASE-2-HOST-HERMES.md](./docs/PHASE-2-HOST-HERMES.md). The abandoned Android foreground-Host direction is recorded only in Git history and the changelog; it is not the architecture to extend.
