@@ -16,5 +16,9 @@ func grant(s State, k string) Grant {
 	if s.Grants == nil {
 		return GrantDeny
 	}
-	return s.Grants[k]
+	g := s.Grants[k]
+	if g != GrantDeny && g != GrantAsk && g != GrantAllow {
+		return GrantDeny
+	}
+	return g
 }

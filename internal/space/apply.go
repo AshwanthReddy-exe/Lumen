@@ -2,7 +2,15 @@ package space
 
 import "encoding/json"
 
+func cloneState(s State) State {
+	b, _ := json.Marshal(s)
+	var copy State
+	_ = json.Unmarshal(b, &copy)
+	return copy
+}
+
 func Apply(s State, c Command) Transition {
+	s = cloneState(s)
 	id := commandID(c)
 	if id == "" {
 		return reject(s, c, "invalid_identifier")
@@ -13,6 +21,9 @@ func Apply(s State, c Command) Transition {
 		if old, ok := s.Commands[id]; ok {
 			if old.Content != content {
 				return reject(s, c, "idempotency_key_reused")
+			}
+			if old.Rejection != "" {
+				return Transition{State: audit(s, AuditCommandReplayed, id), Rejection: old.Rejection}
 			}
 			return Transition{State: audit(s, AuditCommandReplayed, id), Receipt: receipt(old, id)}
 		}
@@ -107,6 +118,9 @@ func setGrant(s State, c Command) Transition {
 	if !owner(s, c.ActorID) {
 		return reject(s, c, "unauthorized_actor")
 	}
+	if c.Grant != GrantDeny && c.Grant != GrantAsk && c.Grant != GrantAllow {
+		return reject(s, c, "invalid_grant")
+	}
 	if !paired(s, c.NodeID) {
 		return reject(s, c, "node_revoked")
 	}
@@ -123,10 +137,10 @@ func submit(s State, c Command) Transition {
 	if c.SpaceID != s.SpaceID {
 		return reject(s, c, "invalid_space")
 	}
-	if c.HostID != "" && c.HostID != s.HostID {
+	if c.HostID != s.HostID {
 		return reject(s, c, "unauthorized_actor")
 	}
-	if c.Epoch != 0 && c.Epoch != s.Epoch {
+	if c.Epoch == 0 || c.Epoch != s.Epoch {
 		return reject(s, c, "stale_host_epoch")
 	}
 	if !paired(s, c.OriginNodeID) || !paired(s, c.TargetNodeID) {
@@ -158,7 +172,7 @@ func approve(s State, c Command) Transition {
 	if c.SpaceID != s.SpaceID {
 		return reject(s, c, "invalid_space")
 	}
-	if c.Epoch != 0 && c.Epoch != s.Epoch {
+	if c.HostID != s.HostID || c.Epoch == 0 || c.Epoch != s.Epoch {
 		return reject(s, c, "stale_host_epoch")
 	}
 	if !owner(s, c.ActorID) {
@@ -173,7 +187,7 @@ func approve(s State, c Command) Transition {
 	if c.TargetNodeID != t.TargetNodeID || c.ActionFingerprint != t.ActionFingerprint {
 		return reject(s, c, "approval_mismatch")
 	}
-	if c.ApprovedAt >= c.ExpiresAt {
+	if c.ApprovalID == "" || c.ApprovedAt <= 0 || c.ExpiresAt <= 0 || c.ApprovedAt >= c.ExpiresAt {
 		return reject(s, c, "approval_expired")
 	}
 	if s.Approvals == nil {
@@ -192,13 +206,13 @@ func complete(s State, c Command) Transition {
 	if c.SpaceID != s.SpaceID {
 		return reject(s, c, "invalid_space")
 	}
-	if c.Epoch != 0 && c.Epoch != s.Epoch {
+	if c.HostID != s.HostID || c.Epoch == 0 || c.Epoch != s.Epoch {
 		return reject(s, c, "stale_host_epoch")
 	}
 	if !ok {
 		return reject(s, c, "task_unknown")
 	}
-	if c.ActorID != "" && c.ActorID != t.TargetNodeID {
+	if c.ActorID != t.TargetNodeID {
 		return reject(s, c, "unauthorized_actor")
 	}
 	if t.Status != OutcomeQueued {
@@ -243,7 +257,7 @@ func recover(s State, c Command) Transition {
 	if c.SpaceID != s.SpaceID {
 		return reject(s, c, "invalid_space")
 	}
-	if c.Epoch != 0 && c.Epoch != s.Epoch {
+	if c.HostID != s.HostID || c.Epoch == 0 || c.Epoch != s.Epoch {
 		return reject(s, c, "stale_host_epoch")
 	}
 	if c.ActorID != s.HostID {

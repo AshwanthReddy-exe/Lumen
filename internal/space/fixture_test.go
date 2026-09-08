@@ -24,6 +24,14 @@ func TestFixtures(t *testing.T) {
 	}
 	for _, tc := range suite.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
+			if len(tc.Commands) != len(tc.Expected.Transitions) {
+				t.Fatalf("command/transition cardinality mismatch: %d != %d", len(tc.Commands), len(tc.Expected.Transitions))
+			}
+			for i := range tc.Commands {
+				if tc.Commands[i].HostID == "" && tc.Initial.HostID != "" {
+					tc.Commands[i].HostID = tc.Initial.HostID
+				}
+			}
 			state := tc.Initial
 			for i, command := range tc.Commands {
 				transition := Apply(state, command)
