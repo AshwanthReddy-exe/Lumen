@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Quarantined the superseded Android Host prototype: the APK is now a disabled companion shell with no Space-core dependency, canonical-state access, foreground Host service, or foreground-service permissions. Existing encrypted prototype data is left untouched for explicit owner archive or deletion and cannot be imported automatically.
+
 - Corrected the Host boundary: the Host is a headless Kotlin/JVM service supervised by systemd, launchd, Docker, or Termux/runit; Android remains a companion/node application.
 - Reordered delivery so the durable Host-to-Hermes execution loop completes before pairing, node transport, or companion work.
 - Marked the merged Android foreground-Host implementation as superseded evidence instead of rewriting published history.

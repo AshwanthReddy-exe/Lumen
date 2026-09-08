@@ -22,7 +22,9 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 **Goal:** run the canonical Host as a terminal service and complete one bounded Hermes task with honest authority, persistence, events, approval, cancellation, failure, and restart behavior.
 
-**Execution sequence:** superseded Android authority quarantine → Host-local execution contract → Host process and CLI → encrypted durable store → authenticated Hermes adapter → run/events → approval and cancellation → recovery and reconciliation → supervisor parity → Android Termux proof.
+**Execution sequence:** ~~superseded Android authority quarantine~~ → Host-local execution contract → Host process and CLI → encrypted durable store → authenticated Hermes adapter → run/events → approval and cancellation → recovery and reconciliation → supervisor parity → Android Termux proof.
+
+**Completed first slice:** the Android APK no longer depends on `core:space`, creates or opens canonical Space state, declares a foreground Host service, or requests foreground-service permissions. It remains installable only as a disabled companion shell until Block 4 pairing work begins. Existing encrypted prototype state is ignored and must be explicitly archived or cleared by its owner; it is never imported into the production Host.
 
 **Build:** one Kotlin/JVM 21 `lumen-host` distribution; foreground `serve` command; owner-restricted authenticated operator socket; encrypted, locked, atomic Host state; redacted health; a versioned Hermes runtime adapter and capability registry; and systemd, launchd, Docker, and Termux/runit examples.
 

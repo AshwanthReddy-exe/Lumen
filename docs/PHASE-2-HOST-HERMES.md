@@ -20,6 +20,10 @@ Run one durable Lumen Host as a terminal service, connect it to a separately sup
 
 Before step 1, stop the superseded Android foreground Host and explicitly discard its test state or archive it as non-authoritative evidence. Record what was removed and whether it is recoverable. Never import it into the new Host automatically.
 
+### Android authority quarantine evidence
+
+The `fix/android-authority-quarantine` slice removes the Android foreground service, its canonical-state store and lifecycle, all Host creation/start/stop actions, both foreground-service permissions, and the APK dependency on `core:space`. The remaining activity is a disabled companion shell that states the Host runs separately. An upgrade install leaves the old encrypted prototype file in private app storage but no shipped code can read or activate it. The owner may preserve it as explicitly non-authoritative historical evidence or clear the app's data; neither path permits automatic import into the production Host.
+
 ## Components
 
 ### Host-local execution core increment
@@ -90,7 +94,7 @@ Ship examples for systemd, launchd, Docker, and Termux/runit. All invoke the sam
 ## Delivery sequence and PR stack
 
 1. `docs/host-first-plan`: canonical architecture correction and this plan.
-2. `fix/android-authority-quarantine`, based on the planning branch: remove the Android foreground Host entry points and prevent the superseded test Space from presenting as authority.
+2. `fix/android-authority-quarantine`, based on the planning branch: complete; remove the Android foreground Host entry points and prevent the superseded test Space from presenting as authority.
 3. `feat/host-execution-contract`, based on the prior slice: freeze owner/Host-executor identity, dispatch/run evidence, running/cancellation states, reconciliation, codec migration, and core tests.
 4. `feat/host-service-bootstrap`, based on the prior slice: JVM 21 distribution, CLI lifecycle, configuration, health, and supervisor examples.
 5. `feat/host-durable-store`, based on the prior slice: version 1 encrypted envelope, key separation, locking, atomic commits, recovery, and failure tests.
