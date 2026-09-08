@@ -52,6 +52,8 @@ Create a narrow, versioned adapter around [Hermes’s documented API server](htt
 - `GET /v1/runs/{id}` and `/events` for status and bounded SSE events;
 - `/approval`, `/steer`, and `/stop` only after Host policy authorizes the exact operation.
 
+This first slice freezes the common boundary used later by Hermes model routing, built-in tools, skills, MCP, browser, voice adapters, delegated runs, and remote execution. It does not recreate or enable every feature in Block 2. Capability metadata is imported as untrusted discovery data; every enabled Hermes surface still requires a typed Lumen capability, target, context scope, budget, cancellation, and audit contract.
+
 Hardened Linux, macOS, and VPS deployments isolate Host and Hermes with separate OS principals or containers. Hermes is reached through a protected TLS endpoint or proxy with a pinned server identity, client authentication, and an independently scoped Hermes bearer credential. The adapter rejects redirects, URL userinfo, pin changes, and credential forwarding to another origin. Plain loopback HTTP is allowed only in an explicit development profile with synthetic state and cannot satisfy the security exit gate.
 
 Android Termux runs the same Host artifact and contracts. Because processes inside one Termux installation share an Android UID, runit and proot do not isolate Hermes from Host secret files. A co-located Termux Hermes run is compatibility-only and uses synthetic, non-sensitive state. The security-valid Termux proof connects to Hermes isolated on another machine or container through pinned mutual TLS; compromise of the Termux UID remains Host compromise.

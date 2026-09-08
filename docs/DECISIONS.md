@@ -7,7 +7,7 @@
 | D-001 | Build Lumen around a personal multi-device Space. | Platforms and companions are implementations, not the product definition. |
 | D-002 | Keep one active Host as the canonical V1 coordinator. | Cross-node routing and shared state have one authority. |
 | D-003 | Use scoped capabilities, not device roles, for authority. | Each feature supports deny, ask, or allow with restrictions. |
-| D-006 | Put Hermes behind a versioned Runtime Adapter. | Hermes is optional and never owns Lumen state. |
+| D-006 | Put Hermes behind a versioned Runtime Adapter. | Hermes is the preferred intelligence runtime but remains replaceable; its absence may make intelligent work unavailable but never compromises or owns Lumen state. |
 | D-007 | Encrypt sensitive state and support export, restore, and deletion. | Host storage includes explicit key and recovery behavior. |
 | D-008 | Never put raw secrets in prompts or ordinary logs. | Adapters receive scoped credential handles. |
 | D-009 | Route deterministically using capability, policy, and health. | Ambiguity is shown to the user instead of guessed. |
@@ -24,12 +24,14 @@
 | D-022 | Start with paired-node, local-network transport only. | mDNS is discovery only; a mutually authenticated encrypted channel carries versioned envelopes. Remote relay, push, and NAT traversal remain later work. [Contract](./O-003-TRANSPORT.md) |
 | D-024 | Use manual encrypted export and explicit Host migration with a monotonic epoch. | There is one active Host; no automatic failover, cloud escrow, or multi-master synchronization. [Contract](./O-005-RECOVERY.md) |
 | D-025 | Freeze four small V1 capability contracts. | `coding.run`, `reminder.manage`, `schedule.manage`, and `notification.deliver` have typed actions and capability-scoped policy. [Contract](./O-006-CAPABILITIES.md) |
-| D-026 | Run agent work through Hermes, but keep Lumen as the authority. | Hermes receives a scoped task and returns events, proposed actions, and artifacts; it cannot grant authority, persist canonical state, or approve itself. [Hermes browser documentation](https://hermes-agent.nousresearch.com/docs/user-guide/features/browser/) |
+| D-026 | Use Hermes as Lumen's preferred intelligence runtime, but keep Lumen as the authority. | Lumen consumes Hermes model routing, tools, skills, MCP, browser, voice, delegation, and remote execution through scoped adapters; Hermes cannot grant authority, persist canonical state, select an unapproved target, or approve itself. [Hermes tools](https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/) |
 | D-027 | Add `browser.run` in two stages. | Read-only research begins with allowlisted public sites and isolated profiles. Draft and submit actions require an exact preview and one-time approval; credential, payment, upload, download, and 2FA actions remain out of the first action slice. [Browser profile guidance](https://docs.browser-use.com/open-source/customize/browser/authentication) |
 | D-028 | Keep memory as Host-owned typed context. | Runtimes may propose records but cannot persist them directly. Each record is inspectable and has scope, provenance, classification, retention, expiry, and deletion behavior. |
 | D-029 | Run the Host as a headless Kotlin/JVM service, supervised outside the process. | One foreground CLI artifact can run under systemd, launchd, Docker, or Termux/runit; companion apps never own canonical Space state. [Contract](./O-004-HOST.md) |
 | D-030 | Complete the Host-to-Hermes execution loop before node networking or companion work. | The first live slice proves durable authority, runtime isolation, events, approval, cancellation, failure, and recovery through an authenticated Hermes Runs API. [Plan](./PHASE-2-HOST-HERMES.md) |
 | D-031 | Require enforceable runtime isolation for hardened Host deployments. | Linux/macOS/VPS use separate principals or containers plus pinned endpoint identity. Android Termux runs the same Host contract, but same-UID Hermes is compatibility-only; security-valid use requires an isolated Hermes endpoint with pinned mutual TLS. |
+| D-032 | Import Hermes capabilities instead of rebuilding parallel agent subsystems in Lumen. | Lumen defines stable authority and lifecycle contracts around immutable, verifiable runtime profiles. A Hermes feature remains disabled when its complete transitive tools, credentials, models, remote backend, and context cannot be bounded to the task. |
+| D-033 | Make Lumen reactive by default. | Text, voice, button, or shortcut invocation starts work; pre-activation wake-word detection is node-local with zero outbound audio, while schedules and event triggers require explicit revocable grants. |
 
 ## Superseded
 

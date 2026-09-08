@@ -12,6 +12,7 @@ Lumen makes a person’s devices feel like one understandable, permission-contro
 4. **Capabilities, not devices, grant authority.** Every feature is separately configurable as deny, ask, or allow with scope.
 5. **Autonomy is bounded.** Lumen proceeds within granted authority and asks for help or permission when required.
 6. **Companions are optional.** A desk phone or Mac pet makes Lumen approachable but is never required.
+7. **Invocation is reactive by default.** No model or tool work begins until the owner invokes Lumen or explicitly enables a bounded schedule or event rule.
 
 ## First reference deployment
 
@@ -21,11 +22,13 @@ The initial working Space starts with a headless Host service and a separately s
 
 1. Initialize a Space through the local Host CLI, start the Host as a supervised service, and verify durable recovery.
 2. Configure an isolated, mutually authenticated Hermes endpoint, submit one bounded task through the Host, and follow its normalized events to an honest terminal outcome. A plaintext loopback run is development evidence only.
-3. Pair the Android companion and inspect the Host, task, and approval state without giving the app canonical authority.
-4. Inspect each node’s available capabilities and configure their authority.
-5. Ask the desk companion to execute a capability on an eligible node and follow its progress.
-6. Receive an approval request when an action exceeds its grant, then approve once, reject, narrow the scope, or cancel.
-7. Revoke a node and verify that it can no longer read context or execute work.
+3. Invoke Lumen on an iPhone, route an authorized coding or application task to a Mac, and receive progress and the verified result on the iPhone.
+4. Invoke Lumen on the Mac, route an authorized reminder or notification action to the iPhone, and preserve one Host-owned task history across both devices.
+5. Run a latency-sensitive Mac session through a local Hermes/model fast path under cached node policy, then synchronize the permitted outcome with the Host.
+6. Pair the Android desk companion and use its face, display, microphone, speaker, and camera only through separately granted capabilities; the companion never owns canonical authority.
+7. Inspect each node’s available capabilities and configure deny, ask, allow, target, resource, context, cost, and expiry scopes.
+8. Receive an approval request when an action exceeds its grant, then approve once, reject, narrow the scope, or cancel.
+9. Revoke a node and verify that it can no longer read context or execute work.
 
 ## Requirements
 
@@ -74,10 +77,12 @@ The initial working Space starts with a headless Host service and a separately s
 | FR-36 | Let a runtime propose typed memory records, but require Host validation and user inspection before a record becomes canonical context. |
 | FR-37 | Keep browser profiles and their credentials outside shared context; browser actions require a capability grant and action-specific policy. |
 | FR-38 | Integrate Hermes through a versioned adapter that discovers capabilities, submits and observes runs, forwards only exact approved runtime decisions, supports cancellation, and treats every Hermes result as untrusted evidence. |
+| FR-39 | Use approved Hermes features—including model routing, built-in tools, skills, MCP, browser, voice, delegation, and remote execution—through immutable per-run profiles and Lumen capabilities without duplicating those subsystems. Delegation is disabled unless the parent grant covers its full transitive runtime surface. |
+| FR-40 | Perform no background model or tool work by default; pre-activation wake-word and voice-activity detection run only on the node with zero outbound audio or model traffic, while schedules and event triggers require explicit, inspectable grants. |
 
 ## Initial capability set
 
-The first contracts should prove different behaviors rather than maximize feature count:
+The first contracts should prove different behaviors rather than maximize feature count. Hermes supplies intelligence and tool implementations where it already has them; Lumen supplies the stable capability, permission, task, and audit contracts:
 
 - `coding.run`: local and remote Mac coding through a Hermes adapter, with reviewed changes.
 - `reminder.manage`: create, list, complete, and delete reminders on an eligible Apple node.
