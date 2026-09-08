@@ -62,6 +62,21 @@ func TestFixtureDecoderRejectsUnknownField(t *testing.T) {
 	}
 }
 
+func TestFixtureDecoderRejectsUnknownEnums(t *testing.T) {
+	for name, data := range map[string]string{
+		"grant":         `{"schemaVersion":1,"cases":[{"name":"x","initial":{"schemaVersion":1,"audit":[],"capabilities":[{"id":"x","grant":"maybe"}]},"commands":[],"expected":{"state":{"schemaVersion":1,"audit":[],"transitions":[]},"audit":[],"transitions":[]}}]}`,
+		"identity kind": `{"schemaVersion":1,"cases":[{"name":"x","initial":{"schemaVersion":1,"audit":[],"identities":[{"id":"x","kind":"maybe"}]},"commands":[],"expected":{"state":{"schemaVersion":1,"audit":[],"transitions":[]},"audit":[],"transitions":[]}}]}`,
+		"audit event":   `{"schemaVersion":1,"cases":[{"name":"x","initial":{"schemaVersion":1,"audit":[{"event":"maybe","requestId":"x"}]},"commands":[],"expected":{"state":{"schemaVersion":1,"audit":[],"transitions":[]},"audit":[],"transitions":[]}}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var suite FixtureSuite
+			if err := decodeFixture([]byte(data), &suite); err == nil {
+				t.Fatal("expected unknown enum error")
+			}
+		})
+	}
+}
+
 func decodeFixture(data []byte, suite *FixtureSuite) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -74,6 +89,23 @@ func decodeFixture(data []byte, suite *FixtureSuite) error {
 	}
 	if suite.SchemaVersion != 1 {
 		return fmt.Errorf("unsupported fixture schema version: %d", suite.SchemaVersion)
+	}
+	for _, tc := range suite.Cases {
+		for _, identity := range tc.Initial.Identities {
+			if identity.Kind != IdentityOwner && identity.Kind != IdentityHost {
+				return fmt.Errorf("unknown identity kind: %q", identity.Kind)
+			}
+		}
+		for _, capability := range tc.Initial.Capabilities {
+			if capability.Grant != GrantDeny && capability.Grant != GrantAsk && capability.Grant != GrantAllow {
+				return fmt.Errorf("unknown grant: %q", capability.Grant)
+			}
+		}
+		for _, event := range tc.Initial.Audit {
+			if event.Event != AuditSpaceCreated {
+				return fmt.Errorf("unknown audit event: %q", event.Event)
+			}
+		}
 	}
 	return nil
 }
