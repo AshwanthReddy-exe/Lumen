@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -65,11 +66,10 @@ func (s *Server) Listen() error {
 			s.releaseOwnership()
 			return fmt.Errorf("control path is not a socket")
 		}
-		probe, e := net.DialTimeout("unix", s.path, 100*time.Millisecond)
-		if e == nil {
-			_ = probe.Close()
+		owner, ownerErr := readLockIdentity(lock)
+		if ownerErr != nil || !sameIdentity(st, owner) {
 			s.releaseOwnership()
-			return fmt.Errorf("control socket already active")
+			return fmt.Errorf("control socket ownership is unknown")
 		}
 		if e := os.Remove(s.path); e != nil && !errors.Is(e, os.ErrNotExist) {
 			s.releaseOwnership()
@@ -94,6 +94,12 @@ func (s *Server) Listen() error {
 	if unixListener, ok := ln.(*net.UnixListener); ok {
 		unixListener.SetUnlinkOnClose(false)
 	}
+	if err := writeLockIdentity(lock, s.socketInfo); err != nil {
+		_ = ln.Close()
+		s.removeOwnedSocket()
+		s.releaseOwnership()
+		return err
+	}
 	if current, statErr := os.Stat(filepath.Dir(s.path)); statErr != nil || !os.SameFile(current, parentInfo) {
 		_ = ln.Close()
 		s.removeOwnedSocket()
@@ -112,9 +118,6 @@ func (s *Server) Listen() error {
 
 func openPrivateParent(dir string) (*os.File, error) {
 	if err := rejectSymlinkComponents(dir); err != nil {
-		return nil, err
-	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
 	st, err := os.Lstat(dir)
@@ -159,6 +162,49 @@ func rejectSymlinkComponents(dir string) error {
 			return nil
 		}
 	}
+}
+
+func fileIdentity(info os.FileInfo) (uint64, uint64, bool) {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, false
+	}
+	return uint64(stat.Dev), uint64(stat.Ino), true
+}
+
+func sameIdentity(info os.FileInfo, identity [2]uint64) bool {
+	dev, ino, ok := fileIdentity(info)
+	return ok && dev == identity[0] && ino == identity[1]
+}
+
+func readLockIdentity(lock *os.File) ([2]uint64, error) {
+	var identity [2]uint64
+	if _, err := lock.Seek(0, 0); err != nil {
+		return identity, err
+	}
+	b, err := io.ReadAll(io.LimitReader(lock, 128))
+	if err != nil {
+		return identity, err
+	}
+	if _, err := fmt.Sscanf(string(b), "%d:%d", &identity[0], &identity[1]); err != nil {
+		return identity, err
+	}
+	return identity, nil
+}
+
+func writeLockIdentity(lock *os.File, info os.FileInfo) error {
+	dev, ino, ok := fileIdentity(info)
+	if !ok {
+		return fmt.Errorf("control socket identity unavailable")
+	}
+	if err := lock.Truncate(0); err != nil {
+		return err
+	}
+	if _, err := lock.Seek(0, 0); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(lock, "%d:%d\n", dev, ino)
+	return err
 }
 
 func (s *Server) releaseOwnership() {

@@ -65,6 +65,13 @@ func readFrame(r io.Reader) ([]byte, error) {
 	if br.Buffered() != 0 {
 		return nil, ErrTrailingData
 	}
+	extra, err := io.ReadAll(br)
+	if err != nil {
+		return nil, err
+	}
+	if len(extra) != 0 {
+		return nil, ErrTrailingData
+	}
 	return b, nil
 }
 func WriteResponse(w io.Writer, v Response) error {

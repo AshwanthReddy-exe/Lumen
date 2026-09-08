@@ -50,6 +50,7 @@ func TestReadRequestReturnsAtDelimiterWithoutWaitingForEOF(t *testing.T) {
 		done <- err
 	}()
 	_, _ = w.Write([]byte(`{"command":"status"}` + "\n"))
+	_ = w.Close()
 	select {
 	case err := <-done:
 		if err != nil {
@@ -86,6 +87,48 @@ func TestReadResponseRequiresNewlineAndRejectsTrailingData(t *testing.T) {
 				t.Fatal("expected strict response framing error")
 			}
 		})
+	}
+}
+
+func TestReadRequestRejectsDelayedTrailingData(t *testing.T) {
+	r, w := net.Pipe()
+	defer r.Close()
+	done := make(chan error, 1)
+	go func() {
+		_, err := ReadRequest(r)
+		done <- err
+	}()
+	_, _ = w.Write([]byte(`{"command":"status"}` + "\n"))
+	select {
+	case err := <-done:
+		t.Fatalf("returned before connection end: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	_, _ = w.Write([]byte(`{}`))
+	_ = w.Close()
+	if err := <-done; err == nil {
+		t.Fatal("expected delayed trailing request rejection")
+	}
+}
+
+func TestReadResponseRejectsDelayedTrailingData(t *testing.T) {
+	r, w := net.Pipe()
+	defer r.Close()
+	done := make(chan error, 1)
+	go func() {
+		_, err := ReadResponse(r)
+		done <- err
+	}()
+	_, _ = w.Write([]byte(`{"ok":true}` + "\n"))
+	select {
+	case err := <-done:
+		t.Fatalf("returned before connection end: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	_, _ = w.Write([]byte(`{}`))
+	_ = w.Close()
+	if err := <-done; err == nil {
+		t.Fatal("expected delayed trailing response rejection")
 	}
 }
 
@@ -166,16 +209,17 @@ func TestStaleSocketIsReclaimedAfterOwnershipLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(d, "host.sock")
-	stale, err := net.Listen("unix", path)
+	first, err := NewServer(path, credential, func(_ context.Context, _ Request) Response { return Response{OK: true} })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unixListener, ok := stale.(*net.UnixListener); ok {
-		unixListener.SetUnlinkOnClose(false)
-	}
-	if err := stale.Close(); err != nil {
+	if err := first.Listen(); err != nil {
 		t.Fatal(err)
 	}
+	if err := first.ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	first.releaseOwnership()
 	s, err := NewServer(path, credential, func(_ context.Context, _ Request) Response { return Response{OK: true} })
 	if err != nil {
 		t.Fatal(err)
@@ -184,6 +228,33 @@ func TestStaleSocketIsReclaimedAfterOwnershipLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+}
+
+func TestUnknownSocketIsNotEvictedAfterProbeFailure(t *testing.T) {
+	d := shortPrivateDir(t)
+	credential := filepath.Join(d, "operator")
+	if err := WriteCredential(credential, bytes.Repeat([]byte{6}, CredentialSize)); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(d, "host.sock")
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if unixListener, ok := listener.(*net.UnixListener); ok {
+		unixListener.SetUnlinkOnClose(false)
+	}
+	s, err := NewServer(path, credential, func(_ context.Context, _ Request) Response { return Response{OK: true} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Listen(); err == nil {
+		t.Fatal("expected unknown socket ownership rejection")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("unknown socket was evicted: %v", err)
+	}
 }
 
 func TestAcceptReportsPermanentErrorInsteadOfSpinning(t *testing.T) {
