@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -316,6 +317,9 @@ func TestAskRequiresExactApprovalAndStartsOnlyOnce(t *testing.T) {
 	s.executor.options.now = func() time.Time { return time.Unix(observed.Load(), 0) }
 	direct := good
 	direct.RequestID = "direct-bypass"
+	direct.ApprovedAt = 1
+	direct.ExpiresAt = 50
+	direct.ObservedAt = 1
 	if directResult, err := s.ApplyCommand(direct); err != nil || directResult.Rejection != "approval_expired" {
 		t.Fatalf("direct authority bypass: %#v %v", directResult, err)
 	}
@@ -332,6 +336,53 @@ func TestAskRequiresExactApprovalAndStartsOnlyOnce(t *testing.T) {
 	waitForTask(t, s, "task-ask", space.OutcomeCompleted)
 	if r.created != 1 {
 		t.Fatalf("created %d runs", r.created)
+	}
+}
+
+func TestConcurrentFirstApprovalsUseOneStableObservedAt(t *testing.T) {
+	r := &fakeRuntime{}
+	s := executionService(t, r)
+	if _, err := s.state.Update(func(state space.State) space.Transition {
+		state.Grants["host|agent.run/execute|run"] = space.GrantAsk
+		return space.Transition{State: state}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-concurrent-approval", "task-concurrent-approval")); err != nil {
+		t.Fatal(err)
+	}
+	var clock atomic.Int64
+	clock.Store(100)
+	s.executor.options.now = func() time.Time { return time.Unix(clock.Add(1), 0) }
+	command := space.Command{Type: space.CommandApprove, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "concurrent-approval", TaskID: "task-concurrent-approval", TargetNodeID: "host", ActionFingerprint: "digest", ApprovalID: "concurrent-approval-id", ApprovedAt: 100, ExpiresAt: 200, ObservedAt: 1}
+	start := make(chan struct{})
+	results := make(chan space.Transition, 2)
+	errs := make(chan error, 2)
+	for range 2 {
+		go func() {
+			<-start
+			tr, err := s.ApplyCommand(command)
+			results <- tr
+			errs <- err
+		}()
+	}
+	close(start)
+	first, second := <-results, <-results
+	if err := <-errs; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-errs; err != nil {
+		t.Fatal(err)
+	}
+	if first.Replayed == second.Replayed {
+		t.Fatalf("expected one first application and one replay: first=%#v second=%#v", first, second)
+	}
+	state, err := s.state.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Commands[command.RequestID].Content == "" || !strings.Contains(state.Commands[command.RequestID].Content, `"observedAt":101`) {
+		t.Fatalf("approval did not retain one authority-stamped observation: %s", state.Commands[command.RequestID].Content)
 	}
 }
 

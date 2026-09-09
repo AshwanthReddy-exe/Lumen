@@ -435,7 +435,12 @@ func (s *Service) SubmitTask(ctx context.Context, req ExecuteRequest) (space.Tra
 	return s.startOrFail(ctx, req, tr)
 }
 
-func (s *Service) stableApprovalCommand(command space.Command) (space.Command, error) {
+func (s *Service) applyApprovalCommand(command space.Command) (space.Transition, error) {
+	if s.executor == nil {
+		return space.Transition{}, errors.New("approval clock unavailable")
+	}
+	s.executor.approvalMu.Lock()
+	defer s.executor.approvalMu.Unlock()
 	id := command.RequestID
 	if id == "" {
 		id = command.OperationID
@@ -443,34 +448,28 @@ func (s *Service) stableApprovalCommand(command space.Command) (space.Command, e
 	if id != "" {
 		state, err := s.state.Read()
 		if err != nil {
-			return command, err
+			return space.Transition{}, err
 		}
 		if recorded, ok := state.Commands[id]; ok && recorded.Content != "" {
 			var original space.Command
 			if err := json.Unmarshal([]byte(recorded.Content), &original); err != nil {
-				return command, fmt.Errorf("invalid approval command receipt: %w", err)
+				return space.Transition{}, fmt.Errorf("invalid approval command receipt: %w", err)
 			}
 			serialized := original
 			candidate := command
 			candidate.ObservedAt = 0
 			original.ObservedAt = 0
 			if candidate == original {
-				return serialized, nil
+				return s.apply(serialized)
 			}
 		}
 	}
-	if s.executor != nil {
-		command.ObservedAt = s.executor.options.now().Unix()
-	}
-	return command, nil
+	command.ObservedAt = s.executor.options.now().Unix()
+	return s.apply(command)
 }
 
 func (s *Service) ResolveApproval(ctx context.Context, req ApprovalRequest) (space.Transition, error) {
-	command, commandErr := s.stableApprovalCommand(req.Command)
-	if commandErr != nil {
-		return space.Transition{}, commandErr
-	}
-	tr, err := s.apply(command)
+	tr, err := s.applyApprovalCommand(req.Command)
 	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeQueued {
 		return tr, err
 	}
@@ -481,7 +480,7 @@ func (s *Service) ResolveApproval(ctx context.Context, req ApprovalRequest) (spa
 	if readErr != nil {
 		return tr, readErr
 	}
-	task := state.Tasks[command.TaskID]
+	task := state.Tasks[req.Command.TaskID]
 	return s.startOrFail(ctx, ExecuteRequest{Submit: space.Command{Type: space.CommandSubmit, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: task.CommandID, TaskID: task.ID, OriginNodeID: task.OriginNodeID, TargetNodeID: task.TargetNodeID, CapabilityID: task.CapabilityID, Action: task.Action, ActionFingerprint: task.ActionFingerprint}, Runtime: req.Runtime, RuntimeProfileDigest: req.RuntimeProfileDigest, ReconcileBy: req.ReconcileBy}, tr)
 }
 
@@ -724,6 +723,9 @@ func (s *Service) apply(command space.Command) (space.Transition, error) {
 // adapters. Callers cannot mutate canonical state without going through the
 // Space transition validator and the encrypted store commit.
 func (s *Service) ApplyCommand(command space.Command) (space.Transition, error) {
+	if command.Type == space.CommandApprove {
+		return s.applyApprovalCommand(command)
+	}
 	return s.apply(command)
 }
 
