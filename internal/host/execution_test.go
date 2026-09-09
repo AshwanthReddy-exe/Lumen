@@ -528,6 +528,11 @@ func TestLiveHermesApprovalIsBoundFromDurableTask(t *testing.T) {
 			t.Fatalf("normalized runtime approval=%#v", approval)
 		}
 	}
+	shown := s.handleTaskShow(map[string]string{"task_id": "task-live-runtime-approval"})
+	approvals, ok := shown.Data.(map[string]any)["runtimeApprovals"].([]space.RuntimeApproval)
+	if !ok || len(approvals) != 1 || approvals[0].ID == "" {
+		t.Fatalf("task show runtime approvals=%#v", shown.Data)
+	}
 }
 
 func TestRuntimeApprovalDeliveryFailureRemainsPendingAndRetries(t *testing.T) {

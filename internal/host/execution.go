@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -270,7 +271,14 @@ func (s *Service) handleTaskShow(args map[string]string) control.Response {
 	if !ok {
 		return control.Response{Error: "task_unknown"}
 	}
-	return control.Response{OK: true, Data: map[string]any{"task": task, "run": state.HostRuns[taskID]}}
+	approvals := make([]space.RuntimeApproval, 0)
+	for _, approval := range state.RuntimeApprovals {
+		if approval.TaskID == taskID {
+			approvals = append(approvals, approval)
+		}
+	}
+	sort.Slice(approvals, func(i, j int) bool { return approvals[i].ID < approvals[j].ID })
+	return control.Response{OK: true, Data: map[string]any{"task": task, "run": state.HostRuns[taskID], "runtimeApprovals": approvals}}
 }
 
 func (s *Service) handleTaskCancel(ctx context.Context, args map[string]string) control.Response {
