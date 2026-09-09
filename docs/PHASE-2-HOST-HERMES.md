@@ -96,6 +96,15 @@ Ship examples for systemd, launchd, Docker, and Termux/runit. All invoke the sam
 - Owner evidence records one supervised desktop/server run and one Android Termux run with no manual state repair.
 - Owner evidence remains pending for connected Android Termux (exact Android/Termux/OpenJDK/Go versions, runit lifecycle, restart recovery) and one real isolated-Hermes task. Same-UID Termux Hermes must not be counted as security evidence.
 
+### Desktop development evidence — 2026-09-09
+
+- The Mac Host and Hermes gateway ran as separately supervised processes over authenticated numeric loopback development transport.
+- `manual-hermes-quote-001` completed through the Host CLI, and `task show` returned the bounded durable output: `"Intelligence is the invisible thread that turns a private space of devices into a single, silent mind."`
+- `manual-hermes-cancel-001` was stopped through `task cancel` and reached durable `cancelled`.
+- `manual-agent-dryrun-004` survived a forced Host restart and reconciled to a proven `completed` status without redispatch.
+- Hermes shell probes completed without emitting an approval request under the installed gateway policy. Therefore this proves policy approval, run/event/status/output, cancellation, and restart behavior in development, but does not replace the release-blocking live runtime-approval or hardened isolated-Hermes/mTLS proof.
+- The Termux artifact hash was `ba41d1d32c096d3e4bf84202e16c84c85b87b1312c1ab378dce1fc98540dcd96`; `file` identified it as an ELF64 AArch64 PIE executable. ADB reported no connected device, so installation and lifecycle evidence remain pending.
+
 ## Delivery sequence and PR stack
 
 1. `docs/host-first-plan`: canonical architecture correction and this plan.

@@ -18,7 +18,7 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 ## Block 2 — Headless Host and Hermes execution loop
 
-**Status:** automated gate passing; owner proof pending. The native Go Host, durable store, operator CLI, supervisor definitions, and Hermes adapter are present. The Android foreground-Host experiment and Kotlin authority are superseded evidence, not a base for more features.
+**Status:** desktop development journey passing; release owner proof pending. The native Go Host, durable store, JSON operator CLI, supervisor definitions, Hermes adapter, bounded durable output, and Termux PIE artifact are present. The Android foreground-Host experiment and Kotlin authority are superseded evidence, not a base for more features.
 
 **Goal:** run the canonical Host as a terminal service and complete one bounded Hermes task with honest authority, persistence, events, approval, cancellation, failure, and restart behavior.
 
@@ -32,7 +32,7 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 **Exit:** [the Phase 2 automated and owner gates](./PHASE-2-HOST-HERMES.md#exit) pass. Host/Hermes completion is required before any node work.
 
-**Automated evidence (2026-09-09):** `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk MISE_CACHE_DIR=/tmp/lumen-mise-cache GOCACHE=/tmp/lumen-go-cache mise run phase2-check` passed formatting, `go vet ./...`, `go test ./...`, `go test -race ./...`, native amd64 and `linux/arm64` builds, supervisor/fixture scenarios, Android companion unit tests, and debug APK assembly (`apps/android-host/build/outputs/apk/debug/android-host-debug.apk`, 28.2 MB). Android verification is mandatory in the gate. Termux and real isolated-Hermes owner proof remain pending; no ADB device is connected.
+**Evidence (2026-09-09):** `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk GOCACHE=/private/tmp/lumen-go-cache mise run phase2-check` passed formatting, vet, all Go and race tests, native and Linux ARM64 builds, ELF64 AArch64 PIE validation, supervisor/Compose contracts, Android companion unit tests, and debug APK assembly. A separately supervised loopback Hermes gateway completed quote task `manual-hermes-quote-001`; Lumen retained its final AI output in the durable task record. Cancellation task `manual-hermes-cancel-001` progressed through `cancelling` to durable `cancelled`. Earlier task `manual-agent-dryrun-004` reconciled to `completed` after a forced Host restart. The gateway auto-approved shell probes, so a live runtime approval under deny-by-default Hermes remains pending even though the exact approval path passes adapter and Host contract tests. Hardened isolated-Hermes/mTLS and physical Termux lifecycle proof also remain pending; the phone was not visible to ADB when artifact transfer was attempted.
 
 ## Block 3 — Paired-node protocol and local transport
 
