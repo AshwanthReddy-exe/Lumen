@@ -8,7 +8,11 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 ## Current execution lock
 
-**The first task in the next session is to finish Block 2: the headless Host service and its real Hermes execution loop. Begin with the one-time Android authority quarantine required by that block; otherwise do not resume pairing, node transport, Android companion features, hardware capabilities, Mac, or iPhone implementation until the Block 2 exit gate passes.** See [PHASE-2-HOST-HERMES.md](./PHASE-2-HOST-HERMES.md).
+**Block 2 remains the only active delivery block. The Android authority quarantine and native Go migration are complete; the remaining release gates are a physical Android Termux lifecycle proof and one real isolated-Hermes task behind pinned mutual TLS. Do not resume pairing, node transport, Android companion features, hardware capabilities, Mac, or iPhone implementation until the Block 2 exit gate passes.** See [PHASE-2-HOST-HERMES.md](./PHASE-2-HOST-HERMES.md).
+
+## Evidence format
+
+Every owner check records the date, build or commit, intended device and runtime versions, preconditions, exact bounded action, expected and actual result, pass/fail, and a redacted evidence reference. Evidence must use synthetic identifiers and content; it must never contain credentials, private prompts, raw audio, or personal device data. A passing desktop development harness is labeled as development evidence and cannot satisfy a hardened or physical-device release gate.
 
 ## Block 1 — Space foundation
 

@@ -1,5 +1,7 @@
 # Go Host Block 2 Implementation Plan
 
+> Historical implementation plan. Canonical current status and release gates are in [the delivery plan](../../PLAN.md) and [the active Phase 2 document](../../PHASE-2-HOST-HERMES.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship one native Go Lumen Host that durably authorizes and completes a bounded Hermes run on macOS/Linux and Android Termux with honest approval, cancellation, restart, and uncertain-outcome behavior.

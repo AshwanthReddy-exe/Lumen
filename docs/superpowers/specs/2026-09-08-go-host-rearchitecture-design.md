@@ -1,5 +1,7 @@
 # Go Host rearchitecture design
 
+> Historical design record. Canonical current architecture and accepted decisions are in [ARCHITECTURE.md](../../ARCHITECTURE.md), [DECISIONS.md](../../DECISIONS.md), and [the active Phase 2 document](../../PHASE-2-HOST-HERMES.md).
+
 ## Goal
 
 Replace the planned Kotlin/JVM Host and portable Kotlin Space core with a small native Go service while retaining native Kotlin Android and Swift Apple applications. Preserve every accepted authority, permission, durability, recovery, and Hermes boundary through executable cross-language fixtures before deleting the Kotlin reference implementation.

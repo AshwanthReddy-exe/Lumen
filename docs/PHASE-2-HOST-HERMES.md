@@ -93,12 +93,12 @@ Ship examples for systemd, launchd, Docker, and Termux/runit. All invoke the sam
 - `mise run phase2-check` must pin Go, build native Host distributions, and run core, Host, adapter, persistence, CLI, fixture, and scenario tests. Android Termux ARM64 is a required compatibility run with its exact Termux and Go versions recorded; it is not assumed equivalent to desktop Linux.
 - The distribution gate also builds a Linux ARM64 position-independent executable (`build/lumen-host/lumen-host-linux-arm64-pie`) with `-buildmode=pie` for Termux. The contract test checks the setting; an artifact inspection test accepts only ELF64 AArch64 `ET_DYN` output when provided.
 - Native automated evidence on 2026-09-09: `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk MISE_CACHE_DIR=/tmp/lumen-mise-cache GOCACHE=/tmp/lumen-go-cache mise run phase2-check` passed formatting, vet, all Go tests, race tests, amd64 build, linux/arm64 cross-build, contract scenarios, Android companion unit tests, and debug APK assembly (`apps/android-host/build/outputs/apk/debug/android-host-debug.apk`, 28.2 MB). Android verification is mandatory and the gate fails without `ANDROID_HOME`.
-- Owner evidence records one supervised desktop/server run and one Android Termux run with no manual state repair.
-- Owner evidence remains pending for connected Android Termux (exact Android/Termux/OpenJDK/Go versions, runit lifecycle, restart recovery) and one real isolated-Hermes task. Same-UID Termux Hermes must not be counted as security evidence.
+- Desktop/server development evidence is recorded below. Release owner evidence remains pending for connected Android Termux (exact Android/Termux/OpenJDK/Go versions, runit lifecycle, restart recovery) and one real isolated-Hermes task behind pinned mutual TLS, with no manual state repair. Same-UID Termux Hermes must not be counted as security evidence.
 
 ### Desktop development evidence — 2026-09-09
 
 - The Mac Host and Hermes gateway ran as separately supervised processes over authenticated numeric loopback development transport.
+- The development harness is operated by `scripts/lumen-mac-host` and `scripts/lumen-mac-test`; it is not release evidence for the isolated-mTLS or Termux gates.
 - `manual-hermes-quote-001` completed through the Host CLI, and `task show` returned the bounded durable output: `"Intelligence is the invisible thread that turns a private space of devices into a single, silent mind."`
 - `manual-hermes-cancel-001` was stopped through `task cancel` and reached durable `cancelled`.
 - `manual-agent-dryrun-004` survived a forced Host restart and reconciled to a proven `completed` status without redispatch.

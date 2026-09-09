@@ -19,5 +19,6 @@ local.properties
 # Per-machine agent settings and generated repository graph
 .agents/
 .codex/
+.superpowers/
 graphify-out/
 .worktrees/

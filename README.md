@@ -18,13 +18,13 @@ Same-device work takes a local fast path and later synchronizes relevant context
 Terminal service:  active Host + canonical Space state
 Hermes:            Host-local execution runtime adapter
 Old Android phone: desk companion + capability node
-Mac:               future pet surface + coding node
+Mac:               current Host development harness; future pet surface + coding node
 iPhone:            future interaction + personal-capability node
 ```
 
 The Host is a headless service, not a companion application. The same Host artifact must run under a service manager on Linux/VPS, macOS, and Android Termux. A companion may share the same physical device, but it connects to the Host through the ordinary authenticated boundary and never owns canonical Space state.
 
-## Planned repository structure
+## Target repository structure
 
 ```text
 cmd/                native Go Host executable
@@ -47,7 +47,7 @@ Run the native Block 2 gate with `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Li
 
 The gate also builds `build/lumen-host/lumen-host-linux-arm64-pie` with Go `-buildmode=pie`; this is the Android Termux ARM64 artifact and must be installed as the foreground `lumen-host` binary. A physical Termux run remains required owner evidence.
 
-For the Mac-only development setup, run `scripts/lumen-mac-host start` in one terminal. It rebuilds the native binary, initializes private state once under `~/.local/share/lumen`, keeps the Host in the foreground, and writes redacted output to `~/.local/share/lumen/host.log`. Use `scripts/lumen-mac-host status|stop|logs` for lifecycle operations.
+For the Mac-only development setup, run `scripts/lumen-mac-host start` in one terminal. It rebuilds the native binary, initializes private state once under `~/.local/share/lumen`, keeps the Host in the foreground, and writes redacted output to `~/.local/share/lumen/host.log`. Use `scripts/lumen-mac-host status|stop|logs` for lifecycle operations. This loopback harness is development evidence only; it is not the isolated-mTLS or Termux release proof.
 
 With the Host and the separately supervised local Hermes gateway running, execute `scripts/lumen-mac-test` in another terminal. It checks both services, submits a unique bounded task, resolves the one-time Lumen policy approval, waits up to five minutes, and prints the durable Hermes answer. Pass a custom prompt as one quoted argument. A Hermes runtime tool approval is never silently accepted; the script displays it and stops for an explicit operator decision.
 
