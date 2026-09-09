@@ -45,6 +45,8 @@ Phase 1’s Kotlin Space-core contract and simulated restart scenario are retain
 
 Run the native Block 2 gate with `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk mise run phase2-check`. It verifies Go formatting, vet, unit/contract tests, race tests, reproducible amd64 and linux/arm64 builds, Android companion unit tests, and debug APK assembly. Android verification is required; the gate fails when `ANDROID_HOME` is unavailable.
 
+Start the Mac development Host with `scripts/lumen-mac-start`. It builds the native binary when needed, initializes private state once under `~/.local/share/lumen`, and starts the foreground service. In another terminal use `scripts/lumen-mac-status`; stop it with `scripts/lumen-mac-stop`. The default development profile expects Hermes on loopback at `http://127.0.0.1:8642`.
+
 ## Current priority
 
 **Finish the headless Host and its Hermes execution loop before implementing pairing, nodes, or companion features.** The active plan and exit gate are in [PHASE-2-HOST-HERMES.md](./docs/PHASE-2-HOST-HERMES.md). The abandoned Android foreground-Host direction is recorded only in Git history and the changelog; it is not the architecture to extend.

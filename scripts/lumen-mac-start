@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$SCRIPT_DIR/lumen-mac-env"
+
+mkdir -p "$LUMEN_DATA_DIR"
+chmod 700 "$LUMEN_DATA_DIR"
+
+if [ ! -x "$LUMEN_BINARY" ]; then
+  (cd "$LUMEN_REPO_ROOT" && mise exec -- go build -trimpath -ldflags='-s -w' -o "$LUMEN_BINARY" ./cmd/lumen-host)
+fi
+
+if [ ! -e "$LUMEN_DATA_DIR/initialized" ]; then
+  umask 077
+  if [ ! -e "$LUMEN_HERMES_BEARER_FILE" ]; then
+    openssl rand -hex 32 > "$LUMEN_HERMES_BEARER_FILE"
+  fi
+  chmod 600 "$LUMEN_HERMES_BEARER_FILE"
+  "$LUMEN_BINARY" init
+fi
+
+exec "$LUMEN_BINARY" serve
