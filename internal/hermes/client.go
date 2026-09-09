@@ -86,6 +86,31 @@ type Capabilities struct {
 	Features map[string]bool `json:"features"`
 }
 
+func (c *Capabilities) UnmarshalJSON(data []byte) error {
+	type wireCapabilities struct {
+		Object   string                     `json:"object"`
+		Platform string                     `json:"platform"`
+		Model    string                     `json:"model"`
+		Auth     CapabilityAuth             `json:"auth"`
+		Features map[string]json.RawMessage `json:"features"`
+	}
+	var wire wireCapabilities
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&wire); err != nil {
+		return err
+	}
+	features := make(map[string]bool)
+	for name, raw := range wire.Features {
+		var enabled bool
+		if json.Unmarshal(raw, &enabled) == nil {
+			features[name] = enabled
+		}
+	}
+	*c = Capabilities{Object: wire.Object, Platform: wire.Platform, Model: wire.Model, Auth: wire.Auth, Features: features}
+	return nil
+}
+
 type CapabilityAuth struct {
 	Type     string `json:"type"`
 	Required bool   `json:"required"`
@@ -297,11 +322,12 @@ func (c *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 	}
 	// Hermes names this capability run_approval_response in its live API;
 	// normalize that documented wire alias to Lumen's stable contract name.
-	if out.Features[capabilityRunApprovalResponse] && !out.Features[CapabilityRunApproval] {
-		out.Features[CapabilityRunApproval] = true
-	}
 	for _, feature := range c.requiredCapabilities {
-		if !out.Features[feature] {
+		enabled := featureEnabled(out.Features, feature)
+		if feature == CapabilityRunApproval {
+			enabled = enabled || featureEnabled(out.Features, capabilityRunApprovalResponse)
+		}
+		if !enabled {
 			return out, fmt.Errorf("%w: missing %s", ErrCapabilityMismatch, feature)
 		}
 	}
@@ -395,7 +421,7 @@ func (c *Client) Steer(ctx context.Context, runID string, in SteerRequest) error
 	if err != nil {
 		return err
 	}
-	if !caps.Features[CapabilityRunSteer] {
+	if !featureEnabled(caps.Features, CapabilityRunSteer) {
 		return fmt.Errorf("%w: missing %s", ErrUnsupported, CapabilityRunSteer)
 	}
 	path, err := runPath(runID, "/steer")
@@ -414,6 +440,10 @@ func (c *Client) Steer(ctx context.Context, runID string, in SteerRequest) error
 		return fmt.Errorf("%w: invalid steer status", ErrInvalidEvidence)
 	}
 	return nil
+}
+
+func featureEnabled(features map[string]bool, name string) bool {
+	return features[name]
 }
 
 func (c *Client) Stop(ctx context.Context, runID string) (Run, error) {

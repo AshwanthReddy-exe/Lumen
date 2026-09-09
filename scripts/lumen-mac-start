@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+set -o pipefail
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lumen-mac-env"
@@ -9,9 +10,7 @@ chmod 700 "$LUMEN_DATA_DIR"
 touch "$LUMEN_LOG_FILE"
 chmod 600 "$LUMEN_LOG_FILE"
 
-if [ ! -x "$LUMEN_BINARY" ]; then
-  (cd "$LUMEN_REPO_ROOT" && mise exec -- go build -trimpath -ldflags='-s -w' -o "$LUMEN_BINARY" ./cmd/lumen-host)
-fi
+(cd "$LUMEN_REPO_ROOT" && mise exec -- go build -trimpath -ldflags='-s -w' -o "$LUMEN_BINARY" ./cmd/lumen-host)
 
 if [ ! -e "$LUMEN_DATA_DIR/initialized" ]; then
   umask 077

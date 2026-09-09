@@ -3,6 +3,8 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/lumen-mac-env"
+mkdir -p "$LUMEN_DATA_DIR"
+chmod 700 "$LUMEN_DATA_DIR"
 touch "$LUMEN_LOG_FILE"
 chmod 600 "$LUMEN_LOG_FILE"
 exec tail -f "$LUMEN_LOG_FILE"

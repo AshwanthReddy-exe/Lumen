@@ -50,7 +50,7 @@ func TestCapabilitiesRejectMissingRequiredFeature(t *testing.T) {
 func TestCapabilitiesAcceptsHermesApprovalResponseAlias(t *testing.T) {
 	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"object":"hermes.api_server.capabilities","platform":"hermes-agent","model":"hermes-agent","auth":{"type":"bearer","required":true},"features":{"run_submission":true,"run_status":true,"run_events_sse":true,"run_approval_response":true,"run_stop":true}}`))
+		_, _ = w.Write([]byte(`{"object":"hermes.api_server.capabilities","platform":"hermes-agent","model":"hermes-agent","auth":{"type":"bearer","required":true},"features":{"run_submission":true,"run_status":true,"run_events_sse":true,"run_approval_response":true,"run_stop":true,"session_continuity_header":"X-Hermes-Session-Id","browser_extension_control":{"enabled":false}}}`))
 	}))
 	c, err := New(testConfig(srv.URL))
 	if err != nil {
