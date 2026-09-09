@@ -233,14 +233,8 @@ func (s *Service) handleTaskSubmit(ctx context.Context, args map[string]string) 
 	if err != nil {
 		return control.Response{Error: err.Error()}
 	}
-	origin, err := parseArgument(args, "origin_node_id")
-	if err != nil {
-		return control.Response{Error: err.Error()}
-	}
-	target, err := parseArgument(args, "target_node_id")
-	if err != nil {
-		return control.Response{Error: err.Error()}
-	}
+	origin := optionalArgument(args, "origin_node_id", state.OwnerID)
+	target := optionalArgument(args, "target_node_id", state.HostID)
 	capability, err := parseArgument(args, "capability_id")
 	if err != nil {
 		return control.Response{Error: err.Error()}
@@ -1198,6 +1192,13 @@ func parseArgument(args map[string]string, key string) (string, error) {
 		return "", fmt.Errorf("missing argument %s", key)
 	}
 	return v, nil
+}
+
+func optionalArgument(args map[string]string, key, fallback string) string {
+	if value := strings.TrimSpace(args[key]); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func parseIntArgument(args map[string]string, key string) (int64, error) {

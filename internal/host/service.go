@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -81,8 +82,16 @@ func Initialize(c Config) error {
 	}
 	statePath := filepath.Join(c.DataDir, "state.json")
 	keyPath := filepath.Join(c.DataDir, "state.key")
-	keyBefore := exists(keyPath)
-	credentialBefore := exists(c.CredentialPath)
+	stateExists, keyExists := exists(statePath), exists(keyPath)
+	if stateExists || keyExists {
+		if !stateExists || !keyExists {
+			return errors.New("incomplete initialization state")
+		}
+		return resumeInitialization(c, marker, statePath, keyPath)
+	}
+	if exists(c.CredentialPath) {
+		return errors.New("operator credential exists without initialized state")
+	}
 	stateStore, err := store.New(statePath, keyPath)
 	if err != nil {
 		return err
@@ -96,15 +105,11 @@ func Initialize(c Config) error {
 		if err := os.Remove(statePath + ".lock"); err != nil && !os.IsNotExist(err) {
 			rollbackErr = errors.Join(rollbackErr, err)
 		}
-		if !keyBefore {
-			if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
-				rollbackErr = errors.Join(rollbackErr, err)
-			}
+		if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
+			rollbackErr = errors.Join(rollbackErr, err)
 		}
-		if !credentialBefore {
-			if err := os.Remove(c.CredentialPath); err != nil && !os.IsNotExist(err) {
-				rollbackErr = errors.Join(rollbackErr, err)
-			}
+		if err := os.Remove(c.CredentialPath); err != nil && !os.IsNotExist(err) {
+			rollbackErr = errors.Join(rollbackErr, err)
 		}
 		if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
 			rollbackErr = errors.Join(rollbackErr, err)
@@ -161,9 +166,52 @@ func Initialize(c Config) error {
 	if err := control.WriteCredential(c.CredentialPath, cred); err != nil {
 		return fail(err)
 	}
-	f, err := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	err = writeInitializedMarker(marker)
 	if err != nil {
 		return fail(err)
+	}
+	return err
+}
+
+func resumeInitialization(c Config, marker, statePath, keyPath string) error {
+	stateStore, err := store.Open(statePath, keyPath)
+	if err != nil {
+		return fmt.Errorf("state unavailable: %w", err)
+	}
+	state, readErr := stateStore.Read()
+	closeErr := stateStore.Close()
+	if readErr != nil {
+		return fmt.Errorf("state unavailable: %w", readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("state unavailable: %w", closeErr)
+	}
+	if err := validateBootstrapState(state); err != nil {
+		return fmt.Errorf("incomplete initialization state: %w", err)
+	}
+	if exists(c.CredentialPath) {
+		if _, err := control.ReadCredential(c.CredentialPath); err != nil {
+			return fmt.Errorf("operator credential unavailable: %w", err)
+		}
+	} else {
+		credential, err := control.NewCredential()
+		if err != nil {
+			return err
+		}
+		if err := control.WriteCredential(c.CredentialPath, credential); err != nil {
+			return err
+		}
+	}
+	if err := writeInitializedMarker(marker); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeInitializedMarker(marker string) error {
+	f, err := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return err
 	}
 	_, err = f.WriteString("lumen-host v1\n")
 	if err == nil {
@@ -175,10 +223,87 @@ func Initialize(c Config) error {
 	if err == nil {
 		err = markerSyncParent(marker)
 	}
-	if err != nil {
-		return fail(err)
-	}
 	return err
+}
+
+func validateBootstrapState(state space.State) error {
+	if state.SchemaVersion != 1 || state.SpaceID == "" || state.OwnerID == "" || state.HostID == "" || state.SpaceID == state.OwnerID || state.SpaceID == state.HostID || state.OwnerID == state.HostID || state.Epoch != 1 {
+		return errors.New("invalid bootstrap identities or epoch")
+	}
+	if len(state.Identities) != 2 || !hasIdentity(state, state.OwnerID, space.IdentityOwner) || !hasIdentity(state, state.HostID, space.IdentityHost) {
+		return errors.New("invalid bootstrap identities")
+	}
+	if len(state.Nodes) != 2 || state.Nodes[state.OwnerID].Status != "paired" || state.Nodes[state.HostID].Status != "paired" {
+		return errors.New("invalid bootstrap nodes")
+	}
+	if len(state.Capabilities) != 1 || state.Capabilities[0] != (space.Capability{ID: "agent.run/execute", Grant: space.GrantAsk}) {
+		return errors.New("invalid bootstrap capability")
+	}
+	if len(state.Advertisements) != 1 || state.Advertisements[0] != (space.CapabilityKey{NodeID: state.HostID, CapabilityID: "agent.run/execute", Action: "run"}) {
+		return errors.New("invalid bootstrap advertisement")
+	}
+	if len(state.Grants) != 1 || state.Grants[state.HostID+"|agent.run/execute|run"] != space.GrantAsk {
+		return errors.New("invalid bootstrap grant")
+	}
+	if len(state.Tasks) != 0 || len(state.Approvals) != 0 || len(state.HostCreates) != 0 || len(state.RuntimeApprovals) != 0 || len(state.HostRuns) != 0 {
+		return errors.New("bootstrap contains execution state")
+	}
+	if len(state.Commands) != 3 || !validBootstrapCommand(state, "bootstrap:create-space", space.CommandCreateSpace) || !validBootstrapCommand(state, "bootstrap:advertise-execute", space.CommandAdvertiseCapability) || !validBootstrapCommand(state, "bootstrap:grant-execute", space.CommandSetGrant) {
+		return errors.New("invalid bootstrap command records")
+	}
+	if len(state.Audit) != 3 {
+		return errors.New("invalid bootstrap audit")
+	}
+	expectedAudit := map[string]struct {
+		event     space.AuditEventType
+		actor     string
+		operation space.CommandType
+	}{
+		"bootstrap:create-space":      {space.AuditSpaceCreated, state.OwnerID, space.CommandCreateSpace},
+		"bootstrap:advertise-execute": {space.AuditCommandAccepted, state.HostID, space.CommandAdvertiseCapability},
+		"bootstrap:grant-execute":     {space.AuditCommandAccepted, state.OwnerID, space.CommandSetGrant},
+	}
+	for _, audit := range state.Audit {
+		want, ok := expectedAudit[audit.RequestID]
+		if !ok || audit.Event != want.event || audit.ActorID != want.actor || audit.HostID != state.HostID || audit.Epoch != 1 || audit.Operation != want.operation || audit.Outcome != string(space.OutcomeApplied) {
+			return errors.New("invalid bootstrap audit")
+		}
+		delete(expectedAudit, audit.RequestID)
+	}
+	if len(expectedAudit) != 0 {
+		return errors.New("invalid bootstrap audit")
+	}
+	return nil
+}
+
+func hasIdentity(state space.State, id string, kind space.IdentityKind) bool {
+	for _, identity := range state.Identities {
+		if identity.ID == id && identity.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func validBootstrapCommand(state space.State, requestID string, commandType space.CommandType) bool {
+	recorded, ok := state.Commands[requestID]
+	if !ok || recorded.Type != commandType || recorded.Rejection != "" || recorded.Receipt == nil || recorded.Receipt.RequestID != requestID || recorded.Receipt.Outcome != space.OutcomeApplied {
+		return false
+	}
+	var command space.Command
+	if json.Unmarshal([]byte(recorded.Content), &command) != nil || command.RequestID != requestID || command.Type != commandType || command.SpaceID != state.SpaceID || command.HostID != state.HostID {
+		return false
+	}
+	switch commandType {
+	case space.CommandCreateSpace:
+		return command.OwnerID == state.OwnerID && command.ActorID == state.OwnerID
+	case space.CommandAdvertiseCapability:
+		return command.Epoch == 1 && command.ActorID == state.HostID && command.NodeID == state.HostID && command.CapabilityID == "agent.run/execute" && command.Action == "run"
+	case space.CommandSetGrant:
+		return command.Epoch == 1 && command.ActorID == state.OwnerID && command.NodeID == state.HostID && command.CapabilityID == "agent.run/execute" && command.Action == "run" && command.Grant == space.GrantAsk
+	default:
+		return false
+	}
 }
 
 func newBootstrapID(prefix string) (string, error) {
@@ -307,7 +432,7 @@ func (s *Service) handle(ctx context.Context, q control.Request) control.Respons
 		if err != nil {
 			return control.Response{Error: "state unavailable"}
 		}
-		return control.Response{OK: true, Data: map[string]any{"status": "ready", "space_id": state.SpaceID, "tasks": state.Tasks}}
+		return control.Response{OK: true, Data: map[string]any{"status": "ready", "space_id": state.SpaceID, "owner_id": state.OwnerID, "host_id": state.HostID, "active_host_id": state.HostID, "epoch": state.Epoch, "tasks": state.Tasks}}
 	case "shutdown":
 		return control.Response{OK: true, Data: map[string]string{"status": "shutting_down"}}
 	case "task submit":

@@ -142,6 +142,91 @@ func TestInitBootstrapsDurableSpaceAndFreshTaskFlow(t *testing.T) {
 	}
 }
 
+func TestInitResumesCompleteBootstrapWithoutMarker(t *testing.T) {
+	d := t.TempDir()
+	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator")}
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(c.CredentialPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(d, "initialized")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Initialize(c); err != nil {
+		t.Fatalf("resume failed: %v", err)
+	}
+	after, err := os.ReadFile(c.CredentialPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Fatal("resume replaced the operator credential")
+	}
+	if _, err := os.Stat(filepath.Join(d, "initialized")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInitResumesCompleteBootstrapWithMissingCredential(t *testing.T) {
+	d := t.TempDir()
+	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator")}
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(d, "initialized")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(c.CredentialPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := Initialize(c); err != nil {
+		t.Fatalf("resume with missing credential failed: %v", err)
+	}
+	credential, err := control.ReadCredential(c.CredentialPath)
+	if err != nil || len(credential) != control.CredentialSize {
+		t.Fatalf("recreated credential: %v", err)
+	}
+}
+
+func TestInitRejectsPartialBootstrapWithoutMutation(t *testing.T) {
+	d := t.TempDir()
+	if err := os.Chmod(d, 0700); err != nil {
+		t.Fatal(err)
+	}
+	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator")}
+	stateStore, err := store.New(filepath.Join(d, "state.json"), filepath.Join(d, "state.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stateStore.Initialize(space.State{SchemaVersion: 1, Audit: []space.AuditEvent{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := stateStore.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := Initialize(c); err == nil {
+		t.Fatal("expected incomplete bootstrap to fail closed")
+	}
+	if exists(filepath.Join(d, "initialized")) || exists(c.CredentialPath) {
+		t.Fatal("partial bootstrap was finalized")
+	}
+	stateStore, err = store.Open(filepath.Join(d, "state.json"), filepath.Join(d, "state.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := stateStore.Read()
+	stateStore.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.SpaceID != "" || len(state.Commands) != 0 {
+		t.Fatalf("partial state was mutated: %#v", state)
+	}
+}
+
 func TestInitCanRetryAfterPostStoreFailure(t *testing.T) {
 	d := t.TempDir()
 	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator")}

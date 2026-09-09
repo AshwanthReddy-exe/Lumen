@@ -2,10 +2,12 @@ package contract
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/AshwanthReddy-exe/Lumen/internal/control"
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/host"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
@@ -72,4 +74,46 @@ func TestHostHermesDurableAllowRun(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("terminal evidence was not durably accepted")
+}
+
+func TestFreshInitServeStatusAndSubmitDefaultsIdentity(t *testing.T) {
+	d := t.TempDir()
+	runtimeDir, err := os.MkdirTemp("/private/tmp", "lumen-contract-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(runtimeDir)
+	c := host.Config{DataDir: d, SocketPath: filepath.Join(runtimeDir, "host.sock"), CredentialPath: filepath.Join(runtimeDir, "operator")}
+	if err := host.Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	s, err := host.NewWithRuntime(c, runtime{}, host.WithClock(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Shutdown()
+	if err := s.Start(); err != nil {
+		t.Fatal(err)
+	}
+	status, err := control.Call(c.SocketPath, c.CredentialPath, control.Request{Command: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.OK {
+		t.Fatalf("status: %#v", status)
+	}
+	data, ok := status.Data.(map[string]interface{})
+	if !ok || data["space_id"] == "" || data["owner_id"] == "" || data["host_id"] == "" || data["active_host_id"] == "" || data["epoch"] != float64(1) {
+		t.Fatalf("status identity metadata: %#v", status.Data)
+	}
+	ownerID, _ := data["owner_id"].(string)
+	hostID, _ := data["host_id"].(string)
+	spaceID, _ := data["space_id"].(string)
+	if tr, err := s.ApplyCommand(space.Command{Type: space.CommandSetGrant, SpaceID: spaceID, HostID: hostID, Epoch: 1, ActorID: ownerID, NodeID: hostID, CapabilityID: "agent.run/execute", Action: "run", Grant: space.GrantAllow, RequestID: "contract:cli-grant"}); err != nil || tr.Rejection != "" {
+		t.Fatalf("allow bootstrap capability: %#v %v", tr, err)
+	}
+	submit, err := control.Call(c.SocketPath, c.CredentialPath, control.Request{Command: "task submit", Arguments: map[string]string{"request_id": "contract:cli-submit", "task_id": "contract:cli-task", "capability_id": "agent.run/execute", "action": "run", "action_fingerprint": "digest", "runtime_profile_digest": "profile", "reconcile_by": "130", "input": "contract"}})
+	if err != nil || !submit.OK {
+		t.Fatalf("submit without identity flags: %#v %v", submit, err)
+	}
 }
