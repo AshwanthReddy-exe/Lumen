@@ -2,7 +2,7 @@
 
 ## Current execution lock
 
-**This is the first work for the next session. Begin with the required one-time Android authority quarantine, then finish this block before returning to pairing, node transport, dashboards, camera, microphone, Mac, iPhone, or new Android companion features.** A UI mock, network scaffold, or additional companion feature is not progress toward this exit gate.
+**The Android authority quarantine and native Go migration are complete. Finish the remaining owner proof for this block before returning to pairing, node transport, dashboards, camera, microphone, Mac, iPhone, or new Android companion features.** A UI mock, network scaffold, or additional companion feature is not progress toward this exit gate.
 
 ## Goal
 
@@ -89,9 +89,11 @@ Ship examples for systemd, launchd, Docker, and Termux/runit. All invoke the sam
 - Unit tests cover core execution transitions and migration fixtures; configuration; create-only initialization; encrypted envelopes, fresh nonces, corruption, permissions, locking, and atomic write failure; lifecycle reducers; adapter normalization; bounds; and secret redaction.
 - Contract tests use a fake Hermes server for capability mismatch, authentication failure, run creation, SSE duplication/reordering/disconnect, approval, cancellation, timeout, and recovery.
 - An opt-in real-Hermes test verifies the documented capability, run, event, exact `once`/`deny` approval, stop, and health surface under deny-by-default configuration without relying on Hermes internals.
-- `mise run phase1-check` remains green.
+- Phase 1 Kotlin fixtures remain historical evidence after the authority migration; the active automated gate is `mise run phase2-check`.
 - `mise run phase2-check` must pin Go, build native Host distributions, and run core, Host, adapter, persistence, CLI, fixture, and scenario tests. Android Termux ARM64 is a required compatibility run with its exact Termux and Go versions recorded; it is not assumed equivalent to desktop Linux.
+- Native automated evidence on 2026-09-09: `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk MISE_CACHE_DIR=/tmp/lumen-mise-cache GOCACHE=/tmp/lumen-go-cache mise run phase2-check` passed formatting, vet, all Go tests, race tests, amd64 build, linux/arm64 cross-build, contract scenarios, Android companion unit tests, and debug APK assembly (`apps/android-host/build/outputs/apk/debug/android-host-debug.apk`, 28.2 MB). Android verification is mandatory and the gate fails without `ANDROID_HOME`.
 - Owner evidence records one supervised desktop/server run and one Android Termux run with no manual state repair.
+- Owner evidence remains pending for connected Android Termux (exact Android/Termux/OpenJDK/Go versions, runit lifecycle, restart recovery) and one real isolated-Hermes task. Same-UID Termux Hermes must not be counted as security evidence.
 
 ## Delivery sequence and PR stack
 

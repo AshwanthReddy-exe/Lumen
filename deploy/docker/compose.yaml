@@ -1,0 +1,28 @@
+services:
+  lumen-host:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    command: ["serve"]
+    read_only: true
+    environment:
+      LUMEN_DATA_DIR: /var/lib/lumen
+      LUMEN_OPERATOR_CREDENTIAL_FILE: /var/lib/lumen/operator.credential
+      LUMEN_HERMES_BEARER_FILE: /run/secrets/hermes_token
+      LUMEN_HERMES_PROFILE: hardened
+      LUMEN_HERMES_BASE_URL: https://hermes.internal.example
+      LUMEN_HERMES_CA_FILE: /run/secrets/hermes_ca.pem
+      LUMEN_HERMES_CLIENT_CERT_FILE: /run/secrets/hermes_client.crt
+      LUMEN_HERMES_CLIENT_KEY_FILE: /run/secrets/hermes_client.key
+      LUMEN_HERMES_SERVER_CERT_PIN: REPLACE_WITH_PIN
+    volumes:
+      - lumen-state:/var/lib/lumen
+      - ./secrets/hermes.token:/run/secrets/hermes_token:ro
+      - ./secrets/hermes_ca.pem:/run/secrets/hermes_ca.pem:ro
+      - ./secrets/hermes_client.crt:/run/secrets/hermes_client.crt:ro
+      - ./secrets/hermes_client.key:/run/secrets/hermes_client.key:ro
+    restart: on-failure:3
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+volumes:
+  lumen-state:

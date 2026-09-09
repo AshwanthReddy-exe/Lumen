@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>dev.lumen.host</string>
+	<key>ProgramArguments</key>
+	<array><string>/usr/local/libexec/dev.lumen.host-launcher.sh</string></array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>LUMEN_DATA_DIR</key><string>/Users/your-user/Library/Application Support/Lumen</string>
+		<key>LUMEN_OPERATOR_CREDENTIAL_FILE</key><string>/Users/your-user/Library/Application Support/Lumen/operator.credential</string>
+		<key>LUMEN_HERMES_BEARER_FILE</key><string>/Users/your-user/Library/Application Support/Lumen/hermes.token</string>
+	</dict>
+	<!-- launchd terminates the foreground process with SIGTERM; keep this file and the referenced secret files owner-readable (0600). -->
+	<key>WorkingDirectory</key><string>/Users/your-user/Library/Application Support/Lumen</string>
+	<key>Umask</key><integer>63</integer>
+	<key>ProcessType</key><string>Background</string>
+	<key>KeepAlive</key>
+	<dict><key>SuccessfulExit</key><false/></dict>
+	<key>ThrottleInterval</key><integer>5</integer>
+	<key>ExitTimeOut</key><integer>30</integer>
+	<key>AbandonProcessGroup</key><false/>
+</dict>
+</plist>

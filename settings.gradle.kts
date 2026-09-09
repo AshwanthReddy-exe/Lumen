@@ -15,6 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "lumen"
 
-include(":core:space")
-include(":tools:space-scenario")
 include(":apps:android-host")
