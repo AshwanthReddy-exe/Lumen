@@ -6,6 +6,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 mkdir -p "$LUMEN_DATA_DIR"
 chmod 700 "$LUMEN_DATA_DIR"
+touch "$LUMEN_LOG_FILE"
+chmod 600 "$LUMEN_LOG_FILE"
 
 if [ ! -x "$LUMEN_BINARY" ]; then
   (cd "$LUMEN_REPO_ROOT" && mise exec -- go build -trimpath -ldflags='-s -w' -o "$LUMEN_BINARY" ./cmd/lumen-host)
@@ -20,4 +22,5 @@ if [ ! -e "$LUMEN_DATA_DIR/initialized" ]; then
   "$LUMEN_BINARY" init
 fi
 
-exec "$LUMEN_BINARY" serve
+echo "Lumen Host logs: $LUMEN_LOG_FILE"
+"$LUMEN_BINARY" serve 2>&1 | tee -a "$LUMEN_LOG_FILE"
