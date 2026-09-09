@@ -216,6 +216,9 @@ func approve(s State, c Command) Transition {
 	if c.ApprovalID == "" || c.ApprovedAt <= 0 || c.ExpiresAt <= 0 || c.ApprovedAt >= c.ExpiresAt {
 		return reject(s, c, "approval_expired")
 	}
+	if c.ObservedAt > 0 && c.ObservedAt >= c.ExpiresAt {
+		return reject(s, c, "approval_expired")
+	}
 	if c.Decision != "" && c.Decision != "once" && c.Decision != "deny" {
 		return reject(s, c, "invalid_approval")
 	}

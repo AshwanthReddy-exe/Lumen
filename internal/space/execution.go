@@ -170,11 +170,23 @@ func recordRuntimeApproval(s State, c Command) Transition {
 	if !ok || !runOK || approval.TaskID != c.TaskID || approval.RuntimeRunID != c.RuntimeRunID || run.RuntimeProfileDigest != c.RuntimeProfileDigest || approval.Decision != c.Decision || approval.TargetNodeID != c.TargetNodeID || approval.ActionFingerprint != c.ActionFingerprint {
 		return reject(s, c, "runtime_approval_mismatch")
 	}
-	if c.DeliveryState != "delivered" && c.DeliveryState != "uncertain" {
+	if c.DeliveryState != "sending" && c.DeliveryState != "delivered" && c.DeliveryState != "uncertain" {
 		return reject(s, c, "invalid_runtime_approval_delivery")
 	}
 	if approval.DeliveryState == "delivered" {
 		return reject(s, c, "runtime_approval_already_delivered")
+	}
+	if c.DeliveryState == "sending" {
+		if approval.DeliveryState != "pending" && approval.DeliveryState != "uncertain" || c.DeliveryAttempt != approval.DeliveryAttempt+1 {
+			return reject(s, c, "runtime_approval_claim_conflict")
+		}
+		approval.DeliveryAttempt = c.DeliveryAttempt
+		approval.DeliveryState = "sending"
+		s.RuntimeApprovals[c.RuntimeApprovalID] = approval
+		return accepted(s, c, OutcomeAwaitingPermission, c.TaskID)
+	}
+	if c.DeliveryAttempt != approval.DeliveryAttempt {
+		return reject(s, c, "runtime_approval_attempt_mismatch")
 	}
 	if c.DeliveryState == "delivered" {
 		task, exists := s.Tasks[c.TaskID]
@@ -223,14 +235,30 @@ func reconcileHostRun(s State, c Command) Transition {
 	}
 	if t.Status == OutcomeAwaitingPermission && c.Evidence != EvidenceRunning {
 		pending := false
+		expired := false
+		found := false
 		for _, approval := range s.RuntimeApprovals {
 			if approval.TaskID == c.TaskID && approval.DeliveryState != "delivered" {
-				pending = c.ObservedAt < approval.ExpiresAt && !(c.Evidence == EvidenceUnavailable && c.ObservedAt >= r.ReconcileBy)
+				found = true
+				expired = c.ObservedAt >= approval.ExpiresAt
+				pending = !expired && !(c.Evidence == EvidenceUnavailable && c.ObservedAt >= r.ReconcileBy)
 				break
 			}
 		}
+		if !found {
+			return reject(s, c, "approval_pending")
+		}
 		if pending {
 			return reject(s, c, "approval_pending")
+		}
+		if expired && c.Evidence != EvidenceUnavailable {
+			return reject(s, c, "approval_expired")
+		}
+		if expired && c.Evidence == EvidenceUnavailable {
+			t.Status = OutcomeUnknown
+			t.TerminalReason = "runtime_approval_expired"
+			s.Tasks[c.TaskID] = t
+			return accepted(s, c, OutcomeUnknown, c.TaskID)
 		}
 	}
 	var out Outcome

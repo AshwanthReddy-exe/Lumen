@@ -145,6 +145,7 @@ type RuntimeApproval struct {
 	ExpiresAt         int64  `json:"expiresAt"`
 	Decision          string `json:"decision,omitempty"`
 	DeliveryState     string `json:"deliveryState,omitempty"`
+	DeliveryAttempt   int    `json:"deliveryAttempt,omitempty"`
 }
 type Approval struct {
 	ID                string `json:"id"`
@@ -201,6 +202,7 @@ type Command struct {
 	RuntimeApprovalID     string          `json:"runtimeApprovalId,omitempty"`
 	Decision              string          `json:"decision,omitempty"`
 	DeliveryState         string          `json:"deliveryState,omitempty"`
+	DeliveryAttempt       int             `json:"deliveryAttempt,omitempty"`
 }
 type Transition struct {
 	State     State

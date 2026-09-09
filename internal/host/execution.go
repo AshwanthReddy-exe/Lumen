@@ -377,22 +377,24 @@ func (s *Service) handleApprovalResolve(ctx context.Context, args map[string]str
 }
 
 type executor struct {
-	service    *Service
-	runtime    hermes.Adapter
-	options    executionOptions
-	ctx        context.Context
-	cancel     context.CancelFunc
-	seenMu     sync.Mutex
-	seen       map[string]map[string]struct{}
-	consumerMu sync.Mutex
-	consumers  map[string]struct{}
-	closed     bool
-	wg         sync.WaitGroup
+	service          *Service
+	runtime          hermes.Adapter
+	options          executionOptions
+	ctx              context.Context
+	cancel           context.CancelFunc
+	seenMu           sync.Mutex
+	seen             map[string]map[string]struct{}
+	consumerMu       sync.Mutex
+	consumers        map[string]struct{}
+	closed           bool
+	approvalMu       sync.Mutex
+	approvalInFlight map[string]struct{}
+	wg               sync.WaitGroup
 }
 
 func newExecutor(s *Service, runtime hermes.Adapter, options executionOptions) *executor {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &executor{service: s, runtime: runtime, options: options, ctx: ctx, cancel: cancel, seen: make(map[string]map[string]struct{}), consumers: make(map[string]struct{})}
+	return &executor{service: s, runtime: runtime, options: options, ctx: ctx, cancel: cancel, seen: make(map[string]map[string]struct{}), consumers: make(map[string]struct{}), approvalInFlight: make(map[string]struct{})}
 }
 
 func NewWithRuntime(c Config, runtime hermes.Adapter, options ...ExecutionOption) (*Service, error) {
@@ -434,7 +436,11 @@ func (s *Service) SubmitTask(ctx context.Context, req ExecuteRequest) (space.Tra
 }
 
 func (s *Service) ResolveApproval(ctx context.Context, req ApprovalRequest) (space.Transition, error) {
-	tr, err := s.apply(req.Command)
+	command := req.Command
+	if s.executor != nil {
+		command.ObservedAt = s.executor.options.now().Unix()
+	}
+	tr, err := s.apply(command)
 	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeQueued {
 		return tr, err
 	}
@@ -445,7 +451,7 @@ func (s *Service) ResolveApproval(ctx context.Context, req ApprovalRequest) (spa
 	if readErr != nil {
 		return tr, readErr
 	}
-	task := state.Tasks[req.Command.TaskID]
+	task := state.Tasks[command.TaskID]
 	return s.startOrFail(ctx, ExecuteRequest{Submit: space.Command{Type: space.CommandSubmit, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: task.CommandID, TaskID: task.ID, OriginNodeID: task.OriginNodeID, TargetNodeID: task.TargetNodeID, CapabilityID: task.CapabilityID, Action: task.Action, ActionFingerprint: task.ActionFingerprint}, Runtime: req.Runtime, RuntimeProfileDigest: req.RuntimeProfileDigest, ReconcileBy: req.ReconcileBy}, tr)
 }
 
@@ -454,37 +460,85 @@ func (s *Service) ResolveRuntimeApproval(ctx context.Context, req RuntimeApprova
 	if err != nil || tr.Rejection != "" {
 		return tr, err
 	}
+	return s.deliverRuntimeApproval(ctx, req.Command, tr)
+}
+
+func (s *Service) deliverRuntimeApproval(ctx context.Context, command space.Command, tr space.Transition) (space.Transition, error) {
+	if s.executor == nil || s.executor.runtime == nil {
+		return tr, errors.New("runtime approval mapping unavailable")
+	}
+	s.executor.approvalMu.Lock()
 	state, readErr := s.state.Read()
 	if readErr != nil {
+		s.executor.approvalMu.Unlock()
 		return tr, readErr
 	}
-	approval, approvalOK := state.RuntimeApprovals[req.Command.RuntimeApprovalID]
+	approval, approvalOK := state.RuntimeApprovals[command.RuntimeApprovalID]
 	if !approvalOK || approval.Decision == "" {
+		s.executor.approvalMu.Unlock()
 		return tr, errors.New("runtime approval decision unavailable")
 	}
 	if approval.DeliveryState == "delivered" {
+		s.executor.approvalMu.Unlock()
 		return tr, nil
 	}
-	if s.executor == nil || s.executor.options.now().Unix() >= approval.ExpiresAt {
+	if !time.Unix(approval.ExpiresAt, 0).After(s.executor.options.now()) {
+		s.executor.approvalMu.Unlock()
 		return tr, errors.New("runtime approval expired")
 	}
-	run, ok := state.HostRuns[req.Command.TaskID]
-	if !ok || s.executor == nil || s.executor.runtime == nil {
+	run, ok := state.HostRuns[command.TaskID]
+	if !ok {
+		s.executor.approvalMu.Unlock()
 		return tr, errors.New("runtime approval mapping unavailable")
+	}
+	attempt := approval.DeliveryAttempt
+	if approval.DeliveryState == "sending" {
+		if _, active := s.executor.approvalInFlight[approval.ID]; active {
+			s.executor.approvalMu.Unlock()
+			return tr, errors.New("runtime approval delivery in progress")
+		}
+	} else {
+		attempt++
+		claimed, claimErr := s.claimRuntimeApproval(state, run, approval, attempt)
+		if claimErr != nil || claimed.Rejection != "" {
+			s.executor.approvalMu.Unlock()
+			return tr, errOrRejection(claimErr, claimed.Rejection)
+		}
+	}
+	s.executor.approvalInFlight[approval.ID] = struct{}{}
+	s.executor.approvalMu.Unlock()
+	defer func() {
+		s.executor.approvalMu.Lock()
+		delete(s.executor.approvalInFlight, approval.ID)
+		s.executor.approvalMu.Unlock()
+	}()
+	if approval.DeliveryState == "uncertain" || approval.DeliveryState == "sending" {
+		status, statusErr := s.executor.runtime.RunStatus(ctx, run.RuntimeRunID)
+		if statusErr != nil {
+			dispatched, applyErr := s.recordRuntimeApprovalDelivery(tr, state, run, approval, "uncertain", attempt)
+			if applyErr != nil {
+				return tr, errors.Join(statusErr, applyErr)
+			}
+			return dispatched, statusErr
+		}
+		if status.Status != "awaiting_approval" {
+			if approval.Decision == "deny" && status.Status != "failed" && status.Status != "cancelled" && status.Status != "canceled" {
+				dispatched, applyErr := s.recordRuntimeApprovalDelivery(tr, state, run, approval, "uncertain", attempt)
+				if applyErr != nil {
+					return tr, applyErr
+				}
+				return dispatched, errors.New("runtime approval delivery remains uncertain")
+			}
+			return s.recordRuntimeApprovalDelivery(tr, state, run, approval, "delivered", attempt)
+		}
 	}
 	forwardErr := s.executor.runtime.ResolveApproval(ctx, run.RuntimeRunID, approval.Decision)
 	deliveryState := "delivered"
 	if forwardErr != nil {
 		deliveryState = "uncertain"
 	}
-	delivery := space.Command{Type: space.CommandRecordRuntimeApproval, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "runtime-approval-delivery:" + approval.ID + ":" + approval.Decision + ":" + deliveryState, TaskID: approval.TaskID, RuntimeRunID: approval.RuntimeRunID, RuntimeProfileDigest: run.RuntimeProfileDigest, RuntimeApprovalID: approval.ID, Decision: approval.Decision, DeliveryState: deliveryState}
-	delivery.TargetNodeID = approval.TargetNodeID
-	delivery.ActionFingerprint = approval.ActionFingerprint
-	dispatched, applyErr := s.apply(delivery)
-	if applyErr != nil || dispatched.Rejection != "" {
-		if applyErr == nil {
-			applyErr = errors.New(dispatched.Rejection)
-		}
+	dispatched, applyErr := s.recordRuntimeApprovalDelivery(tr, state, run, approval, deliveryState, attempt)
+	if applyErr != nil {
 		if forwardErr != nil {
 			return tr, errors.Join(forwardErr, applyErr)
 		}
@@ -496,9 +550,25 @@ func (s *Service) ResolveRuntimeApproval(ctx context.Context, req RuntimeApprova
 	return dispatched, nil
 }
 
+func (s *Service) claimRuntimeApproval(state space.State, run space.HostRun, approval space.RuntimeApproval, attempt int) (space.Transition, error) {
+	return s.apply(space.Command{Type: space.CommandRecordRuntimeApproval, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: fmt.Sprintf("runtime-approval-claim:%s:%d", approval.ID, attempt), TaskID: approval.TaskID, RuntimeRunID: approval.RuntimeRunID, RuntimeProfileDigest: run.RuntimeProfileDigest, RuntimeApprovalID: approval.ID, TargetNodeID: approval.TargetNodeID, ActionFingerprint: approval.ActionFingerprint, Decision: approval.Decision, DeliveryState: "sending", DeliveryAttempt: attempt})
+}
+
+func (s *Service) recordRuntimeApprovalDelivery(tr space.Transition, state space.State, run space.HostRun, approval space.RuntimeApproval, deliveryState string, attempt int) (space.Transition, error) {
+	delivery := space.Command{Type: space.CommandRecordRuntimeApproval, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: fmt.Sprintf("runtime-approval-delivery:%s:%s:%d:%s", approval.ID, approval.Decision, attempt, deliveryState), TaskID: approval.TaskID, RuntimeRunID: approval.RuntimeRunID, RuntimeProfileDigest: run.RuntimeProfileDigest, RuntimeApprovalID: approval.ID, TargetNodeID: approval.TargetNodeID, ActionFingerprint: approval.ActionFingerprint, Decision: approval.Decision, DeliveryState: deliveryState, DeliveryAttempt: attempt}
+	dispatched, applyErr := s.apply(delivery)
+	if applyErr != nil {
+		return tr, applyErr
+	}
+	if dispatched.Rejection != "" {
+		return tr, errors.New(dispatched.Rejection)
+	}
+	return dispatched, nil
+}
+
 func (s *Service) CancelTask(ctx context.Context, req CancelRequest) (space.Transition, error) {
 	tr, err := s.apply(req.Command)
-	if err != nil || tr.Rejection != "" {
+	if err != nil || tr.Rejection != "" || tr.Replayed {
 		return tr, err
 	}
 	if s.executor == nil || s.executor.runtime == nil {
@@ -561,9 +631,10 @@ func (s *Service) startOrFail(ctx context.Context, req ExecuteRequest, queued sp
 	if digest == "" {
 		digest = "sha256:hermes-default"
 	}
-	now := s.executor.options.now().Unix()
+	nowTime := s.executor.options.now()
+	now := nowTime.Unix()
 	by := req.ReconcileBy
-	if by <= now {
+	if by <= 0 || !time.Unix(by, 0).After(nowTime) {
 		by = now + int64(s.executor.options.reconcileWindow/time.Second)
 		if by <= now {
 			by = now + 1
@@ -659,6 +730,40 @@ func (s *Service) recoverInFlight() {
 	if err != nil {
 		return
 	}
+	for approvalID, approval := range state.RuntimeApprovals {
+		if approval.DeliveryState != "sending" {
+			continue
+		}
+		run, ok := state.HostRuns[approval.TaskID]
+		if !ok {
+			continue
+		}
+		recovered, recoverErr := s.apply(space.Command{Type: space.CommandRecordRuntimeApproval, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: fmt.Sprintf("restart-runtime-approval:%s:%d", approvalID, approval.DeliveryAttempt), TaskID: approval.TaskID, RuntimeRunID: approval.RuntimeRunID, RuntimeProfileDigest: run.RuntimeProfileDigest, RuntimeApprovalID: approval.ID, TargetNodeID: approval.TargetNodeID, ActionFingerprint: approval.ActionFingerprint, Decision: approval.Decision, DeliveryState: "uncertain", DeliveryAttempt: approval.DeliveryAttempt})
+		if recoverErr != nil || recovered.Rejection != "" {
+			continue
+		}
+	}
+	state, err = s.state.Read()
+	if err != nil {
+		return
+	}
+	for approvalID, approval := range state.RuntimeApprovals {
+		if approval.Decision == "" || approval.DeliveryState == "delivered" {
+			continue
+		}
+		run, ok := state.HostRuns[approval.TaskID]
+		if !ok {
+			continue
+		}
+		now := s.executor.options.now()
+		remaining := time.Unix(run.ReconcileBy, 0).Sub(now)
+		if remaining <= 0 || !time.Unix(approval.ExpiresAt, 0).After(now) {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), remaining)
+		_, _ = s.ResolveRuntimeApproval(ctx, RuntimeApprovalRequest{Command: space.Command{Type: space.CommandResolveRuntimeApproval, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.OwnerID, RequestID: fmt.Sprintf("restart-runtime-approval:%s:%d:resolve", approvalID, approval.DeliveryAttempt), TaskID: approval.TaskID, RuntimeRunID: approval.RuntimeRunID, RuntimeProfileDigest: run.RuntimeProfileDigest, RuntimeApprovalID: approval.ID, TargetNodeID: approval.TargetNodeID, ActionFingerprint: approval.ActionFingerprint, Decision: approval.Decision, ObservedAt: now.Unix()}})
+		cancel()
+	}
 	for taskID, run := range state.HostRuns {
 		switch state.Tasks[taskID].Status {
 		case space.OutcomeUnknown, space.OutcomeAwaitingPermission, space.OutcomeDispatched, space.OutcomeRunning, space.OutcomeCancelling:
@@ -701,7 +806,7 @@ func (e *executor) consume(taskID string, run space.HostRun) {
 
 func (e *executor) consumeOnce(taskID string, run space.HostRun) (terminal, retryApproval bool) {
 	streamCtx := e.ctx
-	remaining := time.Duration(run.ReconcileBy-e.options.now().Unix()) * time.Second
+	remaining := time.Unix(run.ReconcileBy, 0).Sub(e.options.now())
 	if remaining <= 0 {
 		return e.service.persistEvidence(taskID, run, space.EvidenceUnavailable, "expired") == nil, false
 	}
@@ -890,7 +995,7 @@ func (e *executor) reconcileContext(ctx context.Context, taskID string, run spac
 			}
 			return
 		}
-		remaining := time.Duration(run.ReconcileBy-e.options.now().Unix()) * time.Second
+		remaining := time.Unix(run.ReconcileBy, 0).Sub(e.options.now())
 		if remaining <= 0 {
 			if e.service.persistEvidence(taskID, run, space.EvidenceUnavailable, "unavailable") == nil {
 				e.forgetSeen(taskID)
@@ -943,7 +1048,7 @@ func (s *Service) reconcileAfterStop(ctx context.Context, taskID string) error {
 	case space.OutcomeCompleted, space.OutcomeFailed, space.OutcomeCancelled, space.OutcomeUnknown:
 		return nil
 	default:
-		if s.executor.options.now().Unix() >= run.ReconcileBy {
+		if !time.Unix(run.ReconcileBy, 0).After(s.executor.options.now()) {
 			if persistErr := s.persistEvidence(taskID, run, space.EvidenceUnavailable, "unavailable"); persistErr == nil {
 				return nil
 			}
@@ -1023,7 +1128,7 @@ func (s *Service) persistRuntimeApproval(taskID string, run space.HostRun, appro
 	if approval.ActorNodeID != "" && approval.ActorNodeID != state.HostID {
 		return errors.New("runtime approval actor mismatch")
 	}
-	if approval.TargetNodeID != task.TargetNodeID || approval.ActionFingerprint != task.ActionFingerprint || approval.ExpiresAt <= s.executor.options.now().Unix() {
+	if approval.TargetNodeID != task.TargetNodeID || approval.ActionFingerprint != task.ActionFingerprint || !time.Unix(approval.ExpiresAt, 0).After(s.executor.options.now()) {
 		return errors.New("runtime approval binding mismatch")
 	}
 	tr, err := s.apply(space.Command{Type: space.CommandRequestRuntimeApproval, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "runtime-approval:" + approval.ID, TaskID: taskID, RuntimeRunID: run.RuntimeRunID, RuntimeProfileDigest: run.RuntimeProfileDigest, RuntimeApprovalID: approval.ID, TargetNodeID: approval.TargetNodeID, ActionFingerprint: approval.ActionFingerprint, ExpiresAt: approval.ExpiresAt, ObservedAt: s.executor.options.now().Unix()})

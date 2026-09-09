@@ -99,8 +99,12 @@ func TestPendingRuntimeApprovalBlocksTerminalEvidenceUntilExpiry(t *testing.T) {
 	if terminal.Rejection != "approval_pending" || terminal.State.Tasks["task"].Status != OutcomeAwaitingPermission {
 		t.Fatalf("terminal while approval pending: %#v", terminal)
 	}
+	lateTerminal := Apply(s, Command{Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "late-terminal", TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", Evidence: EvidenceCompleted, ObservedAt: 160})
+	if lateTerminal.Rejection != "approval_expired" || lateTerminal.State.Tasks["task"].Status != OutcomeAwaitingPermission {
+		t.Fatalf("late terminal bypassed expiry: %#v", lateTerminal)
+	}
 	expired := Apply(s, Command{Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "expired", TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", Evidence: EvidenceUnavailable, ObservedAt: 200})
-	if expired.Rejection != "" || expired.State.Tasks["task"].Status != OutcomeUnknown {
+	if expired.Rejection != "" || expired.State.Tasks["task"].Status != OutcomeUnknown || expired.State.Tasks["task"].TerminalReason != "runtime_approval_expired" {
 		t.Fatalf("expiry transition: %#v", expired)
 	}
 }

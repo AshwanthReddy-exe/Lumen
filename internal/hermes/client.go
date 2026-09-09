@@ -595,7 +595,7 @@ func validateRun(run Run, requireID bool) error {
 
 func validRunStatus(status string) bool {
 	switch status {
-	case "queued", "started", "running", "stopping", "completed", "failed", "cancelled", "canceled":
+	case "queued", "started", "running", "stopping", "awaiting_approval", "completed", "failed", "cancelled", "canceled":
 		return true
 	default:
 		return false
