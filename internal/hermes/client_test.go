@@ -92,7 +92,7 @@ func TestCreateRunUsesIdempotencyKeyAndDecodesRun(t *testing.T) {
 		}
 		gotKey = r.Header.Get("Idempotency-Key")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"run_id":"run_1","status":"started"}`))
+		_, _ = w.Write([]byte(`{"object":"run","run_id":"run_1","status":"started","created_at":100.5,"updated_at":101.5,"last_event":"run.started"}`))
 	}))
 
 	c, err := New(testConfig(srv.URL))

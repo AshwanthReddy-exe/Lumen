@@ -148,13 +148,16 @@ type SteerRequest struct {
 }
 
 type Run struct {
-	Object    string `json:"object,omitempty"`
-	RunID     string `json:"run_id"`
-	Status    string `json:"status"`
-	SessionID string `json:"session_id,omitempty"`
-	Model     string `json:"model,omitempty"`
-	Output    string `json:"output,omitempty"`
-	Usage     *Usage `json:"usage,omitempty"`
+	Object    string  `json:"object,omitempty"`
+	RunID     string  `json:"run_id"`
+	Status    string  `json:"status"`
+	SessionID string  `json:"session_id,omitempty"`
+	Model     string  `json:"model,omitempty"`
+	Output    string  `json:"output,omitempty"`
+	Usage     *Usage  `json:"usage,omitempty"`
+	CreatedAt float64 `json:"created_at,omitempty"`
+	UpdatedAt float64 `json:"updated_at,omitempty"`
+	LastEvent string  `json:"last_event,omitempty"`
 }
 
 type Usage struct {
