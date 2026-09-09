@@ -435,10 +435,40 @@ func (s *Service) SubmitTask(ctx context.Context, req ExecuteRequest) (space.Tra
 	return s.startOrFail(ctx, req, tr)
 }
 
-func (s *Service) ResolveApproval(ctx context.Context, req ApprovalRequest) (space.Transition, error) {
-	command := req.Command
+func (s *Service) stableApprovalCommand(command space.Command) (space.Command, error) {
+	id := command.RequestID
+	if id == "" {
+		id = command.OperationID
+	}
+	if id != "" {
+		state, err := s.state.Read()
+		if err != nil {
+			return command, err
+		}
+		if recorded, ok := state.Commands[id]; ok && recorded.Content != "" {
+			var original space.Command
+			if err := json.Unmarshal([]byte(recorded.Content), &original); err != nil {
+				return command, fmt.Errorf("invalid approval command receipt: %w", err)
+			}
+			serialized := original
+			candidate := command
+			candidate.ObservedAt = 0
+			original.ObservedAt = 0
+			if candidate == original {
+				return serialized, nil
+			}
+		}
+	}
 	if s.executor != nil {
 		command.ObservedAt = s.executor.options.now().Unix()
+	}
+	return command, nil
+}
+
+func (s *Service) ResolveApproval(ctx context.Context, req ApprovalRequest) (space.Transition, error) {
+	command, commandErr := s.stableApprovalCommand(req.Command)
+	if commandErr != nil {
+		return space.Transition{}, commandErr
 	}
 	tr, err := s.apply(command)
 	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeQueued {

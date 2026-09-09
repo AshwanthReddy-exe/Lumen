@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -308,9 +309,25 @@ func TestAskRequiresExactApprovalAndStartsOnlyOnce(t *testing.T) {
 	good := bad
 	good.RequestID = "approve-good"
 	good.ActionFingerprint = "digest"
+	good.ApprovedAt = 100
+	good.ObservedAt = 0
+	var observed atomic.Int64
+	observed.Store(100)
+	s.executor.options.now = func() time.Time { return time.Unix(observed.Load(), 0) }
+	direct := good
+	direct.RequestID = "direct-bypass"
+	if directResult, err := s.ApplyCommand(direct); err != nil || directResult.Rejection != "approval_expired" {
+		t.Fatalf("direct authority bypass: %#v %v", directResult, err)
+	}
 	tr, err = s.ResolveApproval(context.Background(), ApprovalRequest{Command: good, Runtime: req.Runtime, RuntimeProfileDigest: req.RuntimeProfileDigest, ReconcileBy: req.ReconcileBy})
 	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeQueued {
 		t.Fatalf("approval: %#v %v", tr, err)
+	}
+	observed.Store(110)
+	goodRetry := good
+	goodRetry.ObservedAt = 0
+	if replay, err := s.ResolveApproval(context.Background(), ApprovalRequest{Command: goodRetry, Runtime: req.Runtime, RuntimeProfileDigest: req.RuntimeProfileDigest, ReconcileBy: req.ReconcileBy}); err != nil || !replay.Replayed {
+		t.Fatalf("approval retry did not replay stable command: %#v %v", replay, err)
 	}
 	waitForTask(t, s, "task-ask", space.OutcomeCompleted)
 	if r.created != 1 {
@@ -353,6 +370,7 @@ func TestInitialApprovalDenyRequiresExactPendingBinding(t *testing.T) {
 	good := bad
 	good.RequestID = "deny-good"
 	good.ActionFingerprint = "digest"
+	good.ApprovedAt = 100
 	tr, err := s.ResolveApproval(context.Background(), ApprovalRequest{Command: good})
 	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeFailed {
 		t.Fatalf("bound deny: %#v %v", tr, err)

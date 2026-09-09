@@ -69,3 +69,26 @@ func TestApprovalRequiresIdentifierAndPositiveTimes(t *testing.T) {
 		t.Fatalf("invalid approval: %#v", tr)
 	}
 }
+
+func TestApprovalObservedAtMustBeWithinWindow(t *testing.T) {
+	s := validState()
+	s.Tasks["t"] = Task{ID: "t", TargetNodeID: "mac", ActionFingerprint: "d", Status: OutcomeAwaitingPermission}
+	base := Command{Type: CommandApprove, SpaceID: "s", HostID: "host", Epoch: 1, ActorID: "owner", TargetNodeID: "mac", ActionFingerprint: "d", TaskID: "t", ApprovalID: "a", ApprovedAt: 100, ExpiresAt: 120}
+	for name, command := range map[string]Command{
+		"missing observation": base,
+		"before approval":     func() Command { c := base; c.ObservedAt = 99; return c }(),
+		"at expiry":           func() Command { c := base; c.ObservedAt = 120; return c }(),
+		"future approval":     func() Command { c := base; c.ApprovedAt = 121; c.ExpiresAt = 140; c.ObservedAt = 120; return c }(),
+	} {
+		command.RequestID = "reject-" + name
+		if tr := Apply(s, command); tr.Rejection != "approval_expired" {
+			t.Fatalf("%s: %#v", name, tr)
+		}
+	}
+	valid := base
+	valid.RequestID = "valid"
+	valid.ObservedAt = 100
+	if tr := Apply(s, valid); tr.Rejection != "" {
+		t.Fatalf("valid approval rejected: %#v", tr)
+	}
+}

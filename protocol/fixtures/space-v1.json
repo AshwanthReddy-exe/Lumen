@@ -710,7 +710,8 @@
           "targetNodeId": "mac",
           "approvalId": "a",
           "expiresAt": 10,
-          "approvedAt": 1
+          "approvedAt": 1,
+          "observedAt": 1
         }
       ],
       "expected": {
@@ -778,7 +779,7 @@
           "commands": {
             "approval": {
               "type": "approve",
-              "content": "{\"type\":\"approve\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"approval\",\"epoch\":1,\"actorId\":\"owner\",\"actionFingerprint\":\"d\",\"taskId\":\"t\",\"targetNodeId\":\"mac\",\"approvalId\":\"a\",\"expiresAt\":10,\"approvedAt\":1}",
+              "content": "{\"type\":\"approve\",\"spaceId\":\"s\",\"ownerId\":\"\",\"hostId\":\"host\",\"requestId\":\"approval\",\"epoch\":1,\"actorId\":\"owner\",\"actionFingerprint\":\"d\",\"taskId\":\"t\",\"targetNodeId\":\"mac\",\"approvalId\":\"a\",\"expiresAt\":10,\"approvedAt\":1,\"observedAt\":1}",
               "receipt": {
                 "requestId": "approval",
                 "outcome": "queued",
