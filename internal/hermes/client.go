@@ -88,11 +88,13 @@ type Capabilities struct {
 
 func (c *Capabilities) UnmarshalJSON(data []byte) error {
 	type wireCapabilities struct {
-		Object   string                     `json:"object"`
-		Platform string                     `json:"platform"`
-		Model    string                     `json:"model"`
-		Auth     CapabilityAuth             `json:"auth"`
-		Features map[string]json.RawMessage `json:"features"`
+		Object    string                     `json:"object"`
+		Platform  string                     `json:"platform"`
+		Model     string                     `json:"model"`
+		Auth      CapabilityAuth             `json:"auth"`
+		Features  map[string]json.RawMessage `json:"features"`
+		Endpoints json.RawMessage            `json:"endpoints"`
+		Runtime   json.RawMessage            `json:"runtime"`
 	}
 	var wire wireCapabilities
 	decoder := json.NewDecoder(bytes.NewReader(data))
