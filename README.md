@@ -45,6 +45,8 @@ Phase 1’s Kotlin Space-core contract and simulated restart scenario are retain
 
 Run the native Block 2 gate with `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk mise run phase2-check`. It verifies Go formatting, vet, unit/contract tests, race tests, reproducible amd64 and linux/arm64 builds, Android companion unit tests, and debug APK assembly. Android verification is required; the gate fails when `ANDROID_HOME` is unavailable.
 
+The gate also builds `build/lumen-host/lumen-host-linux-arm64-pie` with Go `-buildmode=pie`; this is the Android Termux ARM64 artifact and must be installed as the foreground `lumen-host` binary. A physical Termux run remains required owner evidence.
+
 Start the Mac development Host with `scripts/lumen-mac-start`. It rebuilds the native binary from the current source, initializes private state once under `~/.local/share/lumen`, starts the foreground service, and appends redacted Host output to `~/.local/share/lumen/host.log`. In another terminal use `scripts/lumen-mac-status`, `scripts/lumen-mac-logs`, or `scripts/lumen-mac-stop`. Use `scripts/lumen-mac-task task submit ...` for authenticated task commands so the shared environment is loaded. The default development profile expects Hermes on loopback at `http://127.0.0.1:8642`; hardened deployments use the supervisor and secret configuration in `deploy/README.md`.
 
 ## Current priority

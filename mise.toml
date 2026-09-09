@@ -21,6 +21,7 @@ run = [
   "go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host ./cmd/lumen-host",
   "go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host.second ./cmd/lumen-host",
   "GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host-linux-arm64 ./cmd/lumen-host",
+  "GOOS=linux GOARCH=arm64 go build -trimpath -buildmode=pie -ldflags='-s -w' -o build/lumen-host/lumen-host-linux-arm64-pie ./cmd/lumen-host",
   "GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host-linux-arm64.second ./cmd/lumen-host",
   "test \"$(shasum -a 256 build/lumen-host/lumen-host | cut -d' ' -f1)\" = \"$(shasum -a 256 build/lumen-host/lumen-host.second | cut -d' ' -f1)\"",
   "test \"$(shasum -a 256 build/lumen-host/lumen-host-linux-arm64 | cut -d' ' -f1)\" = \"$(shasum -a 256 build/lumen-host/lumen-host-linux-arm64.second | cut -d' ' -f1)\"",
