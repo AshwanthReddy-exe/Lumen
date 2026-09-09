@@ -119,7 +119,9 @@ type CapabilityAuth struct {
 }
 
 type Health struct {
-	Status string `json:"status"`
+	Status   string `json:"status"`
+	Platform string `json:"platform,omitempty"`
+	Version  string `json:"version,omitempty"`
 }
 
 type ApprovalResponse struct {

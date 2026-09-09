@@ -66,7 +66,7 @@ func TestHealthSendsScopedBearerAndExactHeaders(t *testing.T) {
 	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Clone()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","platform":"hermes-agent","version":"0.20.6"}`))
 	}))
 
 	c, err := New(testConfig(srv.URL))
