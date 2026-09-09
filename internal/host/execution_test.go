@@ -535,6 +535,32 @@ func TestLiveHermesApprovalIsBoundFromDurableTask(t *testing.T) {
 	}
 }
 
+func TestSparseRuntimeApprovalRequiresMatchingRunAndNeverRevivesExpiry(t *testing.T) {
+	r := &fakeRuntime{create: hermes.Run{RunID: "run-bound", Status: "started"}, eventsBlock: make(chan struct{})}
+	s := executionService(t, r)
+	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-bound", "task-bound")); err != nil {
+		t.Fatal(err)
+	}
+	var run space.HostRun
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		state, _ := s.state.Read()
+		run = state.HostRuns["task-bound"]
+		if run.RuntimeRunID != "" {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	wrongRun, ok := normalizeApproval(hermes.Event{ID: "wrong-run", Type: "approval.request", Data: []byte(`{"run_id":"other"}`)})
+	if !ok || s.persistRuntimeApproval("task-bound", run, wrongRun) == nil {
+		t.Fatal("sparse approval with wrong run was accepted")
+	}
+	expired, ok := normalizeApproval(hermes.Event{ID: "expired", Type: "approval.request", Data: []byte(`{"run_id":"run-bound","target_node_id":"host","action_fingerprint":"digest","expires_at":99}`)})
+	if !ok || s.persistRuntimeApproval("task-bound", run, expired) == nil {
+		t.Fatal("expired runtime approval was revived")
+	}
+}
+
 func TestRuntimeApprovalDeliveryFailureRemainsPendingAndRetries(t *testing.T) {
 	r := &fakeRuntime{create: hermes.Run{RunID: "run-approval-retry", Status: "started"}, statusDefault: hermes.Run{RunID: "run-approval-retry", Status: "awaiting_approval"}, approvalErrors: []error{errors.New("approval delivery uncertain")}, events: []hermes.Event{{ID: "approval", Type: "approval.requested", Data: []byte(`{"status":"awaiting_approval","approval_id":"runtime-retry","target_node_id":"host","action_fingerprint":"digest","expires_at":120}`)}}}
 	s := executionService(t, r)

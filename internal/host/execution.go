@@ -1166,6 +1166,7 @@ func normalizeEvent(event hermes.Event) (space.EvidenceOutcome, bool) {
 
 type runtimeApprovalEvidence struct {
 	ID                string
+	RuntimeRunID      string
 	ActorNodeID       string
 	TargetNodeID      string
 	ActionFingerprint string
@@ -1179,7 +1180,7 @@ func normalizeApproval(event hermes.Event) (runtimeApprovalEvidence, bool) {
 	if decoder.Decode(&payload) != nil || decoder.Decode(&trailing) != io.EOF {
 		return runtimeApprovalEvidence{}, false
 	}
-	var status, id, actor, target, fingerprint string
+	var status, id, runtimeRunID, actor, target, fingerprint string
 	var expires int64
 	if raw, ok := payload["status"]; ok && json.Unmarshal(raw, &status) != nil {
 		return runtimeApprovalEvidence{}, false
@@ -1193,7 +1194,7 @@ func normalizeApproval(event hermes.Event) (runtimeApprovalEvidence, bool) {
 		raw, ok := payload[key]
 		return !ok || json.Unmarshal(raw, dst) == nil
 	}
-	if !optionalString("approval_id", &id) || !optionalString("target_node_id", &target) || !optionalString("action_fingerprint", &fingerprint) {
+	if !optionalString("approval_id", &id) || !optionalString("run_id", &runtimeRunID) || !optionalString("target_node_id", &target) || !optionalString("action_fingerprint", &fingerprint) {
 		return runtimeApprovalEvidence{}, false
 	}
 	if raw, ok := payload["expires_at"]; ok && json.Unmarshal(raw, &expires) != nil {
@@ -1203,10 +1204,14 @@ func normalizeApproval(event hermes.Event) (runtimeApprovalEvidence, bool) {
 		return runtimeApprovalEvidence{}, false
 	}
 	if id == "" {
-		digest := sha256.Sum256(append([]byte(event.Type+"\x00"), event.Data...))
+		basis := event.Data
+		if event.ID != "" {
+			basis = []byte(event.ID)
+		}
+		digest := sha256.Sum256(append([]byte(event.Type+"\x00"), basis...))
 		id = fmt.Sprintf("hermes-%x", digest[:16])
 	}
-	return runtimeApprovalEvidence{ID: id, ActorNodeID: actor, TargetNodeID: target, ActionFingerprint: fingerprint, ExpiresAt: expires}, true
+	return runtimeApprovalEvidence{ID: id, RuntimeRunID: runtimeRunID, ActorNodeID: actor, TargetNodeID: target, ActionFingerprint: fingerprint, ExpiresAt: expires}, true
 }
 
 func (s *Service) persistRuntimeApproval(taskID string, run space.HostRun, approval runtimeApprovalEvidence) error {
@@ -1215,6 +1220,10 @@ func (s *Service) persistRuntimeApproval(taskID string, run space.HostRun, appro
 		return err
 	}
 	task := state.Tasks[taskID]
+	sparseVendorEvidence := approval.TargetNodeID == "" || approval.ActionFingerprint == "" || approval.ExpiresAt == 0
+	if approval.RuntimeRunID != "" && approval.RuntimeRunID != run.RuntimeRunID || sparseVendorEvidence && approval.RuntimeRunID == "" {
+		return errors.New("runtime approval run mismatch")
+	}
 	if approval.ActorNodeID != "" && approval.ActorNodeID != state.HostID {
 		return errors.New("runtime approval actor mismatch")
 	}
@@ -1225,11 +1234,14 @@ func (s *Service) persistRuntimeApproval(taskID string, run space.HostRun, appro
 		approval.ActionFingerprint = task.ActionFingerprint
 	}
 	now := s.executor.options.now()
-	if approval.ExpiresAt <= now.Unix() {
+	if run.ReconcileBy <= now.Unix() || approval.ExpiresAt != 0 && approval.ExpiresAt <= now.Unix() {
+		return errors.New("runtime approval binding mismatch")
+	}
+	if approval.ExpiresAt == 0 {
 		approval.ExpiresAt = now.Add(5 * time.Minute).Unix()
-		if run.ReconcileBy > now.Unix() && run.ReconcileBy < approval.ExpiresAt {
-			approval.ExpiresAt = run.ReconcileBy
-		}
+	}
+	if run.ReconcileBy < approval.ExpiresAt {
+		approval.ExpiresAt = run.ReconcileBy
 	}
 	if approval.TargetNodeID != task.TargetNodeID || approval.ActionFingerprint != task.ActionFingerprint || !time.Unix(approval.ExpiresAt, 0).After(now) {
 		return errors.New("runtime approval binding mismatch")

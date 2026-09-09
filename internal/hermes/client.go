@@ -322,7 +322,7 @@ func (c *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 	if err != nil {
 		return out, err
 	}
-	if err := decodeJSON(b, &out); err != nil {
+	if err := decodeEvidenceJSON(b, &out); err != nil {
 		return out, err
 	}
 	if out.Object == "" || out.Platform == "" || out.Auth.Type == "" || out.Features == nil {
@@ -391,7 +391,7 @@ func (c *Client) RunStatus(ctx context.Context, runID string) (Run, error) {
 	if err != nil {
 		return out, err
 	}
-	if err := decodeJSON(b, &out); err != nil {
+	if err := decodeEvidenceJSON(b, &out); err != nil {
 		return out, err
 	}
 	if err := validateRun(out, true); err != nil {
@@ -418,7 +418,7 @@ func (c *Client) ResolveApproval(ctx context.Context, runID, decision string) er
 		return fmt.Errorf("%w: empty approval response", ErrInvalidEvidence)
 	}
 	var response ApprovalResponse
-	if err := decodeJSON(b, &response); err != nil {
+	if err := decodeEvidenceJSON(b, &response); err != nil {
 		return err
 	}
 	legacyValid := response.Status != "" && validApprovalStatus(response.Status)
@@ -469,7 +469,7 @@ func (c *Client) Stop(ctx context.Context, runID string) (Run, error) {
 	if err != nil {
 		return out, err
 	}
-	if err := decodeJSON(b, &out); err != nil {
+	if err := decodeEvidenceJSON(b, &out); err != nil {
 		return out, err
 	}
 	if err := validateRun(out, false); err != nil {
@@ -539,8 +539,18 @@ func (c *Client) token() (string, error) {
 }
 
 func decodeJSON(b []byte, out any) error {
+	return decodeJSONMode(b, out, true)
+}
+
+func decodeEvidenceJSON(b []byte, out any) error {
+	return decodeJSONMode(b, out, false)
+}
+
+func decodeJSONMode(b []byte, out any, strict bool) error {
 	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.DisallowUnknownFields()
+	if strict {
+		dec.DisallowUnknownFields()
+	}
 	if err := dec.Decode(out); err != nil {
 		return fmt.Errorf("invalid Hermes JSON: %w", err)
 	}

@@ -244,7 +244,7 @@ func TestValidApprovalUsesDocumentedValues(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		body = string(b)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"object":"hermes.run.approval_response","run_id":"run_1","choice":"once","resolved":1}`))
+		_, _ = w.Write([]byte(`{"object":"hermes.run.approval_response","run_id":"run_1","choice":"once","resolved":1,"vendor_meta":{"version":2}}`))
 	}))
 	c, err := New(testConfig(srv.URL))
 	if err != nil {

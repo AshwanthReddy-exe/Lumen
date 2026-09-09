@@ -110,7 +110,7 @@ The minimum durable entities are `Space`, `Identity`, `Node`, `CapabilityManifes
 
 Any active state may move to `cancelling`, `failed`, `paused`, `expired`, or `unknown_outcome`. Local tasks begin at `running` and later enter `synchronizing`. Transitions are compare-and-set and idempotent; uncertainty is never reported as success.
 
-The implemented in-memory subset uses conservative [restart recovery](./PHASE-1-CONTRACT.md#restart-recovery-increment): queued tasks become unknown because there is no durable dispatch record yet. Historical command receipts never authorize redispatch. Storage and startup must commit recovery before accepting work; encrypted storage and target reconciliation remain unimplemented.
+The Go Host persists encrypted canonical state, create intent, exact task-to-runtime mapping, approvals, bounded terminal output, and reconciliation evidence before acknowledging the corresponding transition. On restart it resumes only durably mapped runs, never treats a historical receipt as redispatch authority, and records `unknown_outcome` when bounded reconciliation cannot prove completion. Cross-node reconciliation remains deferred to Block 3; the Block 2 Host-local contract is documented in [Phase 2](./PHASE-2-HOST-HERMES.md).
 
 ## Hermes intelligence boundary
 
