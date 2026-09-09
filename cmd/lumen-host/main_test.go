@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -16,6 +17,20 @@ import (
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
 )
+
+func TestWriteJSONUsesStableObjectEncoding(t *testing.T) {
+	var out bytes.Buffer
+	if err := writeJSON(&out, map[string]any{"z": "last", "a": "first"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := out.String(), `{"a":"first","z":"last"}`+"\n"; got != want {
+		t.Fatalf("JSON output = %q, want %q", got, want)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
+		t.Fatalf("output is not JSON: %v", err)
+	}
+}
 
 func TestCLIProcessLifecycleAndBoundary(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -95,6 +110,11 @@ func TestCLIProcessLifecycleAndBoundary(t *testing.T) {
 		t.Fatalf("status: code=%d output=%q", code, out)
 	} else if bytes.Contains([]byte(out), credential) {
 		t.Fatal("credential appeared in status output")
+	} else {
+		var status map[string]any
+		if err := json.Unmarshal([]byte(out), &status); err != nil || status["status"] != "ready" {
+			t.Fatalf("status was not stable JSON: %q (err=%v)", out, err)
+		}
 	}
 	conn, err := net.Dial("unix", filepath.Join(runtimeDir, "s"))
 	if err != nil {
@@ -126,6 +146,10 @@ func TestCLIProcessLifecycleAndBoundary(t *testing.T) {
 	out, code := runHost(t, bin, cfg, "shutdown")
 	if code != 0 || !strings.Contains(out, "shutting_down") {
 		t.Fatalf("shutdown: code=%d output=%q", code, out)
+	}
+	var shutdown map[string]any
+	if err := json.Unmarshal([]byte(out), &shutdown); err != nil || shutdown["status"] != "shutting_down" {
+		t.Fatalf("shutdown was not stable JSON: %q (err=%v)", out, err)
 	}
 	if bytes.Contains([]byte(out), credential) {
 		t.Fatal("credential appeared in shutdown output")

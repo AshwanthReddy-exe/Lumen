@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -95,9 +97,18 @@ func callWithArguments(c host.Config, cmd string, arguments map[string]string) i
 		return 3
 	}
 	if r.Data != nil {
-		fmt.Println(r.Data)
+		if err := writeJSON(os.Stdout, r.Data); err != nil {
+			fmt.Fprintln(os.Stderr, "output unavailable")
+			return 3
+		}
 	}
 	return 0
+}
+
+func writeJSON(w io.Writer, value any) error {
+	encoder := json.NewEncoder(w)
+	encoder.SetEscapeHTML(false)
+	return encoder.Encode(value)
 }
 
 func parseArguments(args []string) (map[string]string, bool) {
