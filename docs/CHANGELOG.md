@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Consolidated the Mac development workflow into `lumen-mac-host` for foreground lifecycle management and `lumen-mac-test` for a bounded, automatically policy-approved local Host-to-Hermes AI round trip with durable output.
 - Selected a native Go Host and Space authority core while retaining Kotlin Android and Swift Apple applications; cross-language schemas and conformance fixtures replace Kotlin Multiplatform implementation sharing.
 - Reserved `agent.run/execute` as the first Host-local Hermes orchestration capability with an `ask` default and no transitive authority.
 - Quarantined the superseded Android Host prototype: the APK is now a disabled companion shell with no Space-core dependency, canonical-state access, foreground Host service, or foreground-service permissions. Existing encrypted prototype data is left untouched for explicit owner archive or deletion and cannot be imported automatically.

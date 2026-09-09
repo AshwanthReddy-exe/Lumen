@@ -47,7 +47,9 @@ Run the native Block 2 gate with `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Li
 
 The gate also builds `build/lumen-host/lumen-host-linux-arm64-pie` with Go `-buildmode=pie`; this is the Android Termux ARM64 artifact and must be installed as the foreground `lumen-host` binary. A physical Termux run remains required owner evidence.
 
-Start the Mac development Host with `scripts/lumen-mac-start`. It rebuilds the native binary from the current source, initializes private state once under `~/.local/share/lumen`, starts the foreground service, and appends redacted Host output to `~/.local/share/lumen/host.log`. In another terminal use `scripts/lumen-mac-status`, `scripts/lumen-mac-logs`, or `scripts/lumen-mac-stop`. Use `scripts/lumen-mac-task task submit ...` for authenticated task commands so the shared environment is loaded. The default development profile expects Hermes on loopback at `http://127.0.0.1:8642`; hardened deployments use the supervisor and secret configuration in `deploy/README.md`.
+For the Mac-only development setup, run `scripts/lumen-mac-host start` in one terminal. It rebuilds the native binary, initializes private state once under `~/.local/share/lumen`, keeps the Host in the foreground, and writes redacted output to `~/.local/share/lumen/host.log`. Use `scripts/lumen-mac-host status|stop|logs` for lifecycle operations.
+
+With the Host and the separately supervised local Hermes gateway running, execute `scripts/lumen-mac-test` in another terminal. It checks both services, submits a unique bounded task, resolves the one-time Lumen policy approval, waits up to five minutes, and prints the durable Hermes answer. Pass a custom prompt as one quoted argument. A Hermes runtime tool approval is never silently accepted; the script displays it and stops for an explicit operator decision.
 
 ## Current priority
 

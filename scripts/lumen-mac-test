@@ -1,0 +1,104 @@
+#!/bin/zsh
+set -euo pipefail
+
+repo_root=${LUMEN_REPO_ROOT:-$(cd "${0:A:h}/.." && pwd)}
+binary=${LUMEN_BINARY:-$repo_root/build/lumen-host/lumen-host}
+data_dir=${LUMEN_DATA_DIR:-$HOME/.local/share/lumen}
+log_file=${LUMEN_LOG_FILE:-$data_dir/host.log}
+bearer_file=${LUMEN_HERMES_BEARER_FILE:-$data_dir/hermes.token}
+hermes_url=${LUMEN_HERMES_BASE_URL:-http://127.0.0.1:8642}
+poll_seconds=${LUMEN_TEST_POLL_SECONDS:-1}
+timeout_seconds=${LUMEN_TEST_TIMEOUT_SECONDS:-300}
+prompt=${*:-Give me one short original quote about connected intelligence. Return only the quote.}
+
+export LUMEN_DATA_DIR="$data_dir"
+export LUMEN_SOCKET_PATH=${LUMEN_SOCKET_PATH:-$data_dir/host.sock}
+export LUMEN_OPERATOR_CREDENTIAL_FILE=${LUMEN_OPERATOR_CREDENTIAL_FILE:-$data_dir/operator.credential}
+export LUMEN_HERMES_BEARER_FILE="$bearer_file"
+export LUMEN_HERMES_PROFILE=${LUMEN_HERMES_PROFILE:-development}
+export LUMEN_HERMES_BASE_URL="$hermes_url"
+
+fail() {
+  echo "Lumen Mac test failed: $1" >&2
+  echo "Host logs: $log_file" >&2
+  echo "Hermes logs: hermes logs -n 100" >&2
+  exit 4
+}
+
+case "$hermes_url" in
+  *://*@*) fail "Hermes URL must not contain userinfo" ;;
+esac
+
+command -v jq >/dev/null 2>&1 || fail "jq is required"
+command -v curl >/dev/null 2>&1 || fail "curl is required"
+[[ -x "$binary" ]] || fail "Host binary missing; run scripts/lumen-mac-host start in another terminal"
+[[ -s "$bearer_file" ]] || fail "Hermes credential missing: $bearer_file"
+
+host_status_json=$($binary status 2>/dev/null) || fail "Host is not running; run scripts/lumen-mac-host start in another terminal"
+[[ $(printf '%s' "$host_status_json" | jq -r '.status // empty') == ready ]] || fail "Host is not ready"
+host_id=$(printf '%s' "$host_status_json" | jq -r '.active_host_id // .host_id // empty')
+[[ -n "$host_id" ]] || fail "Host identity unavailable"
+
+token=$(<"$bearer_file")
+curl -fsS -o /dev/null -H "Authorization: Bearer $token" "$hermes_url/v1/capabilities" || fail "Hermes is not ready at $hermes_url"
+unset token
+
+now=$(date +%s)
+suffix="$now-$$-$(openssl rand -hex 4)"
+task_id="mac-hermes-test-$suffix"
+fingerprint="mac-test:$(printf '%s' "$prompt" | shasum -a 256 | cut -d' ' -f1)"
+reconcile_by=$((now + timeout_seconds))
+
+submit=$($binary task submit \
+  --request_id "mac-test:submit:$suffix" \
+  --task_id "$task_id" \
+  --capability_id agent.run/execute \
+  --action run \
+  --action_fingerprint "$fingerprint" \
+  --runtime_profile_digest dev-local-v1 \
+  --reconcile_by "$reconcile_by" \
+  --input "$prompt") || fail "task submission failed (task: $task_id)"
+
+outcome=$(printf '%s' "$submit" | jq -r '.outcome // empty')
+if [[ "$outcome" == awaiting_permission ]]; then
+  approved_at=$(date +%s)
+  $binary approval resolve \
+    --request_id "mac-test:approve:$suffix" \
+    --task_id "$task_id" \
+    --target_node_id "$host_id" \
+    --action_fingerprint "$fingerprint" \
+    --approval_id "mac-test-policy-$suffix" \
+    --approved_at "$approved_at" \
+    --expires_at "$reconcile_by" \
+    --reconcile_by "$reconcile_by" \
+    --decision once \
+    --runtime_profile_digest dev-local-v1 \
+    --input "$prompt" >/dev/null || fail "one-time policy approval failed (task: $task_id)"
+elif [[ "$outcome" != queued ]]; then
+  fail "task was not accepted: ${outcome:-unknown} (task: $task_id)"
+fi
+
+while (( $(date +%s) <= reconcile_by )); do
+  shown=$($binary task show --task_id "$task_id") || fail "task status unavailable (task: $task_id)"
+  runtime_approval=$(printf '%s' "$shown" | jq -c '.runtimeApprovals[]? | select((.decision // "") == "")' | head -n 1)
+  if [[ -n "$runtime_approval" ]]; then
+    echo "Hermes requested runtime permission for task $task_id:" >&2
+    printf '%s\n' "$runtime_approval" >&2
+    fail "runtime approval requires an explicit operator decision"
+  fi
+  task_status=$(printf '%s' "$shown" | jq -r '.task.status // empty')
+  case "$task_status" in
+    completed)
+      output=$(printf '%s' "$shown" | jq -r '.task.output // empty')
+      [[ -n "$output" ]] || fail "Hermes completed without durable output (task: $task_id)"
+      printf '%s\n' "$output"
+      exit 0
+      ;;
+    failed|cancelled|unknown_outcome)
+      fail "task ended as $task_status (task: $task_id)"
+      ;;
+  esac
+  sleep "$poll_seconds"
+done
+
+fail "timed out after ${timeout_seconds}s (task: $task_id)"

@@ -1,0 +1,58 @@
+#!/bin/zsh
+set -euo pipefail
+
+repo_root=${LUMEN_REPO_ROOT:-$(cd "${0:A:h}/.." && pwd)}
+default_binary="$repo_root/build/lumen-host/lumen-host"
+binary=${LUMEN_BINARY:-$default_binary}
+data_dir=${LUMEN_DATA_DIR:-$HOME/.local/share/lumen}
+log_file=${LUMEN_LOG_FILE:-$data_dir/host.log}
+
+export LUMEN_DATA_DIR="$data_dir"
+export LUMEN_SOCKET_PATH=${LUMEN_SOCKET_PATH:-$data_dir/host.sock}
+export LUMEN_OPERATOR_CREDENTIAL_FILE=${LUMEN_OPERATOR_CREDENTIAL_FILE:-$data_dir/operator.credential}
+export LUMEN_HERMES_BEARER_FILE=${LUMEN_HERMES_BEARER_FILE:-$data_dir/hermes.token}
+export LUMEN_HERMES_PROFILE=${LUMEN_HERMES_PROFILE:-development}
+export LUMEN_HERMES_BASE_URL=${LUMEN_HERMES_BASE_URL:-http://127.0.0.1:8642}
+
+usage() {
+  echo "usage: scripts/lumen-mac-host start|status|stop|logs" >&2
+  exit 2
+}
+
+command=${1:-}
+case "$command" in
+  start)
+    mkdir -p "$data_dir"
+    chmod 700 "$data_dir"
+    touch "$log_file"
+    chmod 600 "$log_file"
+    if [[ "$binary" == "$default_binary" ]]; then
+      (cd "$repo_root" && mise exec -- go build -trimpath -ldflags='-s -w' -o "$binary" ./cmd/lumen-host)
+    fi
+    if [[ ! -s "$LUMEN_HERMES_BEARER_FILE" ]]; then
+      echo "Hermes credential missing: $LUMEN_HERMES_BEARER_FILE" >&2
+      echo "Create it from the API_SERVER_KEY used by the local Hermes gateway." >&2
+      exit 3
+    fi
+    chmod 600 "$LUMEN_HERMES_BEARER_FILE"
+    if [[ ! -e "$data_dir/initialized" ]]; then
+      umask 077
+      "$binary" init
+    fi
+    echo "Starting Lumen Host in foreground. Logs: $log_file" >&2
+    "$binary" serve 2>&1 | tee -a "$log_file"
+    ;;
+  status)
+    exec "$binary" status
+    ;;
+  stop)
+    exec "$binary" shutdown
+    ;;
+  logs)
+    mkdir -p "$data_dir"
+    touch "$log_file"
+    chmod 600 "$log_file"
+    exec tail -f "$log_file"
+    ;;
+  *) usage ;;
+esac
