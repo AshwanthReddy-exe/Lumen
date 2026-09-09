@@ -54,7 +54,7 @@ func TestSupervisorDefinitionsAreStructuredAndBounded(t *testing.T) {
 	if strings.Contains(plist, "/Users/Shared") || strings.Contains(plist, "--token") {
 		t.Error("launchd must use a private path and no secret flags")
 	}
-	for _, want := range []string{"LUMEN_OPERATOR_CREDENTIAL_FILE", "LUMEN_HERMES_BEARER_FILE", "owner-readable (0600)", "dev.lumen.host-launcher.sh"} {
+	for _, want := range []string{"LUMEN_OPERATOR_CREDENTIAL_FILE", "LUMEN_HERMES_BEARER_FILE", "LUMEN_HERMES_CA_FILE", "LUMEN_HERMES_CLIENT_CERT_FILE", "LUMEN_HERMES_CLIENT_KEY_FILE", "LUMEN_HERMES_SERVER_CERT_PIN", "hardened", "dev.lumen.host-launcher.sh", "chmod 600"} {
 		if !strings.Contains(plist, want) {
 			t.Errorf("launchd boundary missing %q", want)
 		}
@@ -73,6 +73,13 @@ func TestSupervisorDefinitionsAreStructuredAndBounded(t *testing.T) {
 	}
 	if !strings.Contains(termux, "umask 077") || !strings.Contains(termux, "$HOME/.config/lumen/host.env") {
 		t.Error("Termux must enforce private host.env configuration")
+	}
+	if !strings.Contains(termux, "mode=") || !strings.Contains(termux, "exit 78") {
+		t.Error("Termux must enforce host.env mode")
+	}
+	provision := readDefinition(t, "../../deploy/README.md")
+	if !strings.Contains(provision, "lumen-host init") || !strings.Contains(provision, "never run `init` from a restart hook") {
+		t.Error("deployment docs must define explicit create-once provisioning")
 	}
 	finish := readDefinition(t, "../../deploy/termux/finish")
 	if !strings.Contains(finish, "basename \"$PWD\"") || !strings.Contains(finish, "sv down \"$service_name\"") {

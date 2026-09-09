@@ -112,7 +112,10 @@ func requestRuntimeApproval(s State, c Command) Transition {
 	if task.Status != OutcomeRunning && task.Status != OutcomeDispatched {
 		return reject(s, c, "invalid_task_state")
 	}
-	if c.RuntimeApprovalID == "" || c.TargetNodeID == "" || c.ActionFingerprint == "" || c.ExpiresAt <= c.ObservedAt {
+	if c.TargetNodeID != task.TargetNodeID || c.ActionFingerprint != task.ActionFingerprint {
+		return reject(s, c, "runtime_approval_mismatch")
+	}
+	if c.RuntimeApprovalID == "" || c.TargetNodeID == "" || c.ActionFingerprint == "" || c.ObservedAt <= 0 || c.ExpiresAt <= c.ObservedAt {
 		return reject(s, c, "invalid_runtime_approval")
 	}
 	if s.RuntimeApprovals == nil {

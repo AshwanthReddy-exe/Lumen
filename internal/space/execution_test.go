@@ -125,3 +125,39 @@ func TestRuntimeApprovalDeliveryIsDurableBeforeTaskResolution(t *testing.T) {
 		t.Fatalf("delivered approval: %#v", delivered)
 	}
 }
+
+func TestRuntimeApprovalRequestBindsExactTaskTargetActionAndTime(t *testing.T) {
+	initial := executionState(OutcomeQueued)
+	task := initial.Tasks["task"]
+	task.ActionFingerprint = "digest"
+	initial.Tasks["task"] = task
+	dispatched := Apply(initial, Command{Type: CommandDispatchHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "dispatch-approval", TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", DispatchedAt: 100, ReconcileBy: 200})
+	running := Apply(dispatched.State, Command{Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "running-approval", TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", Evidence: EvidenceRunning, ObservedAt: 110})
+	base := Command{Type: CommandRequestRuntimeApproval, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", TaskID: "task", RuntimeRunID: "run", RuntimeProfileDigest: "profile", RuntimeApprovalID: "approval", TargetNodeID: "host", ActionFingerprint: "digest", ExpiresAt: 150, ObservedAt: 120}
+	cases := []struct {
+		name, want string
+		mutate     func(*Command)
+	}{
+		{"wrong actor", "unauthorized_actor", func(c *Command) { c.ActorID = "owner" }},
+		{"wrong target", "runtime_approval_mismatch", func(c *Command) { c.TargetNodeID = "other" }},
+		{"wrong action", "runtime_approval_mismatch", func(c *Command) { c.ActionFingerprint = "other" }},
+		{"missing observed time", "invalid_runtime_approval", func(c *Command) { c.ObservedAt = 0 }},
+		{"nonpositive expiry", "invalid_runtime_approval", func(c *Command) { c.ExpiresAt = 0 }},
+		{"expired window", "invalid_runtime_approval", func(c *Command) { c.ExpiresAt = 120 }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			command := base
+			command.RequestID = "approval-" + tc.name
+			tc.mutate(&command)
+			if tr := Apply(running.State, command); tr.Rejection != tc.want {
+				t.Fatalf("got %q want %q: %#v", tr.Rejection, tc.want, tr)
+			}
+		})
+	}
+	valid := base
+	valid.RequestID = "approval-valid"
+	if tr := Apply(running.State, valid); tr.Rejection != "" || tr.Receipt.Outcome != OutcomeAwaitingPermission {
+		t.Fatalf("valid runtime approval: %#v", tr)
+	}
+}

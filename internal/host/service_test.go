@@ -1,13 +1,17 @@
 package host
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
+	"github.com/AshwanthReddy-exe/Lumen/internal/space"
+	"github.com/AshwanthReddy-exe/Lumen/internal/store"
 )
 
 func TestConfigFromEnvironment(t *testing.T) {
@@ -88,6 +92,53 @@ func TestInitIsCreateOnly(t *testing.T) {
 	}
 	if _, err := os.Stat(c.CredentialPath); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestInitBootstrapsDurableSpaceAndFreshTaskFlow(t *testing.T) {
+	d := t.TempDir()
+	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator")}
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	stateStore, err := store.Open(filepath.Join(d, "state.json"), filepath.Join(d, "state.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := stateStore.Read()
+	stateStore.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.SpaceID == "" || state.OwnerID == "" || state.HostID == "" || state.OwnerID == state.HostID || state.Epoch != 1 {
+		t.Fatalf("bootstrap identities: %#v", state)
+	}
+	if len(state.Identities) != 2 || state.Nodes[state.OwnerID].Status != "paired" || state.Nodes[state.HostID].Status != "paired" {
+		t.Fatalf("bootstrap pairing: %#v", state)
+	}
+	if len(state.Advertisements) != 1 || state.Advertisements[0] != (space.CapabilityKey{NodeID: state.HostID, CapabilityID: "agent.run/execute", Action: "run"}) {
+		t.Fatalf("bootstrap advertisement: %#v", state.Advertisements)
+	}
+	if state.Grants[state.HostID+"|agent.run/execute|run"] != space.GrantAsk {
+		t.Fatalf("bootstrap grant: %#v", state.Grants)
+	}
+	for _, requestID := range []string{"bootstrap:create-space", "bootstrap:advertise-execute", "bootstrap:grant-execute"} {
+		if _, ok := state.Commands[requestID]; !ok {
+			t.Fatalf("bootstrap command missing: %s", requestID)
+		}
+	}
+	if len(state.Audit) < 3 {
+		t.Fatalf("bootstrap audit incomplete: %#v", state.Audit)
+	}
+	runtime := &fakeRuntime{}
+	s, err := NewWithRuntime(c, runtime, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Shutdown()
+	tr, err := s.SubmitTask(context.Background(), ExecuteRequest{Submit: space.Command{Type: space.CommandSubmit, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: 1, ActorID: state.HostID, RequestID: "fresh-submit", TaskID: "fresh-task", OriginNodeID: state.OwnerID, TargetNodeID: state.HostID, CapabilityID: "agent.run/execute", Action: "run", ActionFingerprint: "digest"}, RuntimeProfileDigest: "profile", ReconcileBy: 130})
+	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeAwaitingPermission {
+		t.Fatalf("fresh task flow: %#v %v", tr, err)
 	}
 }
 

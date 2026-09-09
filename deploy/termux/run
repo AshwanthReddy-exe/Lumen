@@ -3,6 +3,8 @@
 umask 077
 ENV_FILE="$HOME/.config/lumen/host.env"
 if [ -r "$ENV_FILE" ]; then
+	mode=$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE")
+	[ "$mode" = 600 ] || exit 78
 	. "$ENV_FILE"
 fi
 export LUMEN_DATA_DIR="${LUMEN_DATA_DIR:-$HOME/.local/share/lumen}"

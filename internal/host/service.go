@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -124,9 +125,31 @@ func Initialize(c Config) error {
 		}
 		return primary
 	}
+	spaceID, err := newBootstrapID("space")
+	if err != nil {
+		_ = stateStore.Close()
+		return err
+	}
+	ownerID, err := newBootstrapID("owner")
+	if err != nil {
+		_ = stateStore.Close()
+		return err
+	}
+	hostID, err := newBootstrapID("host")
+	if err != nil {
+		_ = stateStore.Close()
+		return err
+	}
+	if ownerID == hostID {
+		_ = stateStore.Close()
+		return errors.New("bootstrap identities collided")
+	}
 	if err := stateStore.Initialize(space.State{SchemaVersion: 1, Audit: []space.AuditEvent{}}); err != nil {
 		_ = stateStore.Close()
 		return err
+	}
+	if err := bootstrapState(stateStore, spaceID, ownerID, hostID); err != nil {
+		return fail(err)
 	}
 	if err := stateStore.Close(); err != nil {
 		return fail(err)
@@ -156,6 +179,33 @@ func Initialize(c Config) error {
 		return fail(err)
 	}
 	return err
+}
+
+func newBootstrapID(prefix string) (string, error) {
+	bytes, err := control.NewCredential()
+	if err != nil {
+		return "", err
+	}
+	return prefix + "-" + hex.EncodeToString(bytes), nil
+}
+
+func bootstrapState(stateStore *store.Store, spaceID, ownerID, hostID string) error {
+	commands := []space.Command{
+		{Type: space.CommandCreateSpace, SpaceID: spaceID, OwnerID: ownerID, HostID: hostID, ActorID: ownerID, RequestID: "bootstrap:create-space"},
+		{Type: space.CommandAdvertiseCapability, SpaceID: spaceID, HostID: hostID, Epoch: 1, ActorID: hostID, NodeID: hostID, CapabilityID: "agent.run/execute", Action: "run", RequestID: "bootstrap:advertise-execute"},
+		{Type: space.CommandSetGrant, SpaceID: spaceID, HostID: hostID, Epoch: 1, ActorID: ownerID, NodeID: hostID, CapabilityID: "agent.run/execute", Action: "run", Grant: space.GrantAsk, RequestID: "bootstrap:grant-execute"},
+	}
+	for _, command := range commands {
+		command := command
+		tr, err := stateStore.Update(func(state space.State) space.Transition { return space.Apply(state, command) })
+		if err != nil {
+			return err
+		}
+		if tr.Rejection != "" {
+			return fmt.Errorf("bootstrap %s rejected: %s", command.Type, tr.Rejection)
+		}
+	}
+	return nil
 }
 
 func syncMarkerParent(path string) error {

@@ -10,8 +10,14 @@
 		<key>LUMEN_DATA_DIR</key><string>/Users/your-user/Library/Application Support/Lumen</string>
 		<key>LUMEN_OPERATOR_CREDENTIAL_FILE</key><string>/Users/your-user/Library/Application Support/Lumen/operator.credential</string>
 		<key>LUMEN_HERMES_BEARER_FILE</key><string>/Users/your-user/Library/Application Support/Lumen/hermes.token</string>
+		<key>LUMEN_HERMES_PROFILE</key><string>hardened</string>
+		<key>LUMEN_HERMES_BASE_URL</key><string>https://hermes.internal.example</string>
+		<key>LUMEN_HERMES_CA_FILE</key><string>/Users/your-user/Library/Application Support/Lumen/hermes_ca.pem</string>
+		<key>LUMEN_HERMES_CLIENT_CERT_FILE</key><string>/Users/your-user/Library/Application Support/Lumen/hermes_client.crt</string>
+		<key>LUMEN_HERMES_CLIENT_KEY_FILE</key><string>/Users/your-user/Library/Application Support/Lumen/hermes_client.key</string>
+		<key>LUMEN_HERMES_SERVER_CERT_PIN</key><string>REPLACE_WITH_PIN</string>
 	</dict>
-	<!-- launchd terminates the foreground process with SIGTERM; keep this file and the referenced secret files owner-readable (0600). -->
+	<!-- Before loading: create the private directory; run lumen-host init once; chmod 600 host.env, operator.credential, hermes.token, hermes_ca.pem, hermes_client.crt, hermes_client.key. Never auto-reinitialize. -->
 	<key>WorkingDirectory</key><string>/Users/your-user/Library/Application Support/Lumen</string>
 	<key>Umask</key><integer>63</integer>
 	<key>ProcessType</key><string>Background</string>

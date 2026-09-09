@@ -2,12 +2,14 @@ package contract
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/host"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
+	"github.com/AshwanthReddy-exe/Lumen/internal/store"
 )
 
 type runtime struct{}
@@ -39,21 +41,25 @@ func TestHostHermesDurableAllowRun(t *testing.T) {
 	if err := host.Initialize(c); err != nil {
 		t.Fatal(err)
 	}
+	stateStore, err := store.Open(filepath.Join(d, "state.json"), filepath.Join(d, "state.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := stateStore.Read()
+	if closeErr := stateStore.Close(); err != nil {
+		t.Fatal(err)
+	} else if closeErr != nil {
+		t.Fatal(closeErr)
+	}
 	s, err := host.NewWithRuntime(c, runtime{}, host.WithClock(func() time.Time { return time.Unix(100, 0) }))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Shutdown()
-	for _, command := range []space.Command{
-		{Type: space.CommandCreateSpace, SpaceID: "space", OwnerID: "owner", HostID: "host", RequestID: "create"},
-		{Type: space.CommandAdvertiseCapability, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", NodeID: "host", CapabilityID: "agent.run/execute", Action: "run", RequestID: "advertise"},
-		{Type: space.CommandSetGrant, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", NodeID: "host", CapabilityID: "agent.run/execute", Action: "run", Grant: space.GrantAllow, RequestID: "grant"},
-	} {
-		if tr, err := s.ApplyCommand(command); err != nil || tr.Rejection != "" {
-			t.Fatalf("setup %s: %#v %v", command.Type, tr, err)
-		}
+	if tr, err := s.ApplyCommand(space.Command{Type: space.CommandSetGrant, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.OwnerID, NodeID: state.HostID, CapabilityID: "agent.run/execute", Action: "run", Grant: space.GrantAllow, RequestID: "contract:grant"}); err != nil || tr.Rejection != "" {
+		t.Fatalf("setup grant: %#v %v", tr, err)
 	}
-	tr, err := s.SubmitTask(context.Background(), host.ExecuteRequest{Submit: space.Command{Type: space.CommandSubmit, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "submit", TaskID: "task", OriginNodeID: "owner", TargetNodeID: "host", CapabilityID: "agent.run/execute", Action: "run", ActionFingerprint: "digest"}, Runtime: hermes.CreateRunRequest{Input: "contract"}, RuntimeProfileDigest: "sha256:contract", ReconcileBy: 130})
+	tr, err := s.SubmitTask(context.Background(), host.ExecuteRequest{Submit: space.Command{Type: space.CommandSubmit, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "submit", TaskID: "task", OriginNodeID: state.OwnerID, TargetNodeID: state.HostID, CapabilityID: "agent.run/execute", Action: "run", ActionFingerprint: "digest"}, Runtime: hermes.CreateRunRequest{Input: "contract"}, RuntimeProfileDigest: "sha256:contract", ReconcileBy: 130})
 	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeQueued {
 		t.Fatalf("submit: %#v %v", tr, err)
 	}

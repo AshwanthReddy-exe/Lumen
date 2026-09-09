@@ -36,10 +36,18 @@ func TestFixtures(t *testing.T) {
 				}
 				state = transition.State
 			}
-			if !equalJSON(state, tc.Expected.State) {
+			equal, err := equalJSON(state, tc.Expected.State)
+			if err != nil {
+				t.Fatalf("state comparison marshal: %v", err)
+			}
+			if !equal {
 				t.Fatalf("state mismatch: got %#v want %#v", state, tc.Expected.State)
 			}
-			if !equalJSONSlice(state.Audit, tc.Expected.Audit) {
+			equal, err = equalJSONSlice(state.Audit, tc.Expected.Audit)
+			if err != nil {
+				t.Fatalf("audit comparison marshal: %v", err)
+			}
+			if !equal {
 				t.Fatalf("audit mismatch: got %#v want %#v", state.Audit, tc.Expected.Audit)
 			}
 		})
@@ -168,14 +176,26 @@ func validateState(state State) error {
 	return nil
 }
 
-func equalJSON(a, b State) bool {
-	aj, _ := json.Marshal(a)
-	bj, _ := json.Marshal(b)
-	return string(aj) == string(bj)
+func equalJSON(a, b State) (bool, error) {
+	aj, err := json.Marshal(a)
+	if err != nil {
+		return false, err
+	}
+	bj, err := json.Marshal(b)
+	if err != nil {
+		return false, err
+	}
+	return string(aj) == string(bj), nil
 }
 
-func equalJSONSlice(a, b []AuditEvent) bool {
-	aj, _ := json.Marshal(a)
-	bj, _ := json.Marshal(b)
-	return string(aj) == string(bj)
+func equalJSONSlice(a, b []AuditEvent) (bool, error) {
+	aj, err := json.Marshal(a)
+	if err != nil {
+		return false, err
+	}
+	bj, err := json.Marshal(b)
+	if err != nil {
+		return false, err
+	}
+	return string(aj) == string(bj), nil
 }
