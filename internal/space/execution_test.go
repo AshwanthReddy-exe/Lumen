@@ -1,6 +1,9 @@
 package space
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func executionState(status Outcome) State {
 	return State{SchemaVersion: 1, SpaceID: "s", OwnerID: "owner", HostID: "host", Epoch: 7,
@@ -28,6 +31,25 @@ func TestHostRunLifecycle(t *testing.T) {
 	term := Apply(c.State, Command{Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "x", TaskID: "task", RuntimeRunID: "run-1", RuntimeProfileDigest: "sha256:p1", Evidence: EvidenceCancelled, ObservedAt: 130})
 	if term.Rejection != "" || term.State.Tasks["task"].Status != OutcomeCancelled {
 		t.Fatalf("terminal: %#v", term)
+	}
+}
+
+func TestTerminalReconciliationPersistsOnlyBoundedValidOutput(t *testing.T) {
+	d := Apply(executionState(OutcomeQueued), Command{Type: CommandDispatchHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "dispatch-output", TaskID: "task", RuntimeRunID: "run-1", RuntimeProfileDigest: "sha256:p1", DispatchedAt: 100, ReconcileBy: 200})
+	completed := Apply(d.State, Command{Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "output", TaskID: "task", RuntimeRunID: "run-1", RuntimeProfileDigest: "sha256:p1", Evidence: EvidenceCompleted, ObservedAt: 110, Output: "hello", OutputTruncated: true})
+	if completed.Rejection != "" || completed.State.Tasks["task"].Output != "hello" || !completed.State.Tasks["task"].OutputTruncated {
+		t.Fatalf("terminal output=%#v rejection=%q", completed.State.Tasks["task"], completed.Rejection)
+	}
+	for name, command := range map[string]Command{
+		"running":      {Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "running-output", TaskID: "task", RuntimeRunID: "run-1", RuntimeProfileDigest: "sha256:p1", Evidence: EvidenceRunning, ObservedAt: 110, Output: "leak"},
+		"oversize":     {Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "large-output", TaskID: "task", RuntimeRunID: "run-1", RuntimeProfileDigest: "sha256:p1", Evidence: EvidenceFailed, ObservedAt: 110, Output: strings.Repeat("x", MaxTaskOutputBytes+1), OutputTruncated: true},
+		"invalid_utf8": {Type: CommandReconcileHostRun, SpaceID: "s", HostID: "host", Epoch: 7, ActorID: "host", RequestID: "invalid-output", TaskID: "task", RuntimeRunID: "run-1", RuntimeProfileDigest: "sha256:p1", Evidence: EvidenceFailed, ObservedAt: 110, Output: string([]byte{0xff})},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := Apply(d.State, command); got.Rejection != "invalid_output" {
+				t.Fatalf("rejection=%q", got.Rejection)
+			}
+		})
 	}
 }
 

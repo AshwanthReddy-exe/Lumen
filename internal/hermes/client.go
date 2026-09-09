@@ -125,7 +125,11 @@ type Health struct {
 }
 
 type ApprovalResponse struct {
-	Status string `json:"status"`
+	Status   string `json:"status,omitempty"`
+	Object   string `json:"object,omitempty"`
+	RunID    string `json:"run_id,omitempty"`
+	Choice   string `json:"choice,omitempty"`
+	Resolved int    `json:"resolved,omitempty"`
 }
 
 type SteerResponse struct {
@@ -405,7 +409,7 @@ func (c *Client) ResolveApproval(ctx context.Context, runID, decision string) er
 		return err
 	}
 	b, err := c.request(ctx, http.MethodPost, path, struct {
-		Decision string `json:"decision"`
+		Choice string `json:"choice"`
 	}{decision}, "application/json", "")
 	if err != nil {
 		return err
@@ -417,7 +421,9 @@ func (c *Client) ResolveApproval(ctx context.Context, runID, decision string) er
 	if err := decodeJSON(b, &response); err != nil {
 		return err
 	}
-	if !validApprovalStatus(response.Status) {
+	legacyValid := response.Status != "" && validApprovalStatus(response.Status)
+	liveValid := response.RunID == runID && response.Choice == decision && response.Resolved > 0
+	if !legacyValid && !liveValid {
 		return fmt.Errorf("%w: invalid approval status", ErrInvalidEvidence)
 	}
 	return nil
@@ -638,7 +644,7 @@ func validateRun(run Run, requireID bool) error {
 
 func validRunStatus(status string) bool {
 	switch status {
-	case "queued", "started", "running", "stopping", "awaiting_approval", "completed", "failed", "cancelled", "canceled":
+	case "queued", "started", "running", "stopping", "awaiting_approval", "waiting_for_approval", "completed", "failed", "cancelled", "canceled":
 		return true
 	default:
 		return false

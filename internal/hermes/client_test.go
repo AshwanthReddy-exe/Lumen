@@ -244,7 +244,7 @@ func TestValidApprovalUsesDocumentedValues(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		body = string(b)
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"accepted"}`))
+		_, _ = w.Write([]byte(`{"object":"hermes.run.approval_response","run_id":"run_1","choice":"once","resolved":1}`))
 	}))
 	c, err := New(testConfig(srv.URL))
 	if err != nil {
@@ -253,8 +253,14 @@ func TestValidApprovalUsesDocumentedValues(t *testing.T) {
 	if err := c.ResolveApproval(context.Background(), "run_1", "once"); err != nil {
 		t.Fatal(err)
 	}
-	if body != `{"decision":"once"}` {
+	if body != `{"choice":"once"}` {
 		t.Fatalf("approval body = %q", body)
+	}
+}
+
+func TestRunStatusAcceptsLiveWaitingForApproval(t *testing.T) {
+	if err := validateRun(Run{RunID: "run_1", Status: "waiting_for_approval"}, true); err != nil {
+		t.Fatal(err)
 	}
 }
 

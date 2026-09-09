@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
@@ -508,6 +509,27 @@ func TestRuntimeApprovalIsBoundAndForwardsOnceOrDeny(t *testing.T) {
 	}
 }
 
+func TestLiveHermesApprovalIsBoundFromDurableTask(t *testing.T) {
+	r := &fakeRuntime{create: hermes.Run{RunID: "run-live-approval", Status: "started"}, events: []hermes.Event{{ID: "approval-live", Type: "approval.request", Data: []byte(`{"event":"approval.request","run_id":"run-live-approval","timestamp":100,"choices":["once","deny"],"command":"echo hello"}`)}}}
+	s := executionService(t, r)
+	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-live-runtime-approval", "task-live-runtime-approval")); err != nil {
+		t.Fatal(err)
+	}
+	waitForTask(t, s, "task-live-runtime-approval", space.OutcomeAwaitingPermission)
+	state, err := s.state.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.RuntimeApprovals) != 1 {
+		t.Fatalf("runtime approvals=%#v", state.RuntimeApprovals)
+	}
+	for id, approval := range state.RuntimeApprovals {
+		if id == "" || approval.TaskID != "task-live-runtime-approval" || approval.RuntimeRunID != "run-live-approval" || approval.TargetNodeID != "host" || approval.ActionFingerprint != "digest" || approval.ExpiresAt != 130 {
+			t.Fatalf("normalized runtime approval=%#v", approval)
+		}
+	}
+}
+
 func TestRuntimeApprovalDeliveryFailureRemainsPendingAndRetries(t *testing.T) {
 	r := &fakeRuntime{create: hermes.Run{RunID: "run-approval-retry", Status: "started"}, statusDefault: hermes.Run{RunID: "run-approval-retry", Status: "awaiting_approval"}, approvalErrors: []error{errors.New("approval delivery uncertain")}, events: []hermes.Event{{ID: "approval", Type: "approval.requested", Data: []byte(`{"status":"awaiting_approval","approval_id":"runtime-retry","target_node_id":"host","action_fingerprint":"digest","expires_at":120}`)}}}
 	s := executionService(t, r)
@@ -755,6 +777,23 @@ func TestDisconnectReconcilesThenUnknownAtDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForTask(t, s2, "task-unknown", space.OutcomeUnknown)
+}
+
+func TestRunStatusOutputIsDurablyBoundedAtUTF8Boundary(t *testing.T) {
+	long := strings.Repeat("x", space.MaxTaskOutputBytes-1) + "🙂tail"
+	r := &fakeRuntime{create: hermes.Run{RunID: "run-output", Status: "started"}, eventsErr: hermes.ErrEventStreamDisconnected, statusDefault: hermes.Run{RunID: "run-output", Status: "completed", Output: long}}
+	s := executionService(t, r)
+	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-output", "task-output")); err != nil {
+		t.Fatal(err)
+	}
+	waitForTask(t, s, "task-output", space.OutcomeCompleted)
+	task, ok, err := s.Task("task-output")
+	if err != nil || !ok {
+		t.Fatalf("task: ok=%v err=%v", ok, err)
+	}
+	if task.Output != strings.Repeat("x", space.MaxTaskOutputBytes-1) || !task.OutputTruncated || !utf8.ValidString(task.Output) {
+		t.Fatalf("bounded output bytes=%d truncated=%v valid=%v", len(task.Output), task.OutputTruncated, utf8.ValidString(task.Output))
+	}
 }
 
 func waitForTask(t *testing.T, s *Service, task string, want space.Outcome) {

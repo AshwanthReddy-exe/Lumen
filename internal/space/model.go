@@ -118,6 +118,8 @@ type Task struct {
 	HostEpoch         int     `json:"hostEpoch"`
 	Status            Outcome `json:"status"`
 	TerminalReason    string  `json:"terminalReason,omitempty"`
+	Output            string  `json:"output,omitempty"`
+	OutputTruncated   bool    `json:"outputTruncated,omitempty"`
 }
 type HostRun struct {
 	TaskID               string `json:"taskId"`
@@ -203,7 +205,12 @@ type Command struct {
 	Decision              string          `json:"decision,omitempty"`
 	DeliveryState         string          `json:"deliveryState,omitempty"`
 	DeliveryAttempt       int             `json:"deliveryAttempt,omitempty"`
+	Output                string          `json:"output,omitempty"`
+	OutputTruncated       bool            `json:"outputTruncated,omitempty"`
 }
+
+const MaxTaskOutputBytes = 8 << 10
+
 type Transition struct {
 	State     State
 	Receipt   Receipt

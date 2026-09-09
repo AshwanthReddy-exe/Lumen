@@ -1,5 +1,7 @@
 package space
 
+import "unicode/utf8"
+
 func executionContext(s State, c Command) string {
 	if c.SpaceID != s.SpaceID {
 		return "invalid_space"
@@ -227,6 +229,10 @@ func reconcileHostRun(s State, c Command) Transition {
 	if c.Evidence != EvidenceRunning && c.Evidence != EvidenceCompleted && c.Evidence != EvidenceFailed && c.Evidence != EvidenceCancelled && c.Evidence != EvidenceUnavailable {
 		return reject(s, c, "invalid_evidence")
 	}
+	terminalEvidence := c.Evidence == EvidenceCompleted || c.Evidence == EvidenceFailed || c.Evidence == EvidenceCancelled
+	if (!terminalEvidence && (c.Output != "" || c.OutputTruncated)) || !utf8.ValidString(c.Output) || len(c.Output) > MaxTaskOutputBytes {
+		return reject(s, c, "invalid_output")
+	}
 	if t.Status == OutcomeCompleted || t.Status == OutcomeFailed || t.Status == OutcomeCancelled {
 		return reject(s, c, "terminal_task_state")
 	}
@@ -281,6 +287,10 @@ func reconcileHostRun(s State, c Command) Transition {
 		out = OutcomeUnknown
 	}
 	t.Status = out
+	if terminalEvidence {
+		t.Output = c.Output
+		t.OutputTruncated = c.OutputTruncated
+	}
 	s.Tasks[c.TaskID] = t
 	return accepted(s, c, out, c.TaskID)
 }
