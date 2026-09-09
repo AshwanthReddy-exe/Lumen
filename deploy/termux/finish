@@ -1,0 +1,14 @@
+#!/data/data/com.termux/files/usr/bin/sh
+set -eu
+attempt_file="$HOME/.local/share/lumen/.runit-failures"
+mkdir -p "$(dirname "$attempt_file")"
+attempt=0
+if [ -r "$attempt_file" ]; then attempt=$(cat "$attempt_file"); fi
+if [ "${1:-0}" -eq 0 ]; then rm -f "$attempt_file"; exit 0; fi
+attempt=$((attempt + 1))
+printf '%s\n' "$attempt" > "$attempt_file"
+chmod 600 "$attempt_file"
+if [ "$attempt" -ge 3 ]; then
+	service_name=$(basename "$PWD")
+	if command -v sv >/dev/null 2>&1; then sv down "$service_name" || true; fi
+fi

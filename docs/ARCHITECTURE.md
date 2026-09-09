@@ -22,11 +22,11 @@ Android companion · Mac node · iPhone node ──▶ Headless Host service
 
 The Host owns the Space identity, node registry, capability grants, canonical shared context, durable cross-node task state, scheduler, routing, approval records, and audit history. It authenticates messages and selects only eligible nodes. It does not need to proxy local model calls or same-device tool traffic.
 
-The first production composition is a Kotlin/JVM Host service that combines the portable `SpaceHost` with encrypted durable storage, a local operator control boundary, structured health, and a versioned Hermes Runtime Adapter. JVM 21 is the deployment baseline so one distribution can run on Linux/VPS, macOS, and Android Termux. Host correctness never depends on Hermes availability.
+The first production composition is a native Go Host service that combines the pure Go Space authority core with encrypted durable storage, a local operator control boundary, structured health, and a versioned Hermes Runtime Adapter. One native command contract runs on Linux/VPS, macOS, and Android Termux. Host correctness never depends on Hermes availability. Kotlin remains Android application code and Swift remains Apple application code; nodes share schemas and conformance fixtures rather than Host implementation internals.
 
 The previously merged Android foreground service and Android-owned canonical store proved the portable boundary on a phone but assigned authority to the wrong process. They are superseded, must be removed from the companion application, and remain available only through Git history. [PHASE-2-HOST-HERMES.md](./PHASE-2-HOST-HERMES.md) defines the replacement slice.
 
-The portable core is Kotlin Multiplatform and owns Space semantics, policy, task state, recovery, and context rules. The headless service owns Host composition, durable authority storage, lifecycle, and runtime adapters. Platform apps own only their node identity, local cache, connection, UI, capabilities, and OS permissions.
+The pure Go core owns Space semantics, policy, task state, recovery, and context rules. The headless service owns Host composition, durable authority storage, lifecycle, and runtime adapters. Platform apps own only their node identity, local cache, connection, UI, capabilities, and OS permissions.
 
 ### Host process boundary
 
@@ -143,4 +143,4 @@ Platform features use narrow adapters. For example, Apple Reminders may be imple
 
 ## Target code boundaries
 
-`core/` contains portable Space semantics and must not import UI, service managers, HTTP clients, or Hermes packages. Planned `services/host/` composes the Host process and owns its operator boundary and durable adapters. Planned `adapters/hermes/` implements only the versioned Hermes contract. `packages/protocol/` is created when node transport begins. Platform apps remain clients and expose OS-specific permissions. The optional relay transports opaque envelopes and owns no Space authority.
+`internal/space/` contains pure Go Space semantics and must not import UI, service managers, HTTP clients, filesystem storage, or Hermes packages. `cmd/lumen-host/` owns the process entry point; `internal/host/` composes the authority core with `internal/control/`, `internal/store/`, and `internal/hermes/`. `protocol/` owns versioned schemas and cross-language conformance fixtures. Platform apps remain clients and expose OS-specific permissions. The optional relay transports opaque envelopes and owns no Space authority.

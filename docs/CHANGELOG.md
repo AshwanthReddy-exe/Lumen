@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Selected a native Go Host and Space authority core while retaining Kotlin Android and Swift Apple applications; cross-language schemas and conformance fixtures replace Kotlin Multiplatform implementation sharing.
+- Reserved `agent.run/execute` as the first Host-local Hermes orchestration capability with an `ask` default and no transitive authority.
+- Quarantined the superseded Android Host prototype: the APK is now a disabled companion shell with no Space-core dependency, canonical-state access, foreground Host service, or foreground-service permissions. Existing encrypted prototype data is left untouched for explicit owner archive or deletion and cannot be imported automatically.
+- Completed the native Go Block 2 distribution slice: added systemd, launchd, Docker, and Termux/runit foreground supervisor definitions; added the reproducible `phase2-check` gate and retired the superseded Kotlin Space core/scenario runner after the Go parity gate passed. On 2026-09-09 the gate also passed Android companion unit tests and debug APK assembly; Termux and real isolated-Hermes owner evidence remain pending because no ADB device is connected.
+
 - Corrected the Host boundary: the Host is a headless Kotlin/JVM service supervised by systemd, launchd, Docker, or Termux/runit; Android remains a companion/node application.
 - Reordered delivery so the durable Host-to-Hermes execution loop completes before pairing, node transport, or companion work.
 - Marked the merged Android foreground-Host implementation as superseded evidence instead of rewriting published history.

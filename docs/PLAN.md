@@ -18,17 +18,21 @@ Do not begin a later block because its UI can be mocked. Fix or simplify the cur
 
 ## Block 2 — Headless Host and Hermes execution loop
 
-**Status:** next and blocking. The portable Space core is ready, but no production headless Host, durable JVM store, operator CLI, supervisor integration, or Hermes adapter exists. The Android foreground-Host experiment is superseded evidence, not a base for more features.
+**Status:** automated gate passing; owner proof pending. The native Go Host, durable store, operator CLI, supervisor definitions, and Hermes adapter are present. The Android foreground-Host experiment and Kotlin authority are superseded evidence, not a base for more features.
 
 **Goal:** run the canonical Host as a terminal service and complete one bounded Hermes task with honest authority, persistence, events, approval, cancellation, failure, and restart behavior.
 
-**Execution sequence:** superseded Android authority quarantine → Host-local execution contract → Host process and CLI → encrypted durable store → authenticated Hermes adapter → run/events → approval and cancellation → recovery and reconciliation → supervisor parity → Android Termux proof.
+**Execution sequence:** ~~superseded Android authority quarantine~~ → cross-language fixtures and Go Space contract → Host process and CLI → encrypted durable store → authenticated Hermes adapter → run/events → approval and cancellation → recovery and reconciliation → supervisor parity → Kotlin authority-core removal → Android Termux proof.
 
-**Build:** one Kotlin/JVM 21 `lumen-host` distribution; foreground `serve` command; owner-restricted authenticated operator socket; encrypted, locked, atomic Host state; redacted health; a versioned Hermes runtime adapter and capability registry; and systemd, launchd, Docker, and Termux/runit examples.
+**Completed first slice:** the Android APK no longer depends on `core:space`, creates or opens canonical Space state, declares a foreground Host service, or requests foreground-service permissions. It remains installable only as a disabled companion shell until Block 4 pairing work begins. Existing encrypted prototype state is ignored and must be explicitly archived or cleared by its owner; it is never imported into the production Host.
+
+**Build:** one native Go `lumen-host` distribution; foreground `serve` command; owner-restricted authenticated operator socket; encrypted, locked, atomic Host state; redacted health; a versioned Hermes runtime adapter and capability registry; and systemd, launchd, Docker, and Termux/runit examples. Kotlin remains only in the Android companion after Go parity is proven.
 
 **Live proof:** initialize and supervise the Host, submit a task from its CLI, observe a real Hermes event stream, resolve one exact approval, cancel one run, interrupt another, restart, and confirm the Host records a proven terminal state or `unknown_outcome`. Repeat the service lifecycle and one task in Android Termux.
 
 **Exit:** [the Phase 2 automated and owner gates](./PHASE-2-HOST-HERMES.md#exit) pass. Host/Hermes completion is required before any node work.
+
+**Automated evidence (2026-09-09):** `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk MISE_CACHE_DIR=/tmp/lumen-mise-cache GOCACHE=/tmp/lumen-go-cache mise run phase2-check` passed formatting, `go vet ./...`, `go test ./...`, `go test -race ./...`, native amd64 and `linux/arm64` builds, supervisor/fixture scenarios, Android companion unit tests, and debug APK assembly (`apps/android-host/build/outputs/apk/debug/android-host-debug.apk`, 28.2 MB). Android verification is mandatory in the gate. Termux and real isolated-Hermes owner proof remain pending; no ADB device is connected.
 
 ## Block 3 — Paired-node protocol and local transport
 

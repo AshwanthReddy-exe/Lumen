@@ -1,0 +1,13 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Install this directory as a runit service. The foreground command is lumen-host serve. Keep host.env mode 0600.
+umask 077
+ENV_FILE="$HOME/.config/lumen/host.env"
+if [ -r "$ENV_FILE" ]; then
+	mode=$(stat -c '%a' "$ENV_FILE" 2>/dev/null || stat -f '%Lp' "$ENV_FILE")
+	[ "$mode" = 600 ] || exit 78
+	. "$ENV_FILE"
+fi
+export LUMEN_DATA_DIR="${LUMEN_DATA_DIR:-$HOME/.local/share/lumen}"
+export LUMEN_OPERATOR_CREDENTIAL_FILE="${LUMEN_OPERATOR_CREDENTIAL_FILE:-$LUMEN_DATA_DIR/operator.credential}"
+export LUMEN_HERMES_BEARER_FILE="${LUMEN_HERMES_BEARER_FILE:-$LUMEN_DATA_DIR/hermes.token}"
+exec "$HOME/bin/lumen-host" serve

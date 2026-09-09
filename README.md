@@ -27,22 +27,23 @@ The Host is a headless service, not a companion application. The same Host artif
 ## Planned repository structure
 
 ```text
+cmd/                native Go Host executable
+internal/           Go Space core, Host composition, storage, control, Hermes adapter
+protocol/           versioned schemas and cross-language fixtures
 apps/               android-companion, ios-node, macos-node
-core/               space, context, policy, tasks, scheduler
-packages/           protocol and shared capability contracts
-adapters/           Hermes and platform capability adapters
-services/           headless Host, optional relay, notification transport
-tests/              contract, integration, security, recovery
-infra/              development and deployment configuration
+test/               contract, integration, security, recovery
+deploy/             service-manager and container configuration
 ```
 
-Phase 0 selected a Kotlin Multiplatform core with native Android and Apple applications. Production directories are created only as each delivery phase implements them. The canonical documents are in [docs/](./docs/); contribution rules are in [AGENTS.md](./AGENTS.md).
+The production Host and Space authority are native Go; the superseded Kotlin Multiplatform authority and scenario runner were retired after the Go gate passed. Android remains a standalone Kotlin companion and Apple applications remain Swift. Production directories are created only as each delivery phase implements them. The canonical documents are in [docs/](./docs/); contribution rules are in [AGENTS.md](./AGENTS.md).
 
 Run the Phase 0 contract baseline with `mise run phase0-check`. It uses the pinned Java and Gradle environment and the system-managed Swift toolchain.
 
 Phase 0 evidence lives under [`spikes/`](./spikes/) and freezes the stack, context, transport, Host, recovery, and capability decisions before Phase 1 begins.
 
-Run the Space-core contract and simulated restart scenario with `mise run phase1-check`. Phase 1 is complete; the [core contract](./docs/PHASE-1-CONTRACT.md) defines the Phase 2 platform-store boundary.
+Phase 1’s Kotlin Space-core contract and simulated restart scenario are retained as historical documentation in [PHASE-1-CONTRACT.md](./docs/PHASE-1-CONTRACT.md); production authority is now Go.
+
+Run the native Block 2 gate with `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk mise run phase2-check`. It verifies Go formatting, vet, unit/contract tests, race tests, reproducible amd64 and linux/arm64 builds, Android companion unit tests, and debug APK assembly. Android verification is required; the gate fails when `ANDROID_HOME` is unavailable.
 
 ## Current priority
 
