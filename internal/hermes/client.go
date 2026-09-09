@@ -24,13 +24,14 @@ const (
 	ProfileDevelopment = "development"
 	ProfileHardened    = "hardened"
 
-	CapabilityRunSubmission = "run_submission"
-	CapabilityRunStatus     = "run_status"
-	CapabilityRunEvents     = "run_events_sse"
-	CapabilityRunApproval   = "run_approval"
-	CapabilityRunSteer      = "run_steer"
-	CapabilityRunStop       = "run_stop"
-	defaultMaxEvents        = 1024
+	CapabilityRunSubmission       = "run_submission"
+	CapabilityRunStatus           = "run_status"
+	CapabilityRunEvents           = "run_events_sse"
+	CapabilityRunApproval         = "run_approval"
+	capabilityRunApprovalResponse = "run_approval_response"
+	CapabilityRunSteer            = "run_steer"
+	CapabilityRunStop             = "run_stop"
+	defaultMaxEvents              = 1024
 )
 
 var (
@@ -293,6 +294,11 @@ func (c *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 	}
 	if out.Auth.Type != "bearer" || !out.Auth.Required {
 		return out, fmt.Errorf("%w: Hermes must require bearer authentication", ErrCapabilityMismatch)
+	}
+	// Hermes names this capability run_approval_response in its live API;
+	// normalize that documented wire alias to Lumen's stable contract name.
+	if out.Features[capabilityRunApprovalResponse] && !out.Features[CapabilityRunApproval] {
+		out.Features[CapabilityRunApproval] = true
 	}
 	for _, feature := range c.requiredCapabilities {
 		if !out.Features[feature] {

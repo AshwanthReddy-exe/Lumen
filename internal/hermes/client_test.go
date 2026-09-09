@@ -47,6 +47,20 @@ func TestCapabilitiesRejectMissingRequiredFeature(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesAcceptsHermesApprovalResponseAlias(t *testing.T) {
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"hermes.api_server.capabilities","platform":"hermes-agent","model":"hermes-agent","auth":{"type":"bearer","required":true},"features":{"run_submission":true,"run_status":true,"run_events_sse":true,"run_approval_response":true,"run_stop":true}}`))
+	}))
+	c, err := New(testConfig(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Capabilities(context.Background()); err != nil {
+		t.Fatalf("live Hermes approval capability rejected: %v", err)
+	}
+}
+
 func TestHealthSendsScopedBearerAndExactHeaders(t *testing.T) {
 	var got http.Header
 	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
