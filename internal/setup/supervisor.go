@@ -27,7 +27,8 @@ type ServiceDefinition struct {
 	Destination string
 }
 type ServicePlan struct {
-	Hermes, Host    ServiceDefinition
+	Hermes, Host ServiceDefinition
+	// Deprecated fields retained for source compatibility; initialization must use Initializer.
 	HostInitialized bool
 	Verify          func() error
 	Initializer     HostInitializer
@@ -62,6 +63,23 @@ type ActionRequiredError struct {
 	Operation string
 }
 
+type ValidationError struct{ Field, Value string }
+
+func (e *ValidationError) Error() string { return fmt.Sprintf("invalid %s %q", e.Field, e.Value) }
+func validateName(n ServiceName) error {
+	if n != ServiceHermes && n != ServiceHost {
+		return &ValidationError{"service", string(n)}
+	}
+	return nil
+}
+func validateAction(a Action) error {
+	switch a.Code {
+	case "start", "stop", "restart", "status":
+		return nil
+	}
+	return &ValidationError{"action", a.Code}
+}
+
 func (e *ActionRequiredError) Error() string {
 	return fmt.Sprintf("action_required: %s %s on %s", e.Manager, e.Operation, e.Service)
 }
@@ -73,21 +91,23 @@ type SupervisorAPI interface {
 }
 
 func InstallServices(ctx context.Context, s SupervisorAPI, p ServicePlan) error {
-	if s == nil || p.Hermes.Name != ServiceHermes || p.Host.Name != ServiceHost {
-		return errors.New("invalid service plan")
+	if s == nil {
+		return &ValidationError{"supervisor", "nil"}
+	}
+	if err := validateName(p.Hermes.Name); err != nil {
+		return err
+	}
+	if err := validateName(p.Host.Name); err != nil {
+		return err
+	}
+	if p.Initializer == nil {
+		return errors.New("host initialization not verified")
 	}
 	if p.Initializer != nil {
 		if err := p.Initializer.Initialize(ctx); err != nil {
 			return fmt.Errorf("initialize Host: %w", err)
 		}
 		if err := p.Initializer.Verify(ctx); err != nil {
-			return fmt.Errorf("verify Host state: %w", err)
-		}
-	} else if !p.HostInitialized || p.Verify == nil {
-		return errors.New("host initialization not verified")
-	}
-	if p.Initializer == nil {
-		if err := p.Verify(); err != nil {
 			return fmt.Errorf("verify Host state: %w", err)
 		}
 	}
@@ -120,19 +140,19 @@ func (s CommandSupervisor) Install(ctx context.Context, p ServicePlan) error {
 		if d.Path == "" && (d.Source == "" || d.Destination == "") {
 			return errors.New("service definition path required")
 		}
+		if err := validateName(d.Name); err != nil {
+			return err
+		}
 		if d.Source != "" {
 			if err := copyDefinition(d.Source, d.Destination); err != nil {
-				return fmt.Errorf("install %s: %w", d.Name, err)
+				return fmt.Errorf("manager=%s service=%s operation=install: %w", s.Manager, d.Name, err)
 			}
 			d.Path = d.Destination
 		}
 		var err error
 		switch s.Manager {
 		case SupervisorSystemd:
-			_, _, err = commandRunner.Run(ctx, "systemctl", "daemon-reload")
-			if err == nil {
-				_, _, err = commandRunner.Run(ctx, "systemctl", "enable", unitName(d))
-			}
+			_, _, err = s.call(ctx, d.Name, "install", "systemctl", "daemon-reload")
 		case SupervisorLaunchd:
 			err = launchdBootstrap(ctx, d)
 		case SupervisorDocker:
@@ -143,7 +163,7 @@ func (s CommandSupervisor) Install(ctx context.Context, p ServicePlan) error {
 			return &ActionRequiredError{Manager: s.Manager, Service: d.Name, Operation: "install"}
 		}
 		if err != nil {
-			return fmt.Errorf("install %s: %w", d.Name, err)
+			return fmt.Errorf("manager=%s service=%s operation=install: %w", s.Manager, d.Name, err)
 		}
 	}
 	return nil
@@ -181,8 +201,8 @@ func copyDefinition(src, dst string) error {
 }
 func (s CommandSupervisor) Enable(ctx context.Context, names []ServiceName) error {
 	for _, n := range names {
-		if n != ServiceHermes && n != ServiceHost {
-			return errors.New("enable: invalid service name")
+		if err := validateName(n); err != nil {
+			return err
 		}
 		if err := s.run(ctx, "enable", ServiceDefinition{Name: n}); err != nil {
 			return fmt.Errorf("enable %s: %w", n, err)
@@ -191,8 +211,8 @@ func (s CommandSupervisor) Enable(ctx context.Context, names []ServiceName) erro
 	return nil
 }
 func (s CommandSupervisor) Control(ctx context.Context, a Action, names []ServiceName) ([]ServiceState, error) {
-	if a.Code != "start" && a.Code != "stop" && a.Code != "restart" && a.Code != "status" {
-		return nil, errors.New("invalid service action")
+	if err := validateAction(a); err != nil {
+		return nil, err
 	}
 	states := make([]ServiceState, 0, len(names))
 	timeout := ctx
@@ -202,8 +222,8 @@ func (s CommandSupervisor) Control(ctx context.Context, a Action, names []Servic
 		defer cancel()
 	}
 	for _, n := range names {
-		if n != ServiceHermes && n != ServiceHost {
-			return nil, errors.New("invalid service name")
+		if err := validateName(n); err != nil {
+			return nil, err
 		}
 		if a.Code != "status" {
 			if err := s.run(timeout, a.Code, ServiceDefinition{Name: n}); err != nil {
@@ -229,7 +249,9 @@ func launchdBootstrap(ctx context.Context, d ServiceDefinition) error {
 	if strings.HasPrefix(d.Path, "gui/") {
 		domain = "gui/" + strings.TrimPrefix(d.Path, "gui/")
 	}
-	_, _, err := commandRunner.Run(ctx, "launchctl", "bootstrap", domain, unitName(d))
+	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	_, _, err := commandRunner.Run(bounded, "launchctl", "bootstrap", domain, unitName(d))
 	return err
 }
 func (s CommandSupervisor) observe(ctx context.Context, n ServiceName) (ServiceState, error) {
@@ -245,8 +267,8 @@ func (s CommandSupervisor) observe(ctx context.Context, n ServiceName) (ServiceS
 	if strings.Contains(text, "failed") || strings.Contains(text, "error") {
 		st = StateFailed
 	}
-	if err != nil && st == StateUnknown && ctx.Err() != nil {
-		return ServiceState{}, fmt.Errorf("manager=%s service=%s operation=status: %w", s.Manager, n, ctx.Err())
+	if err != nil {
+		return ServiceState{}, fmt.Errorf("manager=%s service=%s operation=status: %w", s.Manager, n, err)
 	}
 	return ServiceState{Name: n, State: st}, nil
 }
@@ -260,7 +282,10 @@ func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDe
 			args = []string{op, unitName(d)}
 		case SupervisorLaunchd:
 			name = "launchctl"
-			args = []string{op, "dev.lumen." + string(d.Name) + ".plist"}
+			args = []string{"kickstart", "system/dev.lumen." + string(d.Name)}
+			if op == "stop" {
+				args = []string{"kill", "SIGTERM", "system/dev.lumen." + string(d.Name)}
+			}
 		case SupervisorDocker:
 			name = "docker"
 			actual := op
@@ -270,15 +295,27 @@ func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDe
 			args = []string{"compose", "-f", "deploy/docker/compose.yaml", actual, "-d", "lumen-" + string(d.Name)}
 		case SupervisorRunit:
 			name = "sv"
+			if op == "enable" {
+				return nil
+			}
 			args = []string{op, "lumen-" + string(d.Name)}
 		default:
 			return &ActionRequiredError{Manager: s.Manager, Service: d.Name, Operation: op}
 		}
-		if _, _, err := commandRunner.Run(ctx, name, args...); err != nil {
-			return fmt.Errorf("%s %s: %w", op, d.Name, err)
+		if _, _, err := s.call(ctx, d.Name, op, name, args...); err != nil {
+			return fmt.Errorf("manager=%s service=%s operation=%s: %w", s.Manager, d.Name, op, err)
 		}
 	}
 	return nil
+}
+func (s CommandSupervisor) call(ctx context.Context, service ServiceName, op, name string, args ...string) ([]byte, []byte, error) {
+	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, errout, err := commandRunner.Run(bounded, name, args...)
+	if err != nil {
+		return out, errout, fmt.Errorf("manager=%s service=%s operation=%s: %w", s.Manager, service, op, err)
+	}
+	return out, errout, nil
 }
 func (s CommandSupervisor) runOutput(ctx context.Context, op string, d ServiceDefinition) ([]byte, []byte, error) {
 	var name string
@@ -299,5 +336,5 @@ func (s CommandSupervisor) runOutput(ctx context.Context, op string, d ServiceDe
 	default:
 		return nil, nil, &ActionRequiredError{Manager: s.Manager, Service: d.Name, Operation: op}
 	}
-	return commandRunner.Run(ctx, name, args...)
+	return s.call(ctx, d.Name, op, name, args...)
 }

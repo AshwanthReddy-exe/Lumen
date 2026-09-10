@@ -41,10 +41,15 @@ func (f *fakeSupervisor) Control(context.Context, Action, []ServiceName) ([]Serv
 
 func TestInstallEnablesHermesAndHostInOrder(t *testing.T) {
 	f := &fakeSupervisor{}
-	if err := InstallServices(context.Background(), f, ServicePlan{Host: ServiceDefinition{Name: ServiceHost}, Hermes: ServiceDefinition{Name: ServiceHermes}, HostInitialized: true, Verify: func() error { return nil }}); err != nil {
+	if err := InstallServices(context.Background(), f, ServicePlan{Host: ServiceDefinition{Name: ServiceHost}, Hermes: ServiceDefinition{Name: ServiceHermes}, Initializer: fakeInitializer{}}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(f.calls, []string{"install:hermes", "install:host", "enable:hermes", "enable:host"}) {
 		t.Fatalf("got %#v", f.calls)
 	}
 }
+
+type fakeInitializer struct{}
+
+func (fakeInitializer) Initialize(context.Context) error { return nil }
+func (fakeInitializer) Verify(context.Context) error     { return nil }
