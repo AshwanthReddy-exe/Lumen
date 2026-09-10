@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
@@ -78,10 +81,28 @@ func ConfigFromFile(path string) (Config, error) {
 	if err := dec.Decode(&w); err != nil {
 		return Config{}, fmt.Errorf("invalid config: %w", err)
 	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		return Config{}, errors.New("invalid config: trailing content")
+	}
 	if w.Version != 1 || w.DataDir == "" || w.Hermes.BaseURL == "" || w.Hermes.Profile == "" || w.Hermes.BearerFile == "" {
 		return Config{}, errors.New("incomplete generated configuration")
 	}
 	c := Config{DataDir: w.DataDir, SocketPath: filepath.Join(w.DataDir, "host.sock"), CredentialPath: filepath.Join(w.DataDir, "operator.credential"), HermesBaseURL: w.Hermes.BaseURL, HermesProfile: w.Hermes.Profile, HermesBearerPath: w.Hermes.BearerFile, HermesCAPath: w.Hermes.CAFile, HermesClientCertPath: w.Hermes.ClientCertFile, HermesClientKeyPath: w.Hermes.ClientKeyFile, HermesServerPin: w.Hermes.ServerCertPin}
+	if w.Hermes.Profile != hermes.ProfileDevelopment && w.Hermes.Profile != hermes.ProfileHardened && w.Hermes.Profile != "personal-alpha" {
+		return Config{}, errors.New("invalid Hermes profile")
+	}
+	for _, p := range []string{w.Hermes.BearerFile, w.Hermes.CAFile, w.Hermes.ClientCertFile, w.Hermes.ClientKeyFile} {
+		if p != "" && (!filepath.IsAbs(p) || filepath.Clean(p) != p) {
+			return Config{}, errors.New("secret paths must be absolute and clean")
+		}
+	}
+	if w.Hermes.Profile == hermes.ProfileHardened {
+		u, e := url.Parse(w.Hermes.BaseURL)
+		if e != nil || u.Scheme != "https" || u.Hostname() == "localhost" || u.Hostname() == "::1" || strings.HasPrefix(u.Hostname(), "127.") || w.Hermes.ServerCertPin == "" || w.Hermes.CAFile == "" || w.Hermes.ClientCertFile == "" || w.Hermes.ClientKeyFile == "" {
+			return Config{}, errors.New("invalid hardened configuration")
+		}
+	}
 	if err := c.valid(); err != nil {
 		return Config{}, err
 	}

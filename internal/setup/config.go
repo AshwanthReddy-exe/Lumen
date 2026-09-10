@@ -19,7 +19,7 @@ type ConfigRequest struct {
 type ConfigPaths struct{ Lumen, Hermes, Bearer, CA, ClientCert, ClientKey string }
 
 func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
-	if r.DataDir == "" || r.HermesDir == "" || !filepath.IsAbs(r.DataDir) || !filepath.IsAbs(r.HermesDir) {
+	if r.DataDir == "" || r.HermesDir == "" || !filepath.IsAbs(r.DataDir) || !filepath.IsAbs(r.HermesDir) || filepath.Clean(r.DataDir) != r.DataDir || filepath.Clean(r.HermesDir) != r.HermesDir {
 		return ConfigPaths{}, errors.New("absolute configuration directories required")
 	}
 	if r.Profile != Development && r.Profile != PersonalAlpha && r.Profile != Hardened {
@@ -32,13 +32,13 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 	if r.Profile == Hardened && (u.Scheme != "https" || strings.HasPrefix(u.Hostname(), "127.") || u.Hostname() == "localhost" || u.Hostname() == "::1" || r.HermesServerPin == "" || r.HermesCA == "" || r.HermesClientCert == "" || r.HermesClientKey == "") {
 		return ConfigPaths{}, errors.New("hardened configuration requires non-loopback TLS identity")
 	}
-	if err := os.MkdirAll(r.DataDir, 0700); err != nil {
+	if err := safeDir(r.DataDir); err != nil {
 		return ConfigPaths{}, err
 	}
 	if err := os.Chmod(r.DataDir, 0700); err != nil {
 		return ConfigPaths{}, err
 	}
-	if err := os.MkdirAll(r.HermesDir, 0700); err != nil {
+	if err := safeDir(r.HermesDir); err != nil {
 		return ConfigPaths{}, err
 	}
 	if err := os.Chmod(r.HermesDir, 0700); err != nil {
@@ -71,9 +71,38 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 		return ConfigPaths{}, err
 	}
 	if r.Journal != nil {
-		_ = r.Journal.Record(StageEvidence{Stage: ConfigurationReady, InputDigest: "sha256:" + strings.Repeat("2", 64)})
+		if err := r.Journal.Record(StageEvidence{Stage: ConfigurationReady, InputDigest: "sha256:" + strings.Repeat("2", 64)}); err != nil {
+			return ConfigPaths{}, err
+		}
 	}
 	return p, nil
+}
+func safeDir(p string) error {
+	if s, err := os.Lstat(p); err == nil {
+		if s.Mode()&os.ModeSymlink != 0 || !s.IsDir() {
+			return errors.New("configuration directory must not contain symlinks")
+		}
+		return os.Chmod(p, 0700)
+	}
+	cur := string(filepath.Separator)
+	for _, part := range strings.Split(filepath.Clean(p), string(filepath.Separator))[1:] {
+		cur = filepath.Join(cur, part)
+		if s, err := os.Lstat(cur); err == nil {
+			if s.Mode()&os.ModeSymlink != 0 {
+				continue
+			}
+			if !s.IsDir() {
+				return errors.New("configuration directory must not contain symlinks")
+			}
+		} else if os.IsNotExist(err) {
+			if err := os.Mkdir(cur, 0700); err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	return os.Chmod(p, 0700)
 }
 func writePrivate(p string, b []byte) error {
 	f, e := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
