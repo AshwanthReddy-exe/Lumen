@@ -52,3 +52,15 @@ Exact Task 7 command: both packages passed.
 Full relevant command (`./internal/setup ./internal/host ./test/contract ./cmd/lumen`): all packages passed.
 
 Amended commit: `c09dca7` (report included in the commit; this supersedes the earlier `d67680f` history).
+
+## Fix round 2
+
+Added normalized-authority assertions to `internal/setup/doctor_test.go`; the doctor report exposes only Lumen deployment states and does not turn a Hermes-discovered feature into public authority. A corresponding isolated assertion was appended to `cmd/lumen/main_test.go`, but that file already contained unrelated unstaged user edits; it remains unstaged for safe owner-side staging.
+
+Focused command:
+
+`GOCACHE=/private/tmp/lumen-go-cache go test ./internal/setup ./cmd/lumen ./test/contract -run 'TestDoctorPublishesNormalizedDeploymentStateOnly|TestDoctorPublicReportUsesNormalizedAuthorityStates|TestSetupCreatedDeploymentCompletesBoundedRun' -count=1`
+
+Result: all three packages passed.
+
+The current commit supersedes `c09dca7`; its final hash is recorded by the commit operation.

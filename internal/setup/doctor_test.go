@@ -101,3 +101,15 @@ func TestDoctorAcceptsInstalledArtifactRunningState(t *testing.T) {
 		t.Fatalf("installed artifacts changed outcome: %#v", r)
 	}
 }
+
+func TestDoctorPublishesNormalizedDeploymentStateOnly(t *testing.T) {
+	r := Doctor{Observe: func(context.Context) DoctorEvidence {
+		return DoctorEvidence{Stage: Validated, HostReady: true, HostState: StateRunning, HermesReady: true, HermesState: StateRunning, SupervisorReady: true, SupervisorState: StateRunning, BootReady: true, BootState: StateRunning, CredentialsReady: true, IsolationReady: true, ArtifactsReady: true, ArtifactState: StateRunning}
+	}}.Check(context.Background())
+	if r.Outcome != Ready {
+		t.Fatalf("got %#v", r)
+	}
+	if _, ok := r.States["browser_extension_control"]; ok {
+		t.Fatal("Hermes-discovered feature became public Lumen state")
+	}
+}
