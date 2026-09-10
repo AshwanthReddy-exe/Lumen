@@ -1,0 +1,65 @@
+#!/data/data/com.termux/files/usr/bin/sh
+set -eu
+umask 077
+
+fail() { printf '%s\n' "$*" >&2; exit 1; }
+
+source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+data_dir="$HOME/.local/share/lumen"
+service_dir="$HOME/service/lumen-host"
+boot_dir="$HOME/.termux/boot"
+
+[ -f "$source_dir/lumen-host-android-arm64" ] || fail "missing Termux Host artifact beside installer"
+[ -f "$source_dir/run" ] || fail "missing Termux runit run script beside installer"
+[ -f "$source_dir/finish" ] || fail "missing Termux runit finish script beside installer"
+[ ! -e "$data_dir/initialized" ] || fail "existing Lumen state found; refusing to overwrite it"
+[ ! -e "$HOME/bin/lumen-host" ] || [ "${LUMEN_REINSTALL:-}" = 1 ] || fail "existing Lumen Host binary found; rerun with LUMEN_REINSTALL=1 before initialization"
+command -v pkg >/dev/null 2>&1 || fail "run this from Termux"
+
+pkg install -y runit jq openssl-tool
+mkdir -p "$HOME/bin" "$HOME/.config/lumen" "$data_dir" "$service_dir" "$HOME/service/lumen-hermes" "$boot_dir"
+chmod 700 "$HOME/bin" "$HOME/.config/lumen" "$data_dir" "$service_dir" "$boot_dir"
+cp "$source_dir/lumen-host-android-arm64" "$HOME/bin/lumen-host"
+cp "$source_dir/run" "$service_dir/run"
+cp "$source_dir/finish" "$service_dir/finish"
+if [ -f "$source_dir/hermes-run" ]; then cp "$source_dir/hermes-run" "$HOME/service/lumen-hermes/run"; else
+	printf '%s\n' '#!/data/data/com.termux/files/usr/bin/sh' 'set -eu' 'umask 077' 'exec "$HOME/bin/hermes" serve' >"$HOME/service/lumen-hermes/run"
+fi
+chmod 700 "$HOME/bin/lumen-host" "$service_dir/run" "$service_dir/finish"
+chmod 700 "$HOME/service/lumen-hermes/run"
+cat >"$boot_dir/lumen-host" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+umask 077
+exec runsvdir -P "$HOME/service"
+EOF
+chmod 700 "$boot_dir/lumen-host"
+
+config="$HOME/.config/lumen/host.env"
+if [ -f "$source_dir/host.env" ]; then
+	[ -f "$source_dir/hermes.token" ] || fail "missing development Hermes bearer token beside installer"
+	[ ! -e "$config" ] || [ "${LUMEN_REINSTALL:-}" = 1 ] || fail "existing Host configuration found; rerun with LUMEN_REINSTALL=1 before initialization"
+	mv -f "$source_dir/host.env" "$config"
+	mv -f "$source_dir/hermes.token" "$data_dir/hermes.token"
+	chmod 600 "$config" "$data_dir/hermes.token"
+elif [ ! -e "$config" ]; then
+	cat >"$config" <<'EOF'
+# Fill every YOUR_* value before starting the Host. Keep this file private.
+LUMEN_DATA_DIR=$HOME/.local/share/lumen
+LUMEN_SOCKET_PATH=$HOME/.local/share/lumen/host.sock
+LUMEN_OPERATOR_CREDENTIAL_FILE=$HOME/.local/share/lumen/operator.credential
+LUMEN_HERMES_PROFILE=hardened
+LUMEN_HERMES_BASE_URL=https://YOUR_HERMES_HOST:PORT
+LUMEN_HERMES_BEARER_FILE=$HOME/.local/share/lumen/hermes.token
+LUMEN_HERMES_CA_FILE=$HOME/.local/share/lumen/hermes-ca.pem
+LUMEN_HERMES_CLIENT_CERT_FILE=$HOME/.local/share/lumen/hermes-client.crt
+LUMEN_HERMES_CLIENT_KEY_FILE=$HOME/.local/share/lumen/hermes-client.key
+LUMEN_HERMES_SERVER_CERT_PIN=YOUR_PINNED_LEAF_CERTIFICATE_PIN
+EOF
+	chmod 600 "$config"
+fi
+
+printf '%s\n' "Installed. Fill $config and add its referenced Hermes secret files (mode 0600)."
+printf '%s\n' "Then run: . $config && $HOME/bin/lumen-host init"
+printf '%s\n' "Check the deployment profile with: . $config && $HOME/bin/lumen-host doctor"
+printf '%s\n' "Start under runit with: runsvdir -P $HOME/service"
+printf '%s\n' "For boot start, install and enable Termux:Boot; it will run $boot_dir/lumen-host."

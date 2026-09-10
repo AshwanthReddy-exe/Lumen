@@ -1,4 +1,11 @@
 services:
+  lumen-hermes:
+    image: lumen/hermes:latest
+    command: ["serve"]
+    read_only: true
+    restart: on-failure:3
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
   lumen-host:
     build:
       context: ../..
