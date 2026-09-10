@@ -34,6 +34,36 @@ func TestConfigFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestConfigFromFileRejectsTrailingAndRelativeSecrets(t *testing.T) {
+	d := t.TempDir()
+	p := filepath.Join(d, "c.json")
+	good := `{"version":1,"data_dir":"` + d + `","hermes":{"base_url":"http://127.0.0.1","profile":"personal-alpha","bearer_file":"relative"}}`
+	if err := os.WriteFile(p, []byte(good), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConfigFromFile(p); err == nil {
+		t.Fatal("expected relative secret rejection")
+	}
+	if err := os.WriteFile(p, []byte(`{"version":1,"data_dir":"`+d+`","hermes":{"base_url":"http://127.0.0.1","profile":"personal-alpha","bearer_file":"`+filepath.Join(d, "token")+`"}} junk`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConfigFromFile(p); err == nil {
+		t.Fatal("expected trailing JSON rejection")
+	}
+}
+
+func TestConfigFromFileRejectsWeakHardenedEndpoint(t *testing.T) {
+	d := t.TempDir()
+	p := filepath.Join(d, "c.json")
+	raw := `{"version":1,"data_dir":"` + d + `","hermes":{"base_url":"http://127.0.0.1","profile":"hardened","bearer_file":"` + filepath.Join(d, "token") + `"}}`
+	if err := os.WriteFile(p, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConfigFromFile(p); err == nil {
+		t.Fatal("expected hardened rejection")
+	}
+}
+
 func TestProductionNewBuildsNonNilRuntimeAdapter(t *testing.T) {
 	d := t.TempDir()
 	tokenPath := filepath.Join(d, "hermes.token")
