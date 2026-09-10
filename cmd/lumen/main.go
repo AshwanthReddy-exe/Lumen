@@ -338,8 +338,12 @@ func (s *setupState) checkArtifacts() error {
 				return errors.New("artifact digest unavailable")
 			}
 		}
-		if p := os.Getenv("LUMEN_" + strings.ToUpper(name) + "_ARTIFACT"); p == "" || !fileExists(p) {
+		p := os.Getenv("LUMEN_" + strings.ToUpper(name) + "_ARTIFACT")
+		if p == "" || !fileExists(p) {
 			return errors.New("artifact unavailable")
+		}
+		if err := setup.VerifyArtifact(p, a); err != nil {
+			return errors.New("artifact verification failed")
 		}
 	}
 	return nil

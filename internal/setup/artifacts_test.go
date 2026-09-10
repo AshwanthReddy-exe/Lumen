@@ -98,6 +98,23 @@ func TestStageRejectsShortAndOversized(t *testing.T) {
 	}
 }
 
+func TestVerifyArtifactUsesManifestDigestWithoutMutation(t *testing.T) {
+	d := t.TempDir()
+	body := "verified"
+	a := testArtifact(body)
+	p := filepath.Join(d, a.Name)
+	if err := os.WriteFile(p, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyArtifact(p, a); err != nil {
+		t.Fatal(err)
+	}
+	a.SHA256 = "sha256:" + strings.Repeat("0", 64)
+	if err := VerifyArtifact(p, a); !errors.Is(err, ErrDigestMismatch) {
+		t.Fatalf("mismatch=%v", err)
+	}
+}
+
 func TestStagePermissionsAndInstallCleanup(t *testing.T) {
 	d := t.TempDir()
 	i := Installer{StageDir: filepath.Join(d, "stage"), InstallDir: filepath.Join(d, "bin")}

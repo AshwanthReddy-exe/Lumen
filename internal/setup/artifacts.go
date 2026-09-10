@@ -213,6 +213,15 @@ func verifyStaged(path string, a Artifact) error {
 	}
 	return nil
 }
+
+// VerifyArtifact checks an already installed artifact against its manifest
+// without changing the installation.
+func VerifyArtifact(path string, a Artifact) error {
+	if validateArtifact(a) != nil {
+		return ErrInvalidArtifact
+	}
+	return verifyStaged(path, a)
+}
 func hexDigest(b []byte) string {
 	const d = "0123456789abcdef"
 	o := make([]byte, len(b)*2)
