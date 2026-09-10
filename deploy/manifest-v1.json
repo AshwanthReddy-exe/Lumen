@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {"name":"lumen","version":"0.0.0","os":"darwin","architecture":"arm64","profile":"development","url":"https://example.invalid/lumen-schema-fixture","size":1,"sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","contractVersion":1,"executableMode":493},
+    {"name":"hermes","version":"0.0.0","os":"darwin","architecture":"arm64","profile":"development","url":"https://example.invalid/hermes-schema-fixture","size":1,"sha256":"sha256:0000000000000000000000000000000000000000000000000000000000000000","contractVersion":1,"executableMode":493}
+  ]
+}

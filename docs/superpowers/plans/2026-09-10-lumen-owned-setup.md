@@ -154,8 +154,14 @@ git commit -m "feat(setup): plan and resume installation"
 
 **Files:**
 - Create: `deploy/manifest-v1.json`
+- Create: `internal/setup/manifest.go`
+- Create: `internal/setup/manifest_test.go`
 - Create: `internal/setup/artifacts.go`
 - Create: `internal/setup/artifacts_test.go`
+- Create: `internal/setup/download.go`
+- Create: `internal/setup/download_test.go`
+- Create: `internal/setup/adoption.go`
+- Create: `internal/setup/adoption_test.go`
 - Modify: `internal/setup/model.go`
 
 **Interfaces:**
@@ -163,7 +169,7 @@ git commit -m "feat(setup): plan and resume installation"
 - `Installer.Stage(context.Context, Artifact, io.Reader) (StagedArtifact, error)` verifies size and SHA-256 before replacement.
 - Existing Hermes may be adopted only when version, executable ownership, endpoint identity, authentication, and advertised Runs capability pass.
 
-- [ ] **Step 1: Write failing manifest and preservation tests**
+- [x] **Step 1: Write failing manifest and preservation tests**
 
 ```go
 func TestChecksumFailurePreservesInstalledArtifact(t *testing.T) {
@@ -174,30 +180,30 @@ func TestChecksumFailurePreservesInstalledArtifact(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test and verify RED**
+- [x] **Step 2: Run test and verify RED**
 
 Run: `GOCACHE=/private/tmp/lumen-go-cache go test ./internal/setup -run 'TestChecksumFailure|TestManifest' -count=1`
 
 Expected: FAIL because artifact support is undefined.
 
-- [ ] **Step 3: Implement strict manifest parsing and staged replacement**
+- [x] **Step 3: Implement strict manifest parsing and staged replacement**
 
 The manifest names exact OS/architecture/profile combinations, Lumen and Hermes versions, source URL, byte size, SHA-256, and compatibility contract version. Download through an injected `io.Reader`/HTTP client with bounded size; validate before rename.
 
-- [ ] **Step 4: Test adoption, unsupported targets, interrupted update, and rollback**
+- [x] **Step 4: Test adoption, unsupported targets, interrupted update, and rollback**
 
 Run: `GOCACHE=/private/tmp/lumen-go-cache go test ./internal/setup -run 'TestArtifact|TestManifest|TestAdopt' -count=1`
 
 Expected: PASS; unsupported targets fail before creating installation paths.
 
-- [ ] **Step 5: Commit artifact lifecycle**
+- [x] **Step 5: Complete artifact lifecycle change**
 
 ```bash
 git add deploy/manifest-v1.json internal/setup
 git commit -m "feat(setup): verify Lumen and Hermes artifacts"
 ```
 
-### Task 4: Generate private Lumen and Hermes configuration
+### Task 4: Create private directories, credentials, and Lumen/Hermes configuration
 
 **Files:**
 - Create: `internal/setup/config.go`
@@ -208,6 +214,7 @@ git commit -m "feat(setup): verify Lumen and Hermes artifacts"
 **Interfaces:**
 - `WriteConfig(ConfigRequest) (ConfigPaths, error)` writes complete owner-only files with no unresolved placeholders.
 - `host.ConfigFromFile(path string) (host.Config, error)` strictly loads generated non-secret settings; existing environment loading remains a compatibility path.
+- Directory creation records `directories_ready` before credentials are created; credential creation records `credentials_ready` before configuration is generated.
 - Secrets remain separate `0600` regular files owned by the service principal.
 
 - [ ] **Step 1: Write failing configuration tests**
@@ -245,7 +252,7 @@ git add internal/setup internal/host
 git commit -m "feat(setup): generate Host and Hermes configuration"
 ```
 
-### Task 5: Install and control platform supervisors
+### Task 5: Initialize the Host, then install and control platform supervisors
 
 **Files:**
 - Create: `internal/setup/supervisor.go`
@@ -264,6 +271,7 @@ git commit -m "feat(setup): generate Host and Hermes configuration"
 - `Supervisor.Enable(context.Context, []ServiceName) error`
 - `Supervisor.Control(context.Context, Action, []ServiceName) ([]ServiceState, error)`
 - Native implementations invoke only allowlisted fixed commands with explicit arguments; no shell interpolation or secret flags.
+- The existing create-once Host initialization runs and verifies durable state before supervisor installation; reruns never replace Host identity.
 
 - [ ] **Step 1: Write failing fake-supervisor and definition tests**
 
@@ -351,50 +359,49 @@ git add cmd/lumen cmd/lumen-host internal/setup
 git commit -m "feat(setup): complete one-command bootstrap"
 ```
 
-### Task 7: Import Hermes inventory without granting integrations
+### Task 7: Prove the configured Hermes execution boundary
 
 **Files:**
-- Create: `internal/setup/integrations.go`
-- Create: `internal/setup/integrations_test.go`
-- Modify: `cmd/lumen/main.go`
+- Create: `test/contract/setup_hermes_run_test.go`
+- Modify: `internal/setup/doctor_test.go`
 - Modify: `cmd/lumen/main_test.go`
 
 **Interfaces:**
-- `Inventory.Discover(context.Context) ([]DiscoveredFeature, error)` returns redacted upstream availability.
-- `lumen integration list|status` distinguishes `discovered`, `contracted`, `enabled`, `degraded`, and `unavailable`.
-- `integration connect|disconnect` returns `action_required` until a later block provides that integration's typed capability adapter; Block 2 exposes no Telegram/WhatsApp send authority.
+- The setup-created deployment completes one bounded `agent.run/execute` task through the existing Host-owned Hermes adapter.
+- Approval, cancellation, restart reconciliation, and terminal evidence remain owned by the Host.
+- Discovered Hermes features never become Lumen grants; integration inventory and lifecycle remain deferred until their Block 5 capability contracts exist.
 
-- [ ] **Step 1: Write failing no-self-enable tests**
+- [ ] **Step 1: Write the failing configured-runtime proof**
 
 ```go
-func TestDiscoveredTelegramCannotSelfEnable(t *testing.T) {
-	inv := inventoryWith("telegram")
-	got := inv.Status("telegram")
-	if got.State != Discovered || got.Enabled { t.Fatalf("got %#v", got) }
+func TestSetupCreatedDeploymentCompletesBoundedRun(t *testing.T) {
+	env := newConfiguredSetupEnvironment(t)
+	got := env.SubmitAndWait("agent.run/execute", "return the synthetic marker")
+	if got.Status != "completed" { t.Fatalf("got %#v", got) }
 }
 ```
 
 - [ ] **Step 2: Run test and verify RED**
 
-Run: `GOCACHE=/private/tmp/lumen-go-cache go test ./internal/setup ./cmd/lumen -run 'TestDiscoveredTelegram|TestIntegration' -count=1`
+Run: `GOCACHE=/private/tmp/lumen-go-cache go test ./test/contract ./cmd/lumen -run 'TestSetupCreatedDeployment|TestRuntimeAuthority' -count=1`
 
-Expected: FAIL because integration inventory is undefined.
+Expected: FAIL until setup produces a runnable Host/Hermes deployment.
 
-- [ ] **Step 3: Implement redacted inventory and reserved lifecycle commands**
+- [ ] **Step 3: Connect setup output to the existing bounded execution contract**
 
-Use the existing Hermes capability client. Maintain an explicit compiled registry containing only `agent.run/execute` for Block 2; never convert arbitrary discovery keys into Lumen grants.
+Use the existing Hermes capability client and Host execution lifecycle. Do not add a second task runner or expose arbitrary discovered capabilities.
 
-- [ ] **Step 4: Test unknown, missing, discovered, contracted, and degraded features**
+- [ ] **Step 4: Test completion, approval, cancellation, restart recovery, and discovery denial**
 
-Run: `GOCACHE=/private/tmp/lumen-go-cache go test ./internal/setup ./cmd/lumen -count=1`
+Run: `GOCACHE=/private/tmp/lumen-go-cache go test ./internal/setup ./internal/host ./test/contract ./cmd/lumen -count=1`
 
-Expected: PASS; Telegram and WhatsApp are visible when discovered but remain disabled.
+Expected: PASS; only the frozen Runs capability is executable and discovery cannot self-enable anything.
 
 - [ ] **Step 5: Commit integration inventory**
 
 ```bash
-git add cmd/lumen internal/setup
-git commit -m "feat(setup): report Hermes integration inventory"
+git add cmd/lumen internal/setup internal/host test/contract
+git commit -m "test(setup): prove configured Hermes execution"
 ```
 
 ### Task 8: Complete automated gates and owner evidence
