@@ -1,18 +1,20 @@
-# Phase 2 Lumen-owned Host and Hermes setup
+# Host and Hermes foundation closure
 
-## Current execution lock
+## Status and sequencing
 
-**The Android authority quarantine, native Go migration, and Host-to-Hermes execution core are substantially complete. Finish the Lumen-owned setup product and its owner proof before returning to authenticated pairing, node transport, dashboards, camera, microphone, Mac, iPhone, or new Android companion features.** Reserving the `lumen connect` command handoff is allowed; trusting an external node is not.
+This document preserves the implementation contract formerly called “Phase 2.” It is now the foundation-closure workstream in the journey-first plan in [PLAN.md](./PLAN.md), not a lock that requires every platform proof before conversation, node-fabric, or Jarvis-experience work can begin.
+
+The minimum release-grade combined Linux/VPS deployment remains a prerequisite for relying on the Host in product milestones. Platform-specific Termux, macOS, separated-runtime, and hardened evidence gates the deployment profile or capability that needs it; it does not dictate the whole product sequence. Authenticated node trust still requires the node protocol and its security evidence rather than this document alone.
 
 ## Implementation checkpoint — 2026-09-10
 
 Committed setup work now covers the strict public command/model contract, deterministic planning, resumable journal evidence, pinned manifest parsing, verified staged artifact replacement, compatible-Hermes adoption checks, private credentials, strict generated Host/Hermes configuration, and an initial supervisor adapter/definition set for systemd, launchd, Docker, and Termux/runit.
 
-This is not a completed Block 2 exit. The supervision review reached its five-round breaker with concrete create-once Host integration, lifecycle/boot regression coverage, and mandatory manifest-bound Termux artifact digests still load-bearing. The setup runner, public whole-deployment doctor, configured Hermes execution proof, automated clean-environment gate, reboot evidence, physical Termux proof, and isolated pinned-mTLS proof remain unimplemented or unrecorded. No later block is unlocked by this checkpoint.
+This is not a completed foundation exit. The supervision review reached its five-round breaker with concrete create-once Host integration, lifecycle/boot regression coverage, and mandatory manifest-bound Termux artifact digests still load-bearing. The setup runner, public whole-deployment doctor, configured Hermes execution proof, automated clean-environment gate, reboot evidence, physical Termux proof, and isolated pinned-mTLS proof remain unimplemented or unrecorded. These gaps must not be described as shipped behavior. They block only the relevant deployment assurance claim unless [PLAN.md](./PLAN.md) names them as a wider milestone dependency.
 
 ## Goal
 
-Run `lumen setup` once on a clean supported environment to install or adopt compatible Lumen and Hermes artifacts, generate both configurations, initialize encrypted Host state, install and enable both supervised services, and return an honest whole-deployment result. Then complete one bounded task with honest policy, events, approval, cancellation, failure, and restart behavior. The same public outcome contract must work on Linux/VPS, macOS, and Android Termux even when platform adapters differ.
+Run `lumen setup` once on a clean supported environment to install or adopt compatible Lumen and Hermes artifacts, generate both configurations, initialize encrypted Host state, install and enable both supervised services, and return an honest whole-deployment result. Then complete one bounded task with honest policy, events, approval, cancellation, failure, and restart behavior. The same public outcome contract must ultimately work on every supported profile even when platform adapters differ. The first product reference is a combined Linux/VPS deployment; other profiles qualify independently.
 
 ## Observable live proof
 
@@ -45,7 +47,7 @@ Create `cmd/lumen-host` as a native Go application. Its foreground process has e
 
 ### Durable Host storage
 
-The Host stores encrypted, versioned canonical state in a configured private data directory. Initialization is create-once and crash-resumable until its durable marker; an incomplete or mismatched encrypted state is rejected without mutation. Version 1 uses an explicit envelope containing format version, key identifier, cipher suite, fresh random nonce, authenticated metadata, and ciphertext. AES-256-GCM uses a new 96-bit nonce for every write; nonce reuse is forbidden. Phase 2 reads only version 1. Older, unknown, or future versions fail closed without mutation. A future migration must write and verify a separate file, durably flush it, atomically replace the active file, and retain or quarantine the prior version for explicit rollback.
+The Host stores encrypted, versioned canonical state in a configured private data directory. Initialization is create-once and crash-resumable until its durable marker; an incomplete or mismatched encrypted state is rejected without mutation. Version 1 uses an explicit envelope containing format version, key identifier, cipher suite, fresh random nonce, authenticated metadata, and ciphertext. AES-256-GCM uses a new 96-bit nonce for every write; nonce reuse is forbidden. The current foundation reads only version 1. Older, unknown, or future versions fail closed without mutation. A future migration must write and verify a separate file, durably flush it, atomically replace the active file, and retain or quarantine the prior version for explicit rollback.
 
 Commits use one serialized writer, atomic replacement, durable flush, and a process lock. The state key comes from a restricted secret file or service-manager credential and is distinct from the operator and Hermes credentials. Missing keys, permissive secret access, corrupt ciphertext, incompatible versions, lock contention, and failed writes leave the Host unavailable without overwriting the last committed state.
 
@@ -65,7 +67,7 @@ Create a narrow, versioned adapter around [Hermes’s documented API server](htt
 
 The current Hermes programmatic-integration contract documents `run_steer` and `POST /v1/runs/{id}/steer` only while a run is `running`; its input is queued for the next tool boundary, so a successful response is evidence of queuing rather than completion. Deployed Hermes versions may omit this feature flag, so it is optional in the baseline capability contract: the adapter accepts the stable Runs surface without it, fetches capabilities before steering, and returns an unsupported result without sending a request when `run_steer` is absent.
 
-This first slice freezes the common boundary used later by Hermes model routing, built-in tools, skills, MCP, browser, voice adapters, delegated runs, and remote execution. It does not recreate or enable every feature in Block 2. Capability metadata is imported as untrusted discovery data; every enabled Hermes surface still requires a typed Lumen capability, target, context scope, budget, cancellation, and audit contract.
+This foundation freezes the common boundary reused by Hermes model routing, built-in tools, skills, MCP, browser, voice adapters, delegated runs, and remote execution. It does not recreate or enable every Hermes feature. Capability metadata is imported as untrusted discovery data; every enabled Hermes surface still requires a typed Lumen capability, target, context scope, budget, cancellation, and audit contract.
 
 Hardened Linux, macOS, and VPS deployments isolate Host and Hermes with separate OS principals or containers. Hermes is reached through a protected TLS endpoint or proxy with normal CA, hostname, and certificate-validity verification plus an exact pinned leaf identity, client authentication, and an independently scoped Hermes bearer credential. The adapter rejects redirects, URL userinfo, pin changes, and credential forwarding to another origin. Plain numeric-loopback HTTP is allowed only in an explicit development profile with synthetic state and cannot satisfy the security exit gate.
 
@@ -112,7 +114,9 @@ Ship examples for systemd, launchd, Docker, and Termux/runit. All invoke the sam
 - Hermes shell probes completed without emitting an approval request under the installed gateway policy. Therefore this proves policy approval, run/event/status/output, cancellation, and restart behavior in development, but does not replace the release-blocking live runtime-approval or hardened isolated-Hermes/mTLS proof.
 - The Termux artifact hash was `ba41d1d32c096d3e4bf84202e16c84c85b87b1312c1ab378dce1fc98540dcd96`; `file` identified it as an ELF64 AArch64 PIE executable. ADB reported no connected device, so installation and lifecycle evidence remain pending.
 
-## Delivery sequence and PR stack
+## Historical delivery sequence
+
+The following list records how the original Host-first implementation was sliced. It is historical branch evidence, not the active product roadmap; [PLAN.md](./PLAN.md) owns current sequencing.
 
 1. `docs/host-first-plan`: canonical architecture correction and this plan.
 2. `fix/android-authority-quarantine`, based on the planning branch: complete; remove the Android foreground Host entry points and prevent the superseded test Space from presenting as authority.
@@ -122,8 +126,10 @@ Ship examples for systemd, launchd, Docker, and Termux/runit. All invoke the sam
 6. `feat/hermes-runtime-adapter`, based on the prior slice: mutual endpoint identity, isolated deployment profile, pinned behavioral compatibility, authenticated Runs API client, normalized events, and fake-server contract tests.
 7. `feat/host-hermes-loop`, based on the prior slice: task submission, approval, cancellation, reconciliation, end-to-end scenario, `phase2-check`, and real-Hermes smoke evidence.
 
-The owner requested one combined Block 2 pull request. Intermediate branches are pushed only as recoverable checkpoints; the final Block 2 branch targets `main` without force-pushing or rewriting shared history. Protocol, persistence, authorization, and migration changes require independent review before the combined pull request is merged.
+The owner requested one combined Block 2 pull request at the time. Intermediate branches were recoverable checkpoints. Protocol, persistence, authorization, and migration changes continue to require independent review.
 
 ## Exit
 
-Block 2 is complete only when one public `lumen setup` command passes fresh, rerun, interruption, rollback, and secret-redaction contracts; installs or adopts compatible Lumen and Hermes artifacts; generates complete configuration; installs and enables both supervisors; survives reboot with an honest `lumen doctor` result; completes, approves, cancels, and recovers a real Hermes task; proves isolated pinned mutual TLS on a hardened Linux/VPS profile; and repeats the compatible lifecycle on physical Android Termux. Until then, authenticated nodes and companions remain intentionally blocked.
+The foundation is release-grade for the combined Linux/VPS reference profile only when one public `lumen setup` command passes fresh, rerun, interruption, rollback, and secret-redaction contracts; installs or adopts compatible Lumen and Hermes artifacts; generates complete configuration; installs and enables both supervisors; survives reboot with an honest `lumen doctor` result; and completes, approves, cancels, and recovers a real Hermes task.
+
+Pinned mutual TLS gates separated or hardened Host/Hermes deployments. Physical Android Termux evidence gates the Termux profile. Neither proof is silently inherited by another topology. Node and companion milestones may proceed against the qualified reference Host, but no node is trusted or capability shipped until its own protocol, policy, negative, recovery, and operational gates pass.

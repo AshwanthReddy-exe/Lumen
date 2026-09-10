@@ -1,58 +1,50 @@
 # Lumen
 
-Lumen links a person’s devices into one private **Space**. From any connected device, the user can talk to Lumen, continue shared context, and invoke explicitly permitted capabilities on the same device or another node.
+Lumen is a proprietary, paid personal AI **Space** inspired by the continuity, presence, and practical agency of Jarvis. A person talks to one Lumen from the web, messaging, voice, or a paired device; Lumen preserves the relationship and safely coordinates permitted work across their devices and services.
 
-The product north star is a lethal install-and-connect loop: `lumen setup` turns any eligible Mac, Linux/VPS box, old PC, or Android Termux phone into a configured Host without manual Hermes plumbing, then `lumen connect` pairs nodes by QR or short code. Lumen installs or adopts Hermes, generates both configurations, supervises both services across reboot, and reports development, personal-alpha, hardened, degraded, or action-required conditions honestly.
+Lumen is not a device assistant or a collection of disconnected apps. The Space owns identity, conversations, memory, policy, approvals, task truth, and portability. Hermes supplies the agent runtime and mature intelligence capabilities behind Lumen-owned contracts.
 
-## Core model
+## Product model
 
-- **Space:** the shared identity, context, policy, task history, and device registry.
-- **Host:** the one active headless service that stores canonical Space state and routes work. A device may run both Host and node processes, but their identities and state remain separate.
-- **Node:** a paired phone, computer, server, or future device that provides interaction and execution capabilities.
-- **Capability:** a bounded action such as coding, reminders, notifications, files, or scheduled tasks. Each capability can be denied, allowed, or set to ask.
-- **Companion:** an optional friendly interface, such as an old phone on a desk or a Mac pet. It is not required to use Lumen.
+- **Space:** the user's continuous AI identity, canonical conversations, accepted memory, policy, grants, tasks, automations, audit, and node registry.
+- **Host:** the one active V1 authority. It stores canonical Space state, selects eligible nodes, authorizes cross-node work, dispatches invocations, and records honest outcomes.
+- **Node:** a paired computer, phone, server, or service endpoint that advertises narrowly typed capabilities and revalidates authorization locally.
+- **Capability:** a separately permissioned action such as `files.search`, `files.read`, `notification.deliver`, or `shell.execute`. Scope may restrict action, resource, folder, application, context, data class, cost, target, duration, or approval behavior.
+- **Surface:** an interface to the same Space. The first product surfaces are a responsive web application, one Hermes-backed messaging gateway, and one lightweight capability node.
+- **Companion:** an optional expressive surface, such as a desk display or desktop presence. A companion never owns canonical authority.
 
-Same-device work takes a local fast path and later synchronizes relevant context with the Host. Cross-node work is authenticated, authorized, and routed through the Host.
+The Host can execute work on nodes only through granted capabilities. Access to one folder never implies access to the device, other folders, credentials, or unrelated tools. Discovery reports what a node could do; it never grants permission.
 
-## First reference setup
+## Product boundary
+
+Lumen owns the differentiated product layer: Space authority, durable conversations and memory, node coordination, permissions and approvals, task lifecycle, receipts, deployment, migration, and user experience.
+
+Hermes is the preferred capability platform for reasoning, model routing, tools, skills, MCP, browser use, messaging, voice orchestration, vision, delegation, automation, and remote execution. Lumen adopts or extends Hermes before building a parallel subsystem. Every imported capability remains behind Lumen policy, credentials, lifecycle, audit, and rollback controls; Hermes is never the Space authority.
+
+Lumen's product is proprietary and commercial. Managed hosting and paid self-hosting share the same Space contracts and encrypted export format. Public interoperability consists of versioned node and capability protocols, integration contracts, an SDK, fixtures, and compatibility rules—not the proprietary product implementation.
+
+## Deployment profiles
+
+- **Combined:** Host, encrypted Space storage, Hermes, gateways, and workers are separately supervised on one machine or VPS.
+- **Separated:** Host and canonical storage stay together while Hermes or heavy workers run elsewhere over pinned authenticated transport.
+- **Managed:** Lumen provisions a dedicated isolated data plane for each customer, with a shared content-minimizing control plane.
+- **Hybrid:** authorized nodes perform suitable work locally and synchronize only permitted outcomes or context.
+
+Topology does not determine assurance. Development, personal, and hardened profiles state their isolation and evidence explicitly.
+
+## Repository and current status
 
 ```text
-Terminal service:  active Host + canonical Space state
-Hermes:            Host-local execution runtime adapter
-Old Android phone: desk companion + capability node
-Mac:               current Host development harness; future pet surface + coding node
-iPhone:            future interaction + personal-capability node
-```
-
-The Host is a headless service, not a companion application. The same Host artifact must run under a service manager on Linux/VPS, macOS, and Android Termux. A companion may share the same physical device, but it connects to the Host through the ordinary authenticated boundary and never owns canonical Space state.
-
-## Target repository structure
-
-```text
-cmd/                native Go Host executable
-internal/           Go Space core, Host composition, storage, control, Hermes adapter
+cmd/                native Go Host and CLI executables
+internal/           Space core, Host composition, storage, setup, control, Hermes adapter
 protocol/           versioned schemas and cross-language fixtures
-apps/               android-companion, ios-node, macos-node
+apps/               optional native surfaces and capability nodes
 test/               contract, integration, security, recovery
 deploy/             service-manager and container configuration
 ```
 
-The production Host and Space authority are native Go; the superseded Kotlin Multiplatform authority and scenario runner were retired after the Go gate passed. Android remains a standalone Kotlin companion and Apple applications remain Swift. Production directories are created only as each delivery phase implements them. The canonical documents are in [docs/](./docs/); contribution rules are in [AGENTS.md](./AGENTS.md).
+The production Space authority and Host are native Go. The repository already contains substantive encrypted persistence, authority and task lifecycle, local operator control, a constrained Hermes Runs adapter, setup planning/artifact/configuration components, and supervision definitions. The Android application is a disabled companion shell.
 
-Run the Phase 0 contract baseline with `mise run phase0-check`. It uses the pinned Java and Gradle environment and the system-managed Swift toolchain.
+The complete product does **not** exist yet. In particular, the public setup/doctor/service orchestration, canonical conversation and memory experience, web application, authenticated node transport, restricted file node, messaging continuity, Jarvis-like voice presence, managed service, and public SDK remain planned work. Platform examples such as macOS, Linux/VPS, Android Termux, and iPhone are evidence targets, not the roadmap's organizing principle.
 
-Phase 0 evidence lives under [`spikes/`](./spikes/) and freezes the stack, context, transport, Host, recovery, and capability decisions before Phase 1 begins.
-
-Phase 1’s Kotlin Space-core contract and simulated restart scenario are retained as historical documentation in [PHASE-1-CONTRACT.md](./docs/PHASE-1-CONTRACT.md); production authority is now Go.
-
-Run the native Block 2 gate with `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk mise run phase2-check`. It verifies Go formatting, vet, unit/contract tests, race tests, reproducible amd64 and linux/arm64 builds, Android companion unit tests, and debug APK assembly. Android verification is required; the gate fails when `ANDROID_HOME` is unavailable.
-
-The gate also builds `build/lumen-host/lumen-host-android-arm64` with Go's Android ARM64 target; it is an Android PIE using `/system/bin/linker64` and must be installed as the foreground `lumen-host` binary. A physical Termux run remains required owner evidence.
-
-For the Mac-only development setup, run `scripts/lumen-mac-host start` in one terminal. It rebuilds the native binary, initializes private state once under `~/.local/share/lumen`, keeps the Host in the foreground, and writes redacted output to `~/.local/share/lumen/host.log`. Use `lumen-host doctor` for a local deployment-profile report and `scripts/lumen-mac-host status|stop|logs` for lifecycle operations. This loopback harness is development evidence only; it is not the isolated-mTLS or Termux release proof.
-
-With the Host and the separately supervised local Hermes gateway running, execute `scripts/lumen-mac-test` in another terminal. It checks both services, submits a unique bounded task, resolves the one-time Lumen policy approval, waits up to five minutes, and prints the durable Hermes answer. Pass a custom prompt as one quoted argument. A Hermes runtime tool approval is never silently accepted; the script displays it and stops for an explicit operator decision.
-
-## Current priority
-
-**Finish the Lumen-owned Host and Hermes setup journey before implementing authenticated pairing, nodes, or companion features.** The execution core exists; the active work is the public setup CLI, Hermes lifecycle/configuration, service installation, whole-deployment doctor, and clean-machine release evidence. The active plan and exit gate are in [PLAN.md](./docs/PLAN.md) and [PHASE-2-HOST-HERMES.md](./docs/PHASE-2-HOST-HERMES.md).
+Run the current contract baseline with `mise run phase0-check`. See the canonical [product requirements](./docs/PRD.md), [architecture](./docs/ARCHITECTURE.md), [decisions](./docs/DECISIONS.md), [delivery plan](./docs/PLAN.md), and [design principles](./docs/DESIGN-PRINCIPLES.md).

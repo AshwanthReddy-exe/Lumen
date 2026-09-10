@@ -1,13 +1,15 @@
 # O-001 stack comparison spike
 
+> **Historical spike.** This comparison informed `D-020`; it does not define the current Host implementation, product roadmap, or required client platforms.
+
 ## Purpose
 
-This spike recorded the comparison that selected Lumen's portable core:
+This spike recorded the comparison that selected the original portable-core approach:
 
 1. Kotlin Multiplatform code shared by Android and Apple targets.
 2. Separate native implementations sharing JSON Schema contracts and golden fixtures.
 
-The spike is disposable evidence, not production protocol. `D-020` in [DECISIONS.md](./DECISIONS.md) records the accepted choice.
+The spike is disposable evidence, not production protocol. `D-020` in [DECISIONS.md](./DECISIONS.md) records the accepted historical choice and its current scope. The later native Go Host supersedes Kotlin as the production Space authority; portable protocol fixtures and native client boundaries remain useful conclusions.
 
 ## Common contract
 
@@ -44,7 +46,7 @@ Record evidence in `EVIDENCE.md` using the same machine and warm/cold conditions
 - SSE reconnect and event parsing effort;
 - packaging limitations and required IDE/toolchains.
 
-Headless checks may establish contract behavior, but they cannot satisfy Android lifecycle, Apple packaging, or physical-device evidence. Those rows remain pending until the required SDKs and devices are available.
+Headless checks established only the recorded prototype behavior. Pending Android or Apple rows gate only a future product surface that relies on those prototypes; they do not block the current journey-first roadmap or the combined Linux/VPS reference deployment.
 
 ## Environment
 

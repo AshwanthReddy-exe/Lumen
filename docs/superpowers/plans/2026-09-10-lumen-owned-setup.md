@@ -1,5 +1,7 @@
 # Lumen-Owned Setup Implementation Plan
 
+> **Status:** Historical task record for the setup checkpoint. Completed tasks remain implementation evidence; only unfinished work required by [Milestone 1](../../PLAN.md#milestone-1--reliable-combined-foundation) remains active. This file does not own later product sequencing.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship `lumen setup` as the one-command, resumable installation and configuration journey for a supervised Lumen Host and compatible Hermes runtime.
@@ -472,4 +474,4 @@ git commit -m "feat(setup): deliver Lumen-owned Host bootstrap"
 - Block 3 implements single-use short-lived QR/manual pairing, node-generated keys, explicit Host authorization, authenticated transport, reconnect, revocation, and device management.
 - Block 4 turns the Redmi/Xiaomi Android app into a companion and capability node without Host authority.
 - Block 5 exposes Telegram, WhatsApp, browser, MCP, tools, skills, voice, delegation, and remote execution incrementally through typed Lumen capability contracts.
-- Blocks 6-8 add Mac coding, iPhone interaction, schedules, remote use, migration, and private-alpha evidence.
+- Later capability-first milestones in [PLAN.md](../../PLAN.md) own conversation, node, voice, messaging, autonomy, migration, and launch sequencing.

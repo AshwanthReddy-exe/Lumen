@@ -2,9 +2,11 @@
 
 ## Status
 
-Accepted as `D-022`. This is the smallest local-network transport baseline.
-Remote relay, push wake-up, and internet traversal are explicitly deferred to
-the later remote-access phase.
+Accepted as the local-network baseline in `D-022` and extended by `D-048`.
+The identity, authenticated-envelope, replay, ordering, retry, cancellation,
+and authority rules here remain mandatory for remote transport. Outbound
+persistent sessions and a content-blind relay are added in the secure-node
+milestone; push wake-up remains deferred until a capability requires it.
 
 ## Decision
 

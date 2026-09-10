@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Reframed Lumen as a proprietary paid personal intelligence Space with public interoperability protocols: one Jarvis-like conversation, inspectable memory, and capability-scoped action across surfaces and nodes.
+- Adopted Hermes-first reuse as a product principle: use Hermes and qualified upstream subsystems before custom development while keeping canonical Space authority, storage, policy, and task truth in Lumen.
+- Replaced device-by-device delivery with a capability-first roadmap covering the reliable combined foundation, conversation and memory, secure node fabric, cross-node action, natural voice and presence, messaging continuity, managed portability, earned autonomy, and ecosystem launch.
+- Defined combined, separated, managed, and hybrid deployment topologies independently from development, personal, and hardened assurance levels; managed deployments use a dedicated customer data plane.
+
 - Checkpointed the first four Lumen-owned setup tasks: the public command/model contract, deterministic planner and resumable journal, verified artifact lifecycle and Hermes adoption, and strict private Host/Hermes configuration generation. Added an initial cross-platform supervision implementation, while explicitly retaining review debt for create-once Host integration, lifecycle/boot coverage, and mandatory Termux artifact digests. The setup runner, whole-deployment doctor, configured-runtime proof, and release evidence remain pending.
 
 - Added deterministic setup planning and a private resumable setup journal with strict evidence validation, idempotent stage recording, atomic persistence, and honest durability-uncertain outcomes.
