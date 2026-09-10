@@ -1,11 +1,13 @@
 services:
   lumen-hermes:
-    image: lumen/hermes:latest
+    image: lumen/hermes:1.0.0@sha256:REPLACE_WITH_VERIFIED_DIGEST
     command: ["serve"]
     read_only: true
     restart: on-failure:3
     stop_signal: SIGTERM
     stop_grace_period: 30s
+    user: "65532:65532"
+    networks: [lumen-private]
   lumen-host:
     build:
       context: ../..
@@ -31,5 +33,10 @@ services:
     restart: on-failure:3
     stop_signal: SIGTERM
     stop_grace_period: 30s
+    user: "65532:65532"
+    networks: [lumen-private]
+networks:
+  lumen-private:
+    internal: true
 volumes:
   lumen-state:

@@ -12,6 +12,7 @@ boot_dir="$HOME/.termux/boot"
 [ -f "$source_dir/lumen-host-android-arm64" ] || fail "missing Termux Host artifact beside installer"
 [ -f "$source_dir/run" ] || fail "missing Termux runit run script beside installer"
 [ -f "$source_dir/finish" ] || fail "missing Termux runit finish script beside installer"
+[ -f "$source_dir/hermes-android-arm64" ] || fail "missing verified Hermes artifact beside installer"
 [ ! -e "$data_dir/initialized" ] || fail "existing Lumen state found; refusing to overwrite it"
 [ ! -e "$HOME/bin/lumen-host" ] || [ "${LUMEN_REINSTALL:-}" = 1 ] || fail "existing Lumen Host binary found; rerun with LUMEN_REINSTALL=1 before initialization"
 command -v pkg >/dev/null 2>&1 || fail "run this from Termux"
@@ -20,11 +21,10 @@ pkg install -y runit jq openssl-tool
 mkdir -p "$HOME/bin" "$HOME/.config/lumen" "$data_dir" "$service_dir" "$HOME/service/lumen-hermes" "$boot_dir"
 chmod 700 "$HOME/bin" "$HOME/.config/lumen" "$data_dir" "$service_dir" "$boot_dir"
 cp "$source_dir/lumen-host-android-arm64" "$HOME/bin/lumen-host"
+cp "$source_dir/hermes-android-arm64" "$HOME/bin/hermes"
 cp "$source_dir/run" "$service_dir/run"
 cp "$source_dir/finish" "$service_dir/finish"
-if [ -f "$source_dir/hermes-run" ]; then cp "$source_dir/hermes-run" "$HOME/service/lumen-hermes/run"; else
-	printf '%s\n' '#!/data/data/com.termux/files/usr/bin/sh' 'set -eu' 'umask 077' 'exec "$HOME/bin/hermes" serve' >"$HOME/service/lumen-hermes/run"
-fi
+cp "$source_dir/hermes-run" "$HOME/service/lumen-hermes/run"
 chmod 700 "$HOME/bin/lumen-host" "$service_dir/run" "$service_dir/finish"
 chmod 700 "$HOME/service/lumen-hermes/run"
 cat >"$boot_dir/lumen-host" <<'EOF'
