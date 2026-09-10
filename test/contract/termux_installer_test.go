@@ -25,7 +25,9 @@ func TestTermuxInstallerCreatesPrivateHostAndService(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"hermes-android-arm64", "hermes-run"} {
-		if err := os.WriteFile(filepath.Join(source, name), []byte("fixture"), 0700); err != nil { t.Fatal(err) }
+		if err := os.WriteFile(filepath.Join(source, name), []byte("fixture"), 0700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	developmentConfig := "LUMEN_HERMES_PROFILE=development\nLUMEN_HERMES_BASE_URL=http://127.0.0.1:8642\n"
 	if err := os.WriteFile(filepath.Join(source, "host.env"), []byte(developmentConfig), 0600); err != nil {

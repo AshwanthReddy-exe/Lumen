@@ -205,6 +205,8 @@ git commit -m "feat(setup): verify Lumen and Hermes artifacts"
 
 ### Task 4: Create private directories, credentials, and Lumen/Hermes configuration
 
+**Checkpoint:** Implemented and task-reviewed through commit `b671c71`.
+
 **Files:**
 - Create: `internal/setup/config.go`
 - Create: `internal/setup/config_test.go`
@@ -253,6 +255,8 @@ git commit -m "feat(setup): generate Host and Hermes configuration"
 ```
 
 ### Task 5: Initialize the Host, then install and control platform supervisors
+
+**Checkpoint:** Implementation commits exist through `a8f54bf`, but the five-round task review breaker left concrete create-once integration, lifecycle/boot coverage, and mandatory manifest-bound Termux digests to be closed before acceptance. Task 6 was not started.
 
 **Files:**
 - Create: `internal/setup/supervisor.go`

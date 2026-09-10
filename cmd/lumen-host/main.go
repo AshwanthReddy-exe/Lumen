@@ -7,10 +7,13 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
+	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/host"
 )
 
@@ -20,7 +23,7 @@ func run(args []string) int {
 		return usage()
 	}
 	switch args[0] {
-	case "init", "serve", "status", "shutdown":
+	case "doctor", "init", "serve", "status", "shutdown":
 		if len(args) != 1 {
 			return usage()
 		}
@@ -41,6 +44,8 @@ func run(args []string) int {
 		return 3
 	}
 	switch args[0] {
+	case "doctor":
+		return doctor(c)
 	case "init":
 		if err := host.Initialize(c); err != nil {
 			fmt.Fprintln(os.Stderr, "initialization unavailable")
@@ -60,9 +65,32 @@ func run(args []string) int {
 	}
 }
 func usage() int {
-	fmt.Fprintln(os.Stderr, "usage: lumen-host init|serve|status|task submit|task show|task cancel|approval resolve|shutdown")
+	fmt.Fprintln(os.Stderr, "usage: lumen-host doctor|init|serve|status|task submit|task show|task cancel|approval resolve|shutdown")
 	return 2
 }
+
+func doctor(c host.Config) int {
+	profile := "hardened-capable"
+	if c.HermesProfile == hermes.ProfileDevelopment {
+		profile = "development"
+	} else if isTermux() {
+		profile = "personal-alpha"
+	}
+	report := map[string]any{
+		"status":             "ok",
+		"platform":           platformName(),
+		"deployment_profile": profile,
+		"host_initialized":   fileExists(filepath.Join(c.DataDir, "initialized")),
+		"hermes_profile":     c.HermesProfile,
+		"hermes_configured":  c.HermesBaseURL != "",
+	}
+	if err := writeJSON(os.Stdout, report); err != nil {
+		fmt.Fprintln(os.Stderr, "output unavailable")
+		return 3
+	}
+	return 0
+}
+
 func serve(c host.Config) int {
 	s, err := host.New(c)
 	if err != nil {
@@ -82,6 +110,22 @@ func serve(c host.Config) int {
 		return 4
 	}
 	return 0
+}
+
+func isTermux() bool {
+	return strings.Contains(os.Getenv("PREFIX"), "/com.termux/")
+}
+
+func platformName() string {
+	if isTermux() {
+		return "android-termux"
+	}
+	return runtime.GOOS + "/" + runtime.GOARCH
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 func call(c host.Config, cmd string) int {
 	return callWithArguments(c, cmd, nil)

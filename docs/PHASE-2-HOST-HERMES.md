@@ -1,22 +1,29 @@
-# Phase 2 headless Host and Hermes
+# Phase 2 Lumen-owned Host and Hermes setup
 
 ## Current execution lock
 
-**The Android authority quarantine and native Go migration are complete. Finish the remaining owner proof for this block before returning to pairing, node transport, dashboards, camera, microphone, Mac, iPhone, or new Android companion features.** A UI mock, network scaffold, or additional companion feature is not progress toward this exit gate.
+**The Android authority quarantine, native Go migration, and Host-to-Hermes execution core are substantially complete. Finish the Lumen-owned setup product and its owner proof before returning to authenticated pairing, node transport, dashboards, camera, microphone, Mac, iPhone, or new Android companion features.** Reserving the `lumen connect` command handoff is allowed; trusting an external node is not.
+
+## Implementation checkpoint — 2026-09-10
+
+Committed setup work now covers the strict public command/model contract, deterministic planning, resumable journal evidence, pinned manifest parsing, verified staged artifact replacement, compatible-Hermes adoption checks, private credentials, strict generated Host/Hermes configuration, and an initial supervisor adapter/definition set for systemd, launchd, Docker, and Termux/runit.
+
+This is not a completed Block 2 exit. The supervision review reached its five-round breaker with concrete create-once Host integration, lifecycle/boot regression coverage, and mandatory manifest-bound Termux artifact digests still load-bearing. The setup runner, public whole-deployment doctor, configured Hermes execution proof, automated clean-environment gate, reboot evidence, physical Termux proof, and isolated pinned-mTLS proof remain unimplemented or unrecorded. No later block is unlocked by this checkpoint.
 
 ## Goal
 
-Run one durable native Go Lumen Host as a terminal service, connect it to a separately supervised Hermes runtime, and complete one bounded task with honest policy, events, approval, cancellation, failure, and restart behavior. The same Host command contract must work on Linux/VPS, macOS, and Android Termux.
+Run `lumen setup` once on a clean supported environment to install or adopt compatible Lumen and Hermes artifacts, generate both configurations, initialize encrypted Host state, install and enable both supervised services, and return an honest whole-deployment result. Then complete one bounded task with honest policy, events, approval, cancellation, failure, and restart behavior. The same public outcome contract must work on Linux/VPS, macOS, and Android Termux even when platform adapters differ.
 
 ## Observable live proof
 
-1. Initialize a Space with `lumen-host init` into a private data directory.
-2. Run an optional synthetic compatibility check against authenticated loopback, then start an isolated Hermes endpoint with pinned mutual TLS for the release proof.
-3. Start `lumen-host serve` in a terminal, then repeat under a service manager.
-4. Submit a typed task through `lumen-host task submit` using an idempotency key.
-5. Observe accepted, running, approval-required when applicable, and final events through Host-owned status commands.
-6. Stop one run, interrupt another during event delivery, restart the Host, and observe a durable cancelled, failed, reconciled, or `unknown_outcome` result.
-7. Repeat initialization, service lifecycle, and one real task on Android Termux using the same distribution and contracts, with Hermes isolated on another machine or container behind pinned mutual TLS.
+1. Run `lumen setup`; it detects the platform/profile, verifies artifacts, creates private paths and credentials, generates Lumen/Hermes configuration, invokes create-once `lumen-host init`, installs supervisors, starts services, and verifies them without manual environment-file edits.
+2. Rerun and interrupt/resume setup to prove idempotency, then run `lumen doctor` and verify `ready`, `degraded`, or `action_required` is truthful and redacted.
+3. Run an optional synthetic compatibility check against authenticated loopback, then repeat the release proof against isolated Hermes with pinned mutual TLS.
+4. Start `lumen-host serve` in a terminal, then repeat under an installed service manager.
+5. Submit a typed task through `lumen-host task submit` using an idempotency key.
+6. Observe accepted, running, approval-required when applicable, and final events through Host-owned status commands.
+7. Stop one run, interrupt another during event delivery, restart the Host, and observe a durable cancelled, failed, reconciled, or `unknown_outcome` result.
+8. Repeat clean setup, boot lifecycle, doctor, and one real task on Android Termux using the same distribution and contracts; record same-UID Hermes only as compatibility evidence and use Hermes isolated on another machine or container behind pinned mutual TLS for hardened evidence.
 
 Before step 1, stop the superseded Android foreground Host and explicitly discard its test state or archive it as non-authoritative evidence. Record what was removed and whether it is recoverable. Never import it into the new Host automatically.
 
@@ -91,7 +98,7 @@ Ship examples for systemd, launchd, Docker, and Termux/runit. All invoke the sam
 - An opt-in real-Hermes test verifies the documented capability, run, event, exact `once`/`deny` approval, stop, and health surface under deny-by-default configuration without relying on Hermes internals.
 - Phase 1 Kotlin fixtures remain historical evidence after the authority migration; the active automated gate is `mise run phase2-check`.
 - `mise run phase2-check` must pin Go, build native Host distributions, and run core, Host, adapter, persistence, CLI, fixture, and scenario tests. Android Termux ARM64 is a required compatibility run with its exact Termux and Go versions recorded; it is not assumed equivalent to desktop Linux.
-- The distribution gate also builds a Linux ARM64 position-independent executable (`build/lumen-host/lumen-host-linux-arm64-pie`) with `-buildmode=pie` for Termux. The contract test checks the setting; an artifact inspection test accepts only ELF64 AArch64 `ET_DYN` output when provided.
+- The distribution gate builds an Android ARM64 executable (`build/lumen-host/lumen-host-android-arm64`) for Termux. The contract test requires the Android `/system/bin/linker64` interpreter and accepts only ELF64 AArch64 `ET_DYN` output when provided.
 - Native automated evidence on 2026-09-09: `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk MISE_CACHE_DIR=/tmp/lumen-mise-cache GOCACHE=/tmp/lumen-go-cache mise run phase2-check` passed formatting, vet, all Go tests, race tests, amd64 build, linux/arm64 cross-build, contract scenarios, Android companion unit tests, and debug APK assembly (`apps/android-host/build/outputs/apk/debug/android-host-debug.apk`, 28.2 MB). Android verification is mandatory and the gate fails without `ANDROID_HOME`.
 - Desktop/server development evidence is recorded below. Release owner evidence remains pending for connected Android Termux (exact Android/Termux/OpenJDK/Go versions, runit lifecycle, restart recovery) and one real isolated-Hermes task behind pinned mutual TLS, with no manual state repair. Same-UID Termux Hermes must not be counted as security evidence.
 
@@ -119,4 +126,4 @@ The owner requested one combined Block 2 pull request. Intermediate branches are
 
 ## Exit
 
-Block 2 is complete only when the same Host distribution passes the automated gate, survives forced restart with honest task state, completes a real Hermes task from the Host CLI, and repeats the lifecycle on Android Termux. Until then, nodes and companions remain intentionally blocked.
+Block 2 is complete only when one public `lumen setup` command passes fresh, rerun, interruption, rollback, and secret-redaction contracts; installs or adopts compatible Lumen and Hermes artifacts; generates complete configuration; installs and enables both supervisors; survives reboot with an honest `lumen doctor` result; completes, approves, cancels, and recovers a real Hermes task; proves isolated pinned mutual TLS on a hardened Linux/VPS profile; and repeats the compatible lifecycle on physical Android Termux. Until then, authenticated nodes and companions remain intentionally blocked.

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Checkpointed the first four Lumen-owned setup tasks: the public command/model contract, deterministic planner and resumable journal, verified artifact lifecycle and Hermes adoption, and strict private Host/Hermes configuration generation. Added an initial cross-platform supervision implementation, while explicitly retaining review debt for create-once Host integration, lifecycle/boot coverage, and mandatory Termux artifact digests. The setup runner, whole-deployment doctor, configured-runtime proof, and release evidence remain pending.
+
+- Added deterministic setup planning and a private resumable setup journal with strict evidence validation, idempotent stage recording, atomic persistence, and honest durability-uncertain outcomes.
+
+- Froze the strict public `lumen setup`, `lumen doctor`, `lumen service start|stop|restart|status`, and reserved `lumen connect` command contract with stable redacted outcomes; orchestration remains intentionally deferred to the next setup block.
+
+- Approved the Lumen-owned setup design and recast Block 2 around `lumen setup`: automatic Lumen/Hermes acquisition and configuration, resumable initialization, boot supervision, whole-deployment diagnostics, and clean-machine evidence. Reserved secure QR/manual node pairing for Block 3 and scheduled Telegram, WhatsApp, and other Hermes-backed integrations behind Lumen capability contracts.
+- Elevated Lumen's product goal to a one-command install and instant pairing experience across eligible always-on devices, with QR/manual-code connectivity, device management, boot-started Host/Hermes services, and honest deployment-profile reporting.
+- Added `lumen-host doctor` as a local JSON deployment-profile report for install and onboarding flows.
+
+- Corrected the Termux Host distribution target from Linux ARM64/glibc to Android ARM64, so the artifact uses Android's `/system/bin/linker64` instead of the unavailable `/lib/ld-linux-aarch64.so.1` loader.
+
 - Consolidated the Mac development workflow into `lumen-mac-host` for foreground lifecycle management and `lumen-mac-test` for a bounded, automatically policy-approved local Host-to-Hermes AI round trip with durable output.
 - Selected a native Go Host and Space authority core while retaining Kotlin Android and Swift Apple applications; cross-language schemas and conformance fixtures replace Kotlin Multiplatform implementation sharing.
 - Reserved `agent.run/execute` as the first Host-local Hermes orchestration capability with an `ask` default and no transitive authority.

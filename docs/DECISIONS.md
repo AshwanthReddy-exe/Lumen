@@ -33,6 +33,8 @@
 | D-033 | Make Lumen reactive by default. | Text, voice, button, or shortcut invocation starts work; pre-activation wake-word detection is node-local with zero outbound audio, while schedules and event triggers require explicit revocable grants. |
 | D-034 | Implement the production Host and Space authority core in Go; keep mobile applications native. | The Host ships as a native macOS/Linux/Termux binary. Android stays Kotlin and Apple stays Swift; versioned protocols and conformance fixtures replace shared implementation code. [Design](./superpowers/specs/2026-09-08-go-host-rearchitecture-design.md) |
 | D-035 | Advertise `agent.run/execute` as the first Host-local orchestration capability with an `ask` default. | The Host can invoke approved Hermes reasoning without receiving blanket authority; browser, shell, device, coding, and account effects remain separate capabilities. |
+| D-036 | Make `lumen setup` the public, resumable installer and keep `lumen-host` as the internal foreground service. | Lumen owns platform detection, Lumen/Hermes acquisition and configuration, create-once initialization, supervisor installation, boot enablement, and whole-deployment readiness without exposing manual environment plumbing. |
+| D-037 | Expose Hermes integrations only through Lumen-owned lifecycle and capability contracts. | Telegram, WhatsApp, browser, MCP, skills, voice, delegation, and remote execution reuse Hermes implementations, but discovery cannot self-enable them and Hermes cannot own credentials, grants, approvals, audit, or canonical connection state. |
 
 ## Superseded
 

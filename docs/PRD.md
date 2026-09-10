@@ -13,6 +13,7 @@ Lumen makes a person’s devices feel like one understandable, permission-contro
 5. **Autonomy is bounded.** Lumen proceeds within granted authority and asks for help or permission when required.
 6. **Companions are optional.** A desk phone or Mac pet makes Lumen approachable but is never required.
 7. **Invocation is reactive by default.** No model or tool work begins until the owner invokes Lumen or explicitly enables a bounded schedule or event rule.
+8. **Install and connect must feel instant.** A supported device should become a Host or node through one simple install command, a short health check, and QR or manual-code pairing without requiring the owner to understand networking or service managers.
 
 ## First reference deployment
 
@@ -20,15 +21,17 @@ The initial working Space starts with a native Go headless Host service and a se
 
 ## Core journeys
 
-1. Initialize a Space through the local Host CLI, start the Host as a supervised service, and verify durable recovery.
-2. Configure an isolated, mutually authenticated Hermes endpoint, submit one bounded task through the Host, and follow its normalized events to an honest terminal outcome. A plaintext loopback run is development evidence only.
-3. Invoke Lumen on an iPhone, route an authorized coding or application task to a Mac, and receive progress and the verified result on the iPhone.
-4. Invoke Lumen on the Mac, route an authorized reminder or notification action to the iPhone, and preserve one Host-owned task history across both devices.
-5. Run a latency-sensitive Mac session through a local Hermes/model fast path under cached node policy, then synchronize the permitted outcome with the Host.
-6. Pair the Android desk companion and use its face, display, microphone, speaker, and camera only through separately granted capabilities; the companion never owns canonical authority.
-7. Inspect each node’s available capabilities and configure deny, ask, allow, target, resource, context, cost, and expiry scopes.
-8. Receive an approval request when an action exceeds its grant, then approve once, reject, narrow the scope, or cancel.
-9. Revoke a node and verify that it can no longer read context or execute work.
+1. Run `lumen setup` on an eligible Host environment and receive a configured, initialized, boot-started Lumen plus Hermes deployment without manually editing environment files.
+2. Run `lumen doctor`, submit one bounded task through the Host, and follow its normalized events to an honest terminal outcome. A plaintext loopback run is development evidence only; hardened setup uses isolated Hermes with pinned mutual TLS.
+3. Install Lumen on a second device, scan the Host QR code or enter a short manual code, and see the node connected with its health, capabilities, and trust status in under a minute on the same local network.
+4. Reboot a Host device and verify the Host and Hermes services start automatically, recover durable state, and report readiness or degraded status without manual repair.
+5. Invoke Lumen on an iPhone, route an authorized coding or application task to a Mac, and receive progress and the verified result on the iPhone.
+6. Invoke Lumen on the Mac, route an authorized reminder or notification action to the iPhone, and preserve one Host-owned task history across both devices.
+7. Run a latency-sensitive Mac session through a local Hermes/model fast path under cached node policy, then synchronize the permitted outcome with the Host.
+8. Pair the Android desk companion and use its face, display, microphone, speaker, and camera only through separately granted capabilities; the companion never owns canonical authority.
+9. Inspect each node’s available capabilities and configure deny, ask, allow, target, resource, context, cost, and expiry scopes.
+10. Receive an approval request when an action exceeds its grant, then approve once, reject, narrow the scope, or cancel.
+11. Revoke a node and verify that it can no longer read context or execute work.
 
 ## Requirements
 
@@ -43,6 +46,8 @@ The initial working Space starts with a native Go headless Host service and a se
 | FR-05 | Authenticate signed, expiring messages and reject repeated nonces or revoked senders. |
 | FR-06 | Run the Host as a headless foreground process whose lifecycle is supervised externally and whose executable contract is identical on Linux/VPS, macOS, and Android Termux. |
 | FR-07 | Keep companion applications outside the Host authority boundary even when a companion and Host share one physical device. |
+| FR-08 | Provide `lumen setup` for Mac, Linux/VPS, old PC, and Android Termux profiles; it installs or adopts compatible Lumen and Hermes artifacts, generates and validates both configurations, initializes Host state exactly once, and requires no manual environment-file edits after successful completion. |
+| FR-09 | Install and enable Host and Hermes supervision at boot where supported, recover interrupted setup and durable Host state idempotently, and report exactly `ready`, `degraded`, or `action_required` without silently weakening the selected profile. |
 
 ### Nodes and capabilities
 
@@ -53,6 +58,7 @@ The initial working Space starts with a native Go headless Host service and a se
 | FR-12 | Validate capability, scope, user authority, expiry, node health, and required approval before execution. |
 | FR-13 | Expose capability availability honestly; unsupported or offline work is queued, failed, or unavailable, never completed. |
 | FR-14 | Support many feature adapters without giving an adapter access to unrelated capabilities or context. |
+| FR-15 | Pair nodes through a QR code with a short manual-code fallback, explicit owner confirmation, and a device-management view for health, capabilities, grants, revocation, and last synchronization. |
 
 ### Local and cross-node work
 
@@ -80,6 +86,7 @@ The initial working Space starts with a native Go headless Host service and a se
 | FR-39 | Use approved Hermes features—including model routing, built-in tools, skills, MCP, browser, voice, delegation, and remote execution—through immutable per-run profiles and Lumen capabilities without duplicating those subsystems. Delegation is disabled unless the parent grant covers its full transitive runtime surface. |
 | FR-40 | Perform no background model or tool work by default; pre-activation wake-word and voice-activity detection run only on the node with zero outbound audio or model traffic, while schedules and event triggers require explicit, inspectable grants. |
 | FR-41 | Expose Host-local Hermes orchestration first as `agent.run/execute` with an `ask` default; enabling it cannot grant any transitive browser, shell, device, account, coding, or remote-execution authority. |
+| FR-42 | Expose Hermes-backed features, including Telegram and WhatsApp, only through Lumen-owned integration commands, typed capability policy, scoped credential handles, redacted status/audit, cancellation, receipts, and honest uncertain outcomes; discovery never enables authority. |
 
 ## Initial capability set
 
@@ -93,7 +100,7 @@ The first contracts should prove different behaviors rather than maximize featur
 
 ## V1 success gate
 
-A private alpha is ready when the reference Space completes at least 20 real tasks over 14 days; local Mac work succeeds without a Host round trip; cross-node commands route through the Host; deny/ask/allow rules behave correctly; revocation and replay tests pass; restarts recover an honest state; and no node receives context or authority outside its grant.
+A private alpha is ready when the reference Space installs on the chosen always-on Host with one command; Host and Hermes restart automatically after reboot; QR and manual-code pairing connect a second node quickly; the reference Space completes at least 20 real tasks over 14 days; local Mac work succeeds without a Host round trip; cross-node commands route through the Host; deny/ask/allow rules behave correctly; revocation and replay tests pass; restarts recover an honest state; and no node receives context or authority outside its grant.
 
 ## Non-goals
 
