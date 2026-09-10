@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/AshwanthReddy-exe/Lumen/internal/setup"
 )
 
 func TestCommandGrammar(t *testing.T) {
@@ -103,6 +105,49 @@ func TestDoctorComposesWholeDeploymentStates(t *testing.T) {
 	body, err := json.Marshal(report)
 	if err != nil || strings.Contains(string(body), d) {
 		t.Fatalf("doctor leaked path or failed to encode: %s (%v)", body, err)
+	}
+}
+
+func TestAggregateSupervisorStatesRequiresAllServicesRunning(t *testing.T) {
+	tests := []struct {
+		name   string
+		states []setup.ServiceState
+		ready  bool
+		state  string
+	}{
+		{
+			name: "all required services running",
+			states: []setup.ServiceState{
+				{Name: setup.ServiceHermes, State: setup.StateRunning},
+				{Name: setup.ServiceHost, State: setup.StateRunning},
+			},
+			ready: true,
+			state: setup.StateRunning,
+		},
+		{
+			name: "host stopped",
+			states: []setup.ServiceState{
+				{Name: setup.ServiceHermes, State: setup.StateRunning},
+				{Name: setup.ServiceHost, State: setup.StateStopped},
+			},
+			state: setup.StateStopped,
+		},
+		{
+			name: "hermes unknown",
+			states: []setup.ServiceState{
+				{Name: setup.ServiceHermes, State: setup.StateUnknown},
+				{Name: setup.ServiceHost, State: setup.StateRunning},
+			},
+			state: setup.StateUnknown,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ready, state := aggregateSupervisorStates(tt.states, nil)
+			if ready != tt.ready || state != tt.state {
+				t.Fatalf("aggregateSupervisorStates() = (%t, %q), want (%t, %q)", ready, state, tt.ready, tt.state)
+			}
+		})
 	}
 }
 

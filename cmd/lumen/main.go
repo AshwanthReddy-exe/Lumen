@@ -412,18 +412,9 @@ func (s *setupState) observe(ctx context.Context) setup.DoctorEvidence {
 	}
 	if manager, available := (cliProbe{dataDir: s.dataDir}).Supervisor(); available {
 		states, statusErr := (setup.CommandSupervisor{Manager: manager}).Control(ctx, setup.Action{Code: "status"}, []setup.ServiceName{setup.ServiceHermes, setup.ServiceHost})
-		if statusErr == nil {
-			e.SupervisorReady, e.SupervisorState = true, setup.StateRunning
-			for _, st := range states {
-				if st.State == setup.StateFailed {
-					e.SupervisorState = setup.StateFailed
-				}
-			}
-		} else {
-			e.SupervisorState = setup.StateFailed
-		}
+		e.SupervisorReady, e.SupervisorState = aggregateSupervisorStates(states, statusErr)
 	}
-	e.BootReady = os.Getenv("LUMEN_BOOT_ENABLED") == "1" || (e.SupervisorReady && stageIndex(e.Stage) >= stageIndex(setup.ServicesInstalled))
+	e.BootReady = e.SupervisorReady && (os.Getenv("LUMEN_BOOT_ENABLED") == "1" || stageIndex(e.Stage) >= stageIndex(setup.ServicesInstalled))
 	if e.BootReady {
 		e.BootState = setup.StateRunning
 	}
@@ -438,6 +429,32 @@ func (s *setupState) observe(ctx context.Context) setup.DoctorEvidence {
 		e.HermesVersion = s.plan.HermesVersion
 	}
 	return e
+}
+
+func aggregateSupervisorStates(states []setup.ServiceState, statusErr error) (bool, string) {
+	if statusErr != nil {
+		return false, setup.StateFailed
+	}
+	if len(states) != 2 {
+		return false, setup.StateUnknown
+	}
+	state := setup.StateRunning
+	for _, service := range states {
+		if err := service.Validate(); err != nil {
+			return false, setup.StateUnknown
+		}
+		switch service.State {
+		case setup.StateFailed:
+			return false, setup.StateFailed
+		case setup.StateStopped:
+			state = setup.StateStopped
+		case setup.StateUnknown:
+			if state == setup.StateRunning {
+				state = setup.StateUnknown
+			}
+		}
+	}
+	return state == setup.StateRunning, state
 }
 
 func hermesReady(ctx context.Context, cfg host.Config) (bool, string, error) {
