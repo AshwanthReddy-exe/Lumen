@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved in conversation on 2026-09-10 and retained as the detailed setup-boundary design. The later [product reset](./2026-09-10-product-roadmap-reset-design.md) recasts this work as foundation closure under [Milestone 1](../../PLAN.md#milestone-1--reliable-combined-foundation). This document does not own later product sequencing or claim that setup is complete.
+Approved in conversation on 2026-09-10 and retained as historical setup-boundary input. The [milestone-driven development design](./2026-09-11-milestone-driven-development-design.md) and [Milestone 1 foundation-closure plan](../plans/2026-09-11-milestone-1-foundation-closure.md) supersede its cross-platform completion and execution sequencing. This document does not own current product sequencing or completion claims.
 
 ## Purpose
 

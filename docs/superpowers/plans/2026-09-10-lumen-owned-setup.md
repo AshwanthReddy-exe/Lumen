@@ -1,6 +1,6 @@
 # Lumen-Owned Setup Implementation Plan
 
-> **Status:** Historical task record for the setup checkpoint. Completed tasks remain implementation evidence; only unfinished work required by [Milestone 1](../../PLAN.md#milestone-1--reliable-combined-foundation) remains active. This file does not own later product sequencing.
+> **Status:** Superseded historical task record. Completed tasks remain implementation evidence, but no task in this file is active. Remaining foundation work moved to the [Milestone 1 foundation-closure plan](./2026-09-11-milestone-1-foundation-closure.md).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
