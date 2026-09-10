@@ -390,9 +390,11 @@ func (s *setupState) observe(ctx context.Context) setup.DoctorEvidence {
 	e := setup.DoctorEvidence{Profile: s.profile, Platform: s.plan.Platform, LumenVersion: lumenVersion, HermesVersion: s.plan.HermesVersion, HostState: setup.StateUnknown, HermesState: "unavailable", ArtifactState: setup.StateUnknown, SupervisorState: setup.StateUnknown, BootState: setup.StateUnknown}
 	if j, err := setup.NewJournal(filepath.Join(s.dataDir, "setup")); err == nil {
 		e.Stage = j.Next()
-		if stageIndex(j.Next()) > stageIndex(setup.ArtifactsReady) {
-			e.ArtifactsReady, e.ArtifactState = true, setup.StateRunning
-		}
+	}
+	if err := s.checkArtifacts(); err == nil {
+		e.ArtifactsReady, e.ArtifactState = true, "installed"
+	} else {
+		e.ArtifactState = "missing"
 	}
 	cfg, err := s.hostConfig()
 	if err == nil {
@@ -490,7 +492,7 @@ func setupSecret(path string) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 func privateFile(path string) bool {
-	st, err := os.Stat(path)
+	st, err := os.Lstat(path)
 	return err == nil && st.Mode().IsRegular() && st.Mode().Perm() == 0600
 }
 func fileExists(path string) bool { _, err := os.Stat(path); return err == nil }

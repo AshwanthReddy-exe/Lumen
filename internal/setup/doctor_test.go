@@ -92,3 +92,12 @@ func TestDoctorRejectsMalformedPublicMetadata(t *testing.T) {
 		t.Fatalf("metadata leaked: %#v %s", r, b)
 	}
 }
+
+func TestDoctorAcceptsInstalledArtifactRunningState(t *testing.T) {
+	r := Doctor{Observe: func(context.Context) DoctorEvidence {
+		return DoctorEvidence{Stage: Validated, HostReady: true, HostState: StateRunning, HermesReady: false, HermesState: "unavailable", SupervisorReady: true, SupervisorState: StateRunning, BootReady: true, BootState: StateRunning, CredentialsReady: true, IsolationReady: true, ArtifactsReady: true, ArtifactState: StateRunning}
+	}}.Check(context.Background())
+	if r.Outcome != Degraded {
+		t.Fatalf("installed artifacts changed outcome: %#v", r)
+	}
+}
