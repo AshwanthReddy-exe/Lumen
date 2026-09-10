@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -39,6 +41,14 @@ type ServiceState struct {
 	State string
 }
 
+func (s ServiceState) Validate() error {
+	switch s.State {
+	case StateRunning, StateStopped, StateFailed, StateUnknown:
+		return nil
+	}
+	return fmt.Errorf("invalid service state %q", s.State)
+}
+
 const (
 	StateRunning = "running"
 	StateStopped = "stopped"
@@ -67,6 +77,9 @@ func InstallServices(ctx context.Context, s SupervisorAPI, p ServicePlan) error 
 		return errors.New("invalid service plan")
 	}
 	if p.Initializer != nil {
+		if err := p.Initializer.Initialize(ctx); err != nil {
+			return fmt.Errorf("initialize Host: %w", err)
+		}
 		if err := p.Initializer.Verify(ctx); err != nil {
 			return fmt.Errorf("verify Host state: %w", err)
 		}
@@ -86,6 +99,22 @@ func InstallServices(ctx context.Context, s SupervisorAPI, p ServicePlan) error 
 
 type CommandSupervisor struct{ Manager Supervisor }
 
+type Runner interface {
+	Run(context.Context, string, ...string) (stdout, stderr []byte, err error)
+}
+type execRunner struct{}
+
+func (execRunner) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+	c := exec.CommandContext(ctx, name, args...)
+	var ob, eb bytes.Buffer
+	c.Stdout = &ob
+	c.Stderr = &eb
+	err := c.Run()
+	return ob.Bytes(), eb.Bytes(), err
+}
+
+var commandRunner Runner = execRunner{}
+
 func (s CommandSupervisor) Install(ctx context.Context, p ServicePlan) error {
 	for _, d := range []ServiceDefinition{p.Hermes, p.Host} {
 		if d.Path == "" && (d.Source == "" || d.Destination == "") {
@@ -100,13 +129,16 @@ func (s CommandSupervisor) Install(ctx context.Context, p ServicePlan) error {
 		var err error
 		switch s.Manager {
 		case SupervisorSystemd:
-			err = exec.CommandContext(ctx, "systemctl", "enable", d.Path).Run()
+			_, _, err = commandRunner.Run(ctx, "systemctl", "daemon-reload")
+			if err == nil {
+				_, _, err = commandRunner.Run(ctx, "systemctl", "enable", unitName(d))
+			}
 		case SupervisorLaunchd:
-			err = exec.CommandContext(ctx, "launchctl", "bootstrap", d.Path).Run()
+			err = launchdBootstrap(ctx, d)
 		case SupervisorDocker:
-			err = exec.CommandContext(ctx, "docker", "compose", "-f", d.Path, "config").Run()
+			// compose definitions are registered at enable time.
 		case SupervisorRunit:
-			err = exec.CommandContext(ctx, "sv", "up", d.Path).Run()
+			// placement is installation; start occurs in Enable.
 		default:
 			return &ActionRequiredError{Manager: s.Manager, Service: d.Name, Operation: "install"}
 		}
@@ -173,19 +205,50 @@ func (s CommandSupervisor) Control(ctx context.Context, a Action, names []Servic
 		if n != ServiceHermes && n != ServiceHost {
 			return nil, errors.New("invalid service name")
 		}
-		if err := s.run(timeout, a.Code, ServiceDefinition{Name: n}); err != nil {
-			return nil, fmt.Errorf("%s %s: %w", a.Code, n, err)
+		if a.Code != "status" {
+			if err := s.run(timeout, a.Code, ServiceDefinition{Name: n}); err != nil {
+				return nil, fmt.Errorf("manager=%s service=%s operation=%s: %w", s.Manager, n, a.Code, err)
+			}
 		}
-		state := "unknown"
-		if a.Code == "stop" {
-			state = "stopped"
+		st, err := s.observe(timeout, n)
+		if err != nil {
+			return nil, err
 		}
-		if a.Code == "start" || a.Code == "restart" {
-			state = "running"
-		}
-		states = append(states, ServiceState{Name: n, State: state})
+		states = append(states, st)
 	}
 	return states, nil
+}
+func unitName(d ServiceDefinition) string {
+	if d.Path != "" {
+		return d.Path
+	}
+	return "lumen-" + string(d.Name) + ".service"
+}
+func launchdBootstrap(ctx context.Context, d ServiceDefinition) error {
+	domain := "system"
+	if strings.HasPrefix(d.Path, "gui/") {
+		domain = "gui/" + strings.TrimPrefix(d.Path, "gui/")
+	}
+	_, _, err := commandRunner.Run(ctx, "launchctl", "bootstrap", domain, unitName(d))
+	return err
+}
+func (s CommandSupervisor) observe(ctx context.Context, n ServiceName) (ServiceState, error) {
+	out, errout, err := s.runOutput(ctx, "status", ServiceDefinition{Name: n})
+	text := strings.ToLower(string(out) + " " + string(errout))
+	st := StateUnknown
+	if strings.Contains(text, "running") || strings.Contains(text, "active (running)") {
+		st = StateRunning
+	}
+	if strings.Contains(text, "stopped") || strings.Contains(text, "inactive") {
+		st = StateStopped
+	}
+	if strings.Contains(text, "failed") || strings.Contains(text, "error") {
+		st = StateFailed
+	}
+	if err != nil && st == StateUnknown && ctx.Err() != nil {
+		return ServiceState{}, fmt.Errorf("manager=%s service=%s operation=status: %w", s.Manager, n, ctx.Err())
+	}
+	return ServiceState{Name: n, State: st}, nil
 }
 func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDefinition) error {
 	for _, d := range defs {
@@ -194,22 +257,47 @@ func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDe
 		switch s.Manager {
 		case SupervisorSystemd:
 			name = "systemctl"
-			args = []string{op, "lumen-" + string(d.Name) + ".service"}
+			args = []string{op, unitName(d)}
 		case SupervisorLaunchd:
 			name = "launchctl"
 			args = []string{op, "dev.lumen." + string(d.Name) + ".plist"}
 		case SupervisorDocker:
 			name = "docker"
-			args = []string{"compose", op, "lumen-" + string(d.Name)}
+			actual := op
+			if op == "enable" {
+				actual = "up"
+			}
+			args = []string{"compose", "-f", "deploy/docker/compose.yaml", actual, "-d", "lumen-" + string(d.Name)}
 		case SupervisorRunit:
 			name = "sv"
 			args = []string{op, "lumen-" + string(d.Name)}
 		default:
-			return errors.New("action_required: supervisor unavailable")
+			return &ActionRequiredError{Manager: s.Manager, Service: d.Name, Operation: op}
 		}
-		if err := exec.CommandContext(ctx, name, args...).Run(); err != nil {
+		if _, _, err := commandRunner.Run(ctx, name, args...); err != nil {
 			return fmt.Errorf("%s %s: %w", op, d.Name, err)
 		}
 	}
 	return nil
+}
+func (s CommandSupervisor) runOutput(ctx context.Context, op string, d ServiceDefinition) ([]byte, []byte, error) {
+	var name string
+	var args []string
+	switch s.Manager {
+	case SupervisorSystemd:
+		name = "systemctl"
+		args = []string{"status", unitName(d), "--no-pager"}
+	case SupervisorLaunchd:
+		name = "launchctl"
+		args = []string{"print", "system/" + "dev.lumen." + string(d.Name)}
+	case SupervisorDocker:
+		name = "docker"
+		args = []string{"compose", "-f", "deploy/docker/compose.yaml", "ps", string(d.Name)}
+	case SupervisorRunit:
+		name = "sv"
+		args = []string{"status", "lumen-" + string(d.Name)}
+	default:
+		return nil, nil, &ActionRequiredError{Manager: s.Manager, Service: d.Name, Operation: op}
+	}
+	return commandRunner.Run(ctx, name, args...)
 }
