@@ -45,6 +45,29 @@ type Request struct {
 	Profile Profile `json:"profile"`
 }
 
+type Platform string
+
+const (
+	PlatformMacOS  Platform = "macos"
+	PlatformLinux  Platform = "linux"
+	PlatformTermux Platform = "android-termux"
+)
+
+type Supervisor string
+
+const (
+	SupervisorLaunchd Supervisor = "launchd"
+	SupervisorSystemd Supervisor = "systemd"
+	SupervisorRunit   Supervisor = "runit"
+	SupervisorDocker  Supervisor = "docker"
+)
+
+type StageEvidence struct {
+	Stage       Stage  `json:"stage"`
+	InputDigest string `json:"inputDigest"`
+	CompletedAt int64  `json:"completedAt"`
+}
+
 type Action struct {
 	Code   string `json:"code"`
 	Detail string `json:"detail,omitempty"`
