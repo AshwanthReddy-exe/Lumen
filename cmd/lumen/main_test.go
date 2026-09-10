@@ -140,6 +140,22 @@ func TestAggregateSupervisorStatesRequiresAllServicesRunning(t *testing.T) {
 			},
 			state: setup.StateUnknown,
 		},
+		{
+			name: "duplicate hermes service",
+			states: []setup.ServiceState{
+				{Name: setup.ServiceHermes, State: setup.StateRunning},
+				{Name: setup.ServiceHermes, State: setup.StateRunning},
+			},
+			state: setup.StateUnknown,
+		},
+		{
+			name: "unrelated service",
+			states: []setup.ServiceState{
+				{Name: setup.ServiceName("other"), State: setup.StateRunning},
+				{Name: setup.ServiceHost, State: setup.StateRunning},
+			},
+			state: setup.StateUnknown,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

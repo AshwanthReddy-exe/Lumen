@@ -438,8 +438,23 @@ func aggregateSupervisorStates(states []setup.ServiceState, statusErr error) (bo
 	if len(states) != 2 {
 		return false, setup.StateUnknown
 	}
+	seenHermes, seenHost := false, false
 	state := setup.StateRunning
 	for _, service := range states {
+		switch service.Name {
+		case setup.ServiceHermes:
+			if seenHermes {
+				return false, setup.StateUnknown
+			}
+			seenHermes = true
+		case setup.ServiceHost:
+			if seenHost {
+				return false, setup.StateUnknown
+			}
+			seenHost = true
+		default:
+			return false, setup.StateUnknown
+		}
 		if err := service.Validate(); err != nil {
 			return false, setup.StateUnknown
 		}
@@ -453,6 +468,9 @@ func aggregateSupervisorStates(states []setup.ServiceState, statusErr error) (bo
 				state = setup.StateUnknown
 			}
 		}
+	}
+	if !seenHermes || !seenHost {
+		return false, setup.StateUnknown
 	}
 	return state == setup.StateRunning, state
 }
