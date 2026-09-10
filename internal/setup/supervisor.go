@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -16,8 +19,10 @@ const (
 )
 
 type ServiceDefinition struct {
-	Name ServiceName
-	Path string
+	Name        ServiceName
+	Path        string
+	Source      string
+	Destination string
 }
 type ServicePlan struct {
 	Hermes, Host    ServiceDefinition
@@ -33,6 +38,24 @@ type ServiceState struct {
 	Name  ServiceName
 	State string
 }
+
+const (
+	StateRunning = "running"
+	StateStopped = "stopped"
+	StateFailed  = "failed"
+	StateUnknown = "unknown"
+)
+
+type ActionRequiredError struct {
+	Manager   Supervisor
+	Service   ServiceName
+	Operation string
+}
+
+func (e *ActionRequiredError) Error() string {
+	return fmt.Sprintf("action_required: %s %s on %s", e.Manager, e.Operation, e.Service)
+}
+
 type SupervisorAPI interface {
 	Install(context.Context, ServicePlan) error
 	Enable(context.Context, []ServiceName) error
@@ -65,8 +88,14 @@ type CommandSupervisor struct{ Manager Supervisor }
 
 func (s CommandSupervisor) Install(ctx context.Context, p ServicePlan) error {
 	for _, d := range []ServiceDefinition{p.Hermes, p.Host} {
-		if d.Path == "" {
+		if d.Path == "" && (d.Source == "" || d.Destination == "") {
 			return errors.New("service definition path required")
+		}
+		if d.Source != "" {
+			if err := copyDefinition(d.Source, d.Destination); err != nil {
+				return fmt.Errorf("install %s: %w", d.Name, err)
+			}
+			d.Path = d.Destination
 		}
 		var err error
 		switch s.Manager {
@@ -79,13 +108,44 @@ func (s CommandSupervisor) Install(ctx context.Context, p ServicePlan) error {
 		case SupervisorRunit:
 			err = exec.CommandContext(ctx, "sv", "up", d.Path).Run()
 		default:
-			return errors.New("action_required: supervisor unavailable")
+			return &ActionRequiredError{Manager: s.Manager, Service: d.Name, Operation: "install"}
 		}
 		if err != nil {
 			return fmt.Errorf("install %s: %w", d.Name, err)
 		}
 	}
 	return nil
+}
+func copyDefinition(src, dst string) error {
+	st, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if !st.Mode().IsRegular() || st.Mode()&0077 != 0 {
+		return errors.New("unsafe definition")
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	if err := os.MkdirAll(filepath.Dir(dst), 0700); err != nil {
+		return err
+	}
+	tmp := dst + ".tmp"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(out, in); err == nil {
+		err = out.Sync()
+	}
+	out.Close()
+	if err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, dst)
 }
 func (s CommandSupervisor) Enable(ctx context.Context, names []ServiceName) error {
 	for _, n := range names {
