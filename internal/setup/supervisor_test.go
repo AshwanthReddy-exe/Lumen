@@ -24,7 +24,7 @@ func (f *fakeSupervisor) Control(context.Context, Action, []ServiceName) ([]Serv
 
 func TestInstallEnablesHermesAndHostInOrder(t *testing.T) {
 	f := &fakeSupervisor{}
-	if err := InstallServices(context.Background(), f, ServicePlan{Host: ServiceDefinition{Name: ServiceHost}, Hermes: ServiceDefinition{Name: ServiceHermes}}); err != nil {
+	if err := InstallServices(context.Background(), f, ServicePlan{Host: ServiceDefinition{Name: ServiceHost}, Hermes: ServiceDefinition{Name: ServiceHermes}, HostInitialized: true, Verify: func() error { return nil }}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(f.calls, []string{"install:hermes", "install:host", "enable:hermes", "enable:host"}) {
