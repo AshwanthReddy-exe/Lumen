@@ -79,12 +79,6 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 	return p, nil
 }
 func safeDir(p string) error {
-	if s, err := os.Lstat(p); err == nil {
-		if s.Mode()&os.ModeSymlink != 0 || !s.IsDir() {
-			return errors.New("configuration directory must not contain symlinks")
-		}
-		return os.Chmod(p, 0700)
-	}
 	cur := string(filepath.Separator)
 	for _, part := range strings.Split(filepath.Clean(p), string(filepath.Separator))[1:] {
 		cur = filepath.Join(cur, part)

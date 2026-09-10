@@ -32,6 +32,20 @@ func TestGeneratedConfigHasNoManualPlaceholders(t *testing.T) {
 	}
 }
 
+func TestGeneratedPersonalAlphaConfigLoads(t *testing.T) {
+	d, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := WriteConfig(ConfigRequest{DataDir: filepath.Join(d, "lumen"), HermesDir: filepath.Join(d, "hermes"), Profile: PersonalAlpha, HermesBaseURL: "http://127.0.0.1", HermesBearer: "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.ConfigFromFile(p.Lumen); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestWriteConfigRejectsSymlinkAndUncleanDirectories(t *testing.T) {
 	d := t.TempDir()
 	target := filepath.Join(d, "target")
@@ -47,5 +61,24 @@ func TestWriteConfigRejectsSymlinkAndUncleanDirectories(t *testing.T) {
 	}
 	if _, err := WriteConfig(ConfigRequest{DataDir: d + "/x/../x", HermesDir: filepath.Join(d, "h2"), Profile: Development, HermesBaseURL: "http://127.0.0.1"}); err == nil {
 		t.Fatal("expected unclean path rejection")
+	}
+}
+
+func TestWriteConfigRejectsSymlinkedIntermediateExistingFinal(t *testing.T) {
+	d, _ := filepath.EvalSymlinks(t.TempDir())
+	real := filepath.Join(d, "real")
+	if err := os.Mkdir(real, 0700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(d, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	final := filepath.Join(link, "final")
+	if err := os.Mkdir(final, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteConfig(ConfigRequest{DataDir: final, HermesDir: filepath.Join(d, "h"), Profile: Development, HermesBaseURL: "http://127.0.0.1"}); err == nil {
+		t.Fatal("expected intermediate symlink rejection")
 	}
 }
