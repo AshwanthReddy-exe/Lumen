@@ -147,6 +147,17 @@ func (d Doctor) Check(ctx context.Context) Report {
 	if r.Outcome == "" {
 		r.Outcome = Ready
 	}
+	if len(r.Actions) > 1 {
+		seen := make(map[string]bool, len(r.Actions))
+		actions := r.Actions[:0]
+		for _, action := range r.Actions {
+			if !seen[action.Code] {
+				seen[action.Code] = true
+				actions = append(actions, action)
+			}
+		}
+		r.Actions = actions
+	}
 	return r
 }
 
@@ -157,7 +168,7 @@ func validPublicState(name, state string) bool {
 	case "hermes":
 		return state == StateRunning || state == StateStopped || state == StateFailed || state == StateUnknown || state == "unavailable"
 	case "artifacts":
-		return state == "installed" || state == "missing" || state == StateUnknown
+		return state == "installed" || state == "missing" || state == StateUnknown || state == StateRunning
 	default:
 		return false
 	}
