@@ -3,6 +3,7 @@ package host
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -29,8 +30,9 @@ type Config struct {
 }
 
 var (
-	markerSyncFile   = func(f *os.File) error { return f.Sync() }
-	markerSyncParent = syncMarkerParent
+	ErrAlreadyInitialized = errors.New("already initialized")
+	markerSyncFile        = func(f *os.File) error { return f.Sync() }
+	markerSyncParent      = syncMarkerParent
 )
 
 func LoadConfig() (Config, error) {
@@ -134,7 +136,7 @@ func Initialize(c Config) error {
 	}
 	marker := filepath.Join(c.DataDir, "initialized")
 	if exists(marker) {
-		return errors.New("already initialized")
+		return ErrAlreadyInitialized
 	}
 	statePath := filepath.Join(c.DataDir, "state.json")
 	keyPath := filepath.Join(c.DataDir, "state.key")
@@ -227,6 +229,38 @@ func Initialize(c Config) error {
 		return fail(err)
 	}
 	return err
+}
+
+// VerifyInitialized validates durable bootstrap state and returns a stable,
+// non-secret identity proof for safe setup reruns.
+func VerifyInitialized(c Config) (string, error) {
+	if err := c.valid(); err != nil {
+		return "", err
+	}
+	if !exists(filepath.Join(c.DataDir, "initialized")) {
+		return "", errors.New("Host is not initialized")
+	}
+	s, err := store.Open(filepath.Join(c.DataDir, "state.json"), filepath.Join(c.DataDir, "state.key"))
+	if err != nil {
+		return "", err
+	}
+	state, readErr := s.Read()
+	closeErr := s.Close()
+	if readErr != nil {
+		return "", readErr
+	}
+	if closeErr != nil {
+		return "", closeErr
+	}
+	if err := validateBootstrapState(state); err != nil {
+		return "", err
+	}
+	b, err := json.Marshal(struct{ Space, Owner, Host string }{state.SpaceID, state.OwnerID, state.HostID})
+	if err != nil {
+		return "", err
+	}
+	h := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(h[:]), nil
 }
 
 func resumeInitialization(c Config, marker, statePath, keyPath string) error {

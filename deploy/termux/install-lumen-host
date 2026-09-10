@@ -4,7 +4,7 @@ umask 077
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 require_artifact() { f=$1; label=$2; [ -f "$f" ] && [ ! -L "$f" ] || fail "missing or symlinked $label"; mode=$(stat -c '%a' "$f" 2>/dev/null || stat -f '%Lp' "$f"); case "$mode" in *[2367]) fail "unsafe mode for $label";; esac; }
-verify_digest() { f=$1; expected=$2; [ -n "$expected" ] || return 0; actual=$(sha256sum "$f" | awk '{print $1}'); [ "$actual" = "$expected" ] || fail "digest mismatch for $f"; }
+verify_digest() { f=$1; expected=$2; [ -n "$expected" ] || fail "missing manifest-bound digest for $f"; actual=$(sha256sum "$f" | awk '{print $1}'); [ "$actual" = "$expected" ] || fail "digest mismatch for $f"; }
 
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 data_dir="$HOME/.local/share/lumen"

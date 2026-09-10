@@ -65,7 +65,8 @@ func TestTermuxInstallerCreatesPrivateHostAndService(t *testing.T) {
 
 	command := exec.Command("sh", installer)
 	command.Dir = source
-	command.Env = append(os.Environ(), "HOME="+filepath.Join(root, "home"), "PATH="+binDir+":"+os.Getenv("PATH"), "LUMEN_REINSTALL=1", "PKG_LOG="+pkgLog)
+	command.Env = append(os.Environ(), "HOME="+filepath.Join(root, "home"), "PATH="+binDir+":"+os.Getenv("PATH"), "LUMEN_REINSTALL=1", "PKG_LOG="+pkgLog,
+		"LUMEN_HOST_SHA256=f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d", "LUMEN_HERMES_SHA256=f16d05ec6b29248d2c61adb1e9263f78e4f7bace1b955014a2d17872cfe4064d", "LUMEN_ENV_SHA256=8524ce3ddc86d9b4f467182b41b92c0f5b7051ab2220bb23cf0aa9c43be69aff", "LUMEN_TOKEN_SHA256=138d55e9c73aa830bff6f7280e9ff202c139a8318fbf9cec8f40d602f06affab")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("installer failed: %v\n%s", err, output)
 	}

@@ -51,6 +51,29 @@ func TestSupervisorStatusParsesRunningAndBoundsContext(t *testing.T) {
 	}
 }
 
+func TestSupervisorRejectsInvalidInput(t *testing.T) {
+	s := CommandSupervisor{Manager: SupervisorSystemd}
+	if _, err := s.Control(context.Background(), Action{Code: "shell"}, []ServiceName{ServiceHost}); err == nil {
+		t.Fatal("accepted invalid action")
+	}
+	if _, err := s.Control(context.Background(), Action{Code: "status"}, []ServiceName{"other"}); err == nil {
+		t.Fatal("accepted invalid service")
+	}
+}
+
+func TestSupervisorRestartUsesBoundedContext(t *testing.T) {
+	old := commandRunner
+	defer func() { commandRunner = old }()
+	r := &recordingRunner{}
+	commandRunner = r
+	if _, err := (CommandSupervisor{Manager: SupervisorSystemd}).Control(context.Background(), Action{Code: "restart"}, []ServiceName{ServiceHost}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.ctx.Deadline(); !ok {
+		t.Fatal("restart was not bounded")
+	}
+}
+
 type fakeSupervisor struct{ calls []string }
 
 func (f *fakeSupervisor) Install(context.Context, ServicePlan) error {
@@ -66,7 +89,8 @@ func TestDefinitionInstallCopiesExactBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := CommandSupervisor{Manager: SupervisorDocker}
-	if err := s.Install(context.Background(), ServicePlan{Hermes: ServiceDefinition{Name: ServiceHermes, Source: src, Destination: dst}, Host: ServiceDefinition{Name: ServiceHost, Path: dst}, HostInitialized: true, Verify: func() error { return nil }}); err != nil { /* docker may be absent; copy is still asserted */
+	if err := s.Install(context.Background(), ServicePlan{Hermes: ServiceDefinition{Name: ServiceHermes, Source: src, Destination: dst}, Host: ServiceDefinition{Name: ServiceHost, Path: dst}, Initializer: fakeInitializer{}}); err != nil {
+		t.Fatalf("install definition: %v", err)
 	}
 	b, err := os.ReadFile(dst)
 	if err != nil || string(b) != "unit" {

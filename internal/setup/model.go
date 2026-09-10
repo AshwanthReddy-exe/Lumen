@@ -74,8 +74,13 @@ type Action struct {
 }
 
 type Report struct {
-	Outcome          Outcome  `json:"outcome"`
-	Stage            Stage    `json:"stage"`
-	Actions          []Action `json:"actions,omitempty"`
-	AvailableInBlock int      `json:"availableInBlock,omitempty"`
+	Outcome          Outcome           `json:"outcome"`
+	Stage            Stage             `json:"stage"`
+	Profile          Profile           `json:"profile,omitempty"`
+	Platform         Platform          `json:"platform,omitempty"`
+	LumenVersion     string            `json:"lumenVersion,omitempty"`
+	HermesVersion    string            `json:"hermesVersion,omitempty"`
+	States           map[string]string `json:"states,omitempty"`
+	Actions          []Action          `json:"actions,omitempty"`
+	AvailableInBlock int               `json:"availableInBlock,omitempty"`
 }

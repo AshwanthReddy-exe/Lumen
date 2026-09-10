@@ -125,6 +125,30 @@ func TestInitIsCreateOnly(t *testing.T) {
 	}
 }
 
+func TestVerifyInitializedProvesStableHostIdentity(t *testing.T) {
+	c := Config{DataDir: t.TempDir(), SocketPath: filepath.Join(t.TempDir(), "host.sock"), CredentialPath: filepath.Join(t.TempDir(), "operator")}
+	// Keep all paths under one private root, as production does.
+	c.SocketPath = filepath.Join(c.DataDir, "host.sock")
+	c.CredentialPath = filepath.Join(c.DataDir, "operator")
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	first, err := VerifyInitialized(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == "" {
+		t.Fatal("missing identity proof")
+	}
+	if err := Initialize(c); !errors.Is(err, ErrAlreadyInitialized) {
+		t.Fatalf("rerun=%v", err)
+	}
+	second, err := VerifyInitialized(c)
+	if err != nil || second != first {
+		t.Fatalf("first=%q second=%q err=%v", first, second, err)
+	}
+}
+
 func TestInitBootstrapsDurableSpaceAndFreshTaskFlow(t *testing.T) {
 	d := t.TempDir()
 	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator")}

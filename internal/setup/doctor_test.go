@@ -25,3 +25,21 @@ func TestDoctorDistinguishesDegradedAndRedactsDetails(t *testing.T) {
 		}
 	}
 }
+
+func TestDoctorTreatsUnknownAndFailedStatesAsActionRequired(t *testing.T) {
+	r := Doctor{Observe: func(context.Context) DoctorEvidence {
+		return DoctorEvidence{Stage: Validated, HostReady: true, HermesReady: true, SupervisorReady: true, BootReady: true, CredentialsReady: true, IsolationReady: true, HostState: StateUnknown, HermesState: StateFailed, SupervisorState: StateRunning, BootState: StateRunning}
+	}}.Check(context.Background())
+	if r.Outcome != ActionRequired {
+		t.Fatalf("got %#v", r)
+	}
+}
+
+func TestDoctorIncludesSafeVersionsAndStates(t *testing.T) {
+	r := Doctor{Observe: func(context.Context) DoctorEvidence {
+		return DoctorEvidence{Stage: Validated, HostReady: true, HermesReady: true, SupervisorReady: true, BootReady: true, CredentialsReady: true, IsolationReady: true, HermesVersion: "1.2.3", LumenVersion: "2.3.4", HostState: StateRunning, HermesState: StateRunning, SupervisorState: StateRunning, BootState: StateRunning}
+	}}.Check(context.Background())
+	if r.Outcome != Ready || r.HermesVersion != "1.2.3" || r.LumenVersion != "2.3.4" || r.States["host"] != StateRunning {
+		t.Fatalf("got %#v", r)
+	}
+}
