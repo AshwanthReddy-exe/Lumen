@@ -50,7 +50,8 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 		}
 	}
 	p := ConfigPaths{Lumen: filepath.Join(r.DataDir, "lumen.json"), Hermes: filepath.Join(r.HermesDir, "hermes.json"), Bearer: filepath.Join(r.HermesDir, "hermes.token"), CA: filepath.Join(r.HermesDir, "ca.pem"), ClientCert: filepath.Join(r.HermesDir, "client.crt"), ClientKey: filepath.Join(r.HermesDir, "client.key")}
-	for path, body := range map[string]string{p.Bearer: r.HermesBearer, p.CA: r.HermesCA, p.ClientCert: r.HermesClientCert, p.ClientKey: r.HermesClientKey} {
+	for _, item := range []struct{ path, body string }{{p.Bearer, r.HermesBearer}, {p.CA, r.HermesCA}, {p.ClientCert, r.HermesClientCert}, {p.ClientKey, r.HermesClientKey}} {
+		path, body := item.path, item.body
 		if body != "" {
 			if err := writePrivate(path, []byte(body)); err != nil {
 				return ConfigPaths{}, err
@@ -89,7 +90,9 @@ func safeDir(p string) error {
 		cur = filepath.Join(cur, part)
 		if s, err := os.Lstat(cur); err == nil {
 			if s.Mode()&os.ModeSymlink != 0 {
-				continue
+				if cur != "/var" && cur != "/private" {
+					return errors.New("configuration directory must not contain symlinks")
+				}
 			}
 			if !s.IsDir() {
 				return errors.New("configuration directory must not contain symlinks")

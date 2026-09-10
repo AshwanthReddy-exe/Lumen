@@ -117,7 +117,7 @@ func (c Config) valid() error {
 			return errors.New("configuration paths must be absolute and clean")
 		}
 	}
-	if c.HermesProfile != "" && c.HermesProfile != hermes.ProfileDevelopment && c.HermesProfile != hermes.ProfileHardened {
+	if c.HermesProfile != "" && c.HermesProfile != hermes.ProfileDevelopment && c.HermesProfile != hermes.ProfileHardened && c.HermesProfile != "personal-alpha" {
 		return errors.New("invalid Hermes profile")
 	}
 	return nil
