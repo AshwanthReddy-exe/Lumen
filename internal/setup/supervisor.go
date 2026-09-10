@@ -119,7 +119,7 @@ func InstallServices(ctx context.Context, s SupervisorAPI, p ServicePlan) error 
 
 type CommandSupervisor struct{ Manager Supervisor }
 
-type Runner interface {
+type CommandRunner interface {
 	Run(context.Context, string, ...string) (stdout, stderr []byte, err error)
 }
 type execRunner struct{}
@@ -133,7 +133,7 @@ func (execRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 	return ob.Bytes(), eb.Bytes(), err
 }
 
-var commandRunner Runner = execRunner{}
+var commandRunner CommandRunner = execRunner{}
 
 func (s CommandSupervisor) Install(ctx context.Context, p ServicePlan) error {
 	for _, d := range []ServiceDefinition{p.Hermes, p.Host} {
