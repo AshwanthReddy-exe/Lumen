@@ -114,7 +114,7 @@ func TestHardenedNeverDowngrades(t *testing.T) {
 
 func TestCompletedEvidenceResumesAtNextStage(t *testing.T) {
 	j := newTestJournal(t)
-	mustRecord(t, j, StageEvidence{Stage: Detected, Digest: "sha256:platform"})
+	mustRecord(t, j, StageEvidence{Stage: Detected, InputDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"})
 	if got := j.Next(); got != ArtifactsReady { t.Fatalf("got %q", got) }
 }
 ```
