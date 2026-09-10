@@ -10,7 +10,10 @@ import (
 )
 
 func TestGeneratedConfigHasNoManualPlaceholders(t *testing.T) {
-	d := t.TempDir()
+	d, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	p, err := WriteConfig(ConfigRequest{DataDir: filepath.Join(d, "lumen"), HermesDir: filepath.Join(d, "hermes"), Profile: Development, HermesBaseURL: "http://127.0.0.1:9090", HermesBearer: "token"})
 	if err != nil {
 		t.Fatal(err)

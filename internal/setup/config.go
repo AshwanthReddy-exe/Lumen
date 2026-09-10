@@ -90,9 +90,7 @@ func safeDir(p string) error {
 		cur = filepath.Join(cur, part)
 		if s, err := os.Lstat(cur); err == nil {
 			if s.Mode()&os.ModeSymlink != 0 {
-				if cur != "/var" && cur != "/private" {
-					return errors.New("configuration directory must not contain symlinks")
-				}
+				return errors.New("configuration directory must not contain symlinks")
 			}
 			if !s.IsDir() {
 				return errors.New("configuration directory must not contain symlinks")
