@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 )
 
 // Runner executes the durable setup stages in order. Callers provide the
@@ -42,10 +43,10 @@ func (f HostInitializerFuncs) Verify(ctx context.Context) error {
 }
 
 func (r SetupRunner) Run(ctx context.Context, req Request) (Report, error) {
-	if req.Profile != Development && req.Profile != PersonalAlpha && req.Profile != Hardened {
+	if !validProfile(req.Profile) {
 		return Report{Outcome: ActionRequired, Profile: req.Profile, Actions: []Action{{Code: "invalid_profile"}}}, errors.New("invalid setup profile")
 	}
-	if r.Journal == nil || r.Verify == nil || (r.RunStage == nil && r.Initializer == nil) {
+	if r.Journal == nil || r.Verify == nil || r.RunStage == nil {
 		return Report{Outcome: ActionRequired, Actions: []Action{{Code: "setup_unavailable"}}}, errors.New("setup runner is incomplete")
 	}
 	if r.Probe != nil {
@@ -56,12 +57,27 @@ func (r SetupRunner) Run(ctx context.Context, req Request) (Report, error) {
 		r.Plan = &planned
 	}
 	if r.Plan != nil {
+		if r.Plan.Outcome != "" && r.Plan.Outcome != Ready && r.Plan.Outcome != Degraded && r.Plan.Outcome != ActionRequired {
+			return Report{Outcome: ActionRequired, Profile: req.Profile, Actions: []Action{{Code: "metadata_invalid"}}}, errors.New("setup plan outcome is invalid")
+		}
+		if (r.Plan.LumenVersion != "" && !publicVersion.MatchString(r.Plan.LumenVersion)) || (r.Plan.HermesVersion != "" && !publicVersion.MatchString(r.Plan.HermesVersion)) || (r.Plan.Platform != "" && !validPlatform(r.Plan.Platform)) {
+			return Report{Outcome: ActionRequired, Profile: req.Profile, Actions: []Action{{Code: "metadata_invalid"}}}, errors.New("setup plan metadata is invalid")
+		}
+		if r.Plan.Outcome != "" && r.Plan.Outcome != Ready {
+			if r.Plan.Outcome == Degraded {
+				return safePlanReport(req, *r.Plan), errors.New("setup plan is degraded")
+			}
+			return safePlanReport(req, *r.Plan), errors.New("setup plan requires action")
+		}
 		if r.Plan.Profile != "" && r.Plan.Profile != req.Profile {
 			return Report{Outcome: ActionRequired, Profile: req.Profile, Actions: []Action{{Code: "plan_mismatch"}}}, errors.New("setup plan profile mismatch")
 		}
 		if r.Plan.NextStage != "" && !validStage(r.Plan.NextStage) {
 			return Report{Outcome: ActionRequired, Profile: req.Profile, Actions: []Action{{Code: "invalid_stage_plan"}}}, errors.New("setup plan has invalid next stage")
 		}
+	}
+	if err := r.validateJournalBinding(req); err != nil {
+		return Report{Outcome: ActionRequired, Profile: req.Profile, Actions: []Action{{Code: "setup_identity_mismatch"}}}, err
 	}
 	stages := r.Stages
 	if len(stages) == 0 {
@@ -87,7 +103,11 @@ func (r SetupRunner) Run(ctx context.Context, req Request) (Report, error) {
 		}
 		if r.Initializer != nil && stage == HostInitialized {
 			if err := r.Initializer.Initialize(ctx); err != nil {
-				return stageFailure(stage, err)
+				// An interrupted run may have committed the Host before its
+				// journal record. Durable verification is the authority.
+				if verifyErr := r.Initializer.Verify(ctx); verifyErr != nil {
+					return stageFailure(stage, err)
+				}
 			}
 			if err := r.Initializer.Verify(ctx); err != nil {
 				return stageFailure(stage, err)
@@ -104,13 +124,74 @@ func (r SetupRunner) Run(ctx context.Context, req Request) (Report, error) {
 		if r.InputHash != nil {
 			digest = r.InputHash(stage)
 		}
+		if stage == ArtifactsReady && r.Plan != nil && r.Plan.Platform == PlatformTermux && !manifestBoundTermuxDigests(req.ArtifactDigests) {
+			return stageFailure(stage, ErrInvalidDigest)
+		}
 		if !validDigest(digest) || digest == "sha256:"+fmt.Sprintf("%064x", 0) {
 			return stageFailure(stage, ErrInvalidDigest)
 		}
-		if err := r.Journal.Record(StageEvidence{Stage: stage, InputDigest: digest}); err != nil {
+		if err := r.Journal.Record(StageEvidence{Stage: stage, InputDigest: digest, Profile: req.Profile, PlanDigest: planDigest(r.Plan)}); err != nil {
 			return stageFailure(stage, err)
 		}
 	}
+}
+
+func (r SetupRunner) validateJournalBinding(req Request) error {
+	for _, evidence := range r.Journal.evidence {
+		if evidence.Profile != req.Profile || evidence.Profile == "" {
+			return errors.New("setup evidence belongs to another profile")
+		}
+		if evidence.PlanDigest != planDigest(r.Plan) {
+			return errors.New("setup evidence belongs to another plan")
+		}
+	}
+	return nil
+}
+
+func planDigest(p *PlanResult) string {
+	if p == nil {
+		return requestDigest(Request{Profile: Development}, Detected, nil)
+	}
+	return requestDigest(Request{Profile: p.Profile}, p.NextStage, p)
+}
+func safePlanReport(req Request, p PlanResult) Report {
+	r := Report{Outcome: p.Outcome, Profile: req.Profile, Platform: p.Platform, LumenVersion: safeVersion(p.LumenVersion), HermesVersion: safeVersion(p.HermesVersion)}
+	for _, action := range p.Actions {
+		if validActionCode(action.Code) {
+			r.Actions = append(r.Actions, Action{Code: action.Code})
+		}
+	}
+	if len(r.Actions) == 0 {
+		r.Actions = []Action{{Code: "setup_plan_requires_action"}}
+	}
+	return r
+}
+func safeVersion(v string) string {
+	if publicVersion.MatchString(v) {
+		return v
+	}
+	return ""
+}
+func validActionCode(c string) bool {
+	switch c {
+	case "supervisor_unavailable", "isolation_required", "configuration_required", "artifacts_unavailable":
+		return true
+	default:
+		return false
+	}
+}
+
+func manifestBoundTermuxDigests(digests map[string]string) bool {
+	if len(digests) < 2 {
+		return false
+	}
+	for _, name := range []string{"lumen", "hermes"} {
+		digest, ok := digests[name]
+		if !ok || !validDigest(digest) || digest == "sha256:"+fmt.Sprintf("%064x", 0) {
+			return false
+		}
+	}
+	return true
 }
 
 func validateStageSelection(stages []Stage) error {
@@ -142,13 +223,21 @@ func requestDigest(req Request, stage Stage, p *PlanResult) string {
 	if p != nil {
 		material += "\x00" + p.LumenVersion + "\x00" + p.HermesVersion + "\x00" + string(p.Platform) + "\x00" + p.Architecture
 	}
+	keys := make([]string, 0, len(req.ArtifactDigests))
+	for key := range req.ArtifactDigests {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		material += "\x00" + key + "=" + req.ArtifactDigests[key]
+	}
 	h := sha256.Sum256([]byte(material))
 	return "sha256:" + hex.EncodeToString(h[:])
 }
 func (r SetupRunner) readyReport(req Request) Report {
 	out := Report{Outcome: Ready, Stage: Validated, Profile: req.Profile}
 	if r.Plan != nil {
-		out.Platform, out.LumenVersion, out.HermesVersion = r.Plan.Platform, r.Plan.LumenVersion, r.Plan.HermesVersion
+		out.Platform, out.LumenVersion, out.HermesVersion = r.Plan.Platform, safeVersion(r.Plan.LumenVersion), safeVersion(r.Plan.HermesVersion)
 	}
 	return out
 }

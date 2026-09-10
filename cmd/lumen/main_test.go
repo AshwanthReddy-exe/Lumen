@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -13,12 +14,12 @@ func TestCommandGrammar(t *testing.T) {
 		args []string
 		code string
 	}{
-		{"setup", []string{"setup"}, "setup_not_implemented"},
-		{"doctor", []string{"doctor"}, "doctor_not_implemented"},
-		{"service start", []string{"service", "start"}, "service_not_implemented"},
-		{"service stop", []string{"service", "stop"}, "service_not_implemented"},
-		{"service restart", []string{"service", "restart"}, "service_not_implemented"},
-		{"service status", []string{"service", "status"}, "service_not_implemented"},
+		{"setup", []string{"setup"}, "configuration_required"},
+		{"doctor", []string{"doctor"}, "configuration_required"},
+		{"service start", []string{"service", "start"}, "configuration_required"},
+		{"service stop", []string{"service", "stop"}, "configuration_required"},
+		{"service restart", []string{"service", "restart"}, "configuration_required"},
+		{"service status", []string{"service", "status"}, "configuration_required"},
 		{"connect", []string{"connect"}, ""},
 		{"empty", nil, "invalid_command"},
 		{"unknown", []string{"wat"}, "invalid_command"},
@@ -72,5 +73,48 @@ func TestConnectIsReservedWithoutPairing(t *testing.T) {
 	report := runForTest([]string{"connect"})
 	if report.Outcome != actionRequired || report.AvailableInBlock != 3 {
 		t.Fatalf("unexpected report: %#v", report)
+	}
+}
+
+func TestSetupComposesPlannerAndJournal(t *testing.T) {
+	d := t.TempDir()
+	t.Setenv("LUMEN_DATA_DIR", d)
+	t.Setenv("LUMEN_SETUP_PROFILE", "development")
+	report := runForTest([]string{"setup"})
+	if report.Actions == nil || report.Actions[0].Code == "setup_adapters_required" {
+		t.Fatalf("setup still uses placeholder composition: %#v", report)
+	}
+	if _, err := os.Stat(filepath.Join(d, "setup", "setup-journal.json")); err != nil {
+		t.Fatalf("setup did not create durable journal: %v", err)
+	}
+}
+
+func TestDoctorComposesWholeDeploymentStates(t *testing.T) {
+	d := t.TempDir()
+	t.Setenv("LUMEN_DATA_DIR", d)
+	t.Setenv("LUMEN_SETUP_PROFILE", "development")
+	report := runForTest([]string{"doctor"})
+	if report.Actions == nil || report.Actions[0].Code == "setup_adapters_required" {
+		t.Fatalf("doctor still uses placeholder composition: %#v", report)
+	}
+	if report.States == nil || report.States["host"] == "" {
+		t.Fatalf("doctor omitted normalized states: %#v", report)
+	}
+	body, err := json.Marshal(report)
+	if err != nil || strings.Contains(string(body), d) {
+		t.Fatalf("doctor leaked path or failed to encode: %s (%v)", body, err)
+	}
+}
+
+func TestPublicCommandsDoNotExposeUntrustedMetadata(t *testing.T) {
+	d := t.TempDir()
+	t.Setenv("LUMEN_DATA_DIR", d)
+	t.Setenv("LUMEN_SETUP_PROFILE", "development")
+	t.Setenv("LUMEN_LUMEN_VERSION", "/Users/alice/secret-token")
+	for _, command := range []string{"setup", "doctor"} {
+		body, err := json.Marshal(runForTest([]string{command}))
+		if err != nil || strings.Contains(string(body), "alice") || strings.Contains(string(body), "secret-token") {
+			t.Fatalf("%s leaked metadata: %s (%v)", command, body, err)
+		}
 	}
 }

@@ -119,12 +119,14 @@ func persist(d, p string, e []StageEvidence, sync func(string) error) (bool, err
 }
 func validateEvidence(e []StageEvidence) error {
 	for i, v := range e {
-		if i >= len(stageOrder) || v.Stage != stageOrder[i] || !validDigest(v.InputDigest) {
+		if i >= len(stageOrder) || v.Stage != stageOrder[i] || !validDigest(v.InputDigest) || (v.Profile != "" && !validProfile(v.Profile)) || (v.PlanDigest != "" && !validDigest(v.PlanDigest)) {
 			return ErrInvalidJournal
 		}
 	}
 	return nil
 }
+
+func validProfile(p Profile) bool { return p == Development || p == PersonalAlpha || p == Hardened }
 
 var digestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 

@@ -42,7 +42,8 @@ const (
 )
 
 type Request struct {
-	Profile Profile `json:"profile"`
+	Profile         Profile           `json:"profile"`
+	ArtifactDigests map[string]string `json:"-"`
 }
 
 type Platform string
@@ -63,9 +64,11 @@ const (
 )
 
 type StageEvidence struct {
-	Stage       Stage  `json:"stage"`
-	InputDigest string `json:"inputDigest"`
-	CompletedAt int64  `json:"completedAt"`
+	Stage       Stage   `json:"stage"`
+	InputDigest string  `json:"inputDigest"`
+	Profile     Profile `json:"profile,omitempty"`
+	PlanDigest  string  `json:"planDigest,omitempty"`
+	CompletedAt int64   `json:"completedAt"`
 }
 
 type Action struct {

@@ -100,7 +100,7 @@ func TestCLIProcessLifecycleAndBoundary(t *testing.T) {
 	select {
 	case err := <-ready:
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%v; stderr=%s", err, stderr.String())
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("serve did not become ready")
