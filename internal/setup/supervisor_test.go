@@ -2,10 +2,54 @@ package setup
 
 import (
 	"context"
+	"errors"
 	"os"
 	"reflect"
 	"testing"
 )
+
+type recordingRunner struct {
+	calls [][]string
+	err   error
+	ctx   context.Context
+}
+
+func (r *recordingRunner) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+	r.ctx = ctx
+	r.calls = append(r.calls, append([]string{name}, args...))
+	return []byte("active (running)"), nil, r.err
+}
+
+func TestSupervisorMissingManagerAndStatusError(t *testing.T) {
+	old := commandRunner
+	defer func() { commandRunner = old }()
+	r := &recordingRunner{err: errors.New("missing")}
+	commandRunner = r
+	_, err := (CommandSupervisor{Manager: "other"}).Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHost})
+	var required *ActionRequiredError
+	if !errors.As(err, &required) {
+		t.Fatalf("want action required, got %v", err)
+	}
+	commandRunner = r
+	_, err = (CommandSupervisor{Manager: SupervisorSystemd}).Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHost})
+	if err == nil {
+		t.Fatal("status swallowed manager error")
+	}
+}
+
+func TestSupervisorStatusParsesRunningAndBoundsContext(t *testing.T) {
+	old := commandRunner
+	defer func() { commandRunner = old }()
+	r := &recordingRunner{}
+	commandRunner = r
+	got, err := (CommandSupervisor{Manager: SupervisorSystemd}).Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHost})
+	if err != nil || got[0].State != StateRunning {
+		t.Fatalf("got %#v %v", got, err)
+	}
+	if _, ok := r.ctx.Deadline(); !ok {
+		t.Fatal("manager call was not bounded")
+	}
+}
 
 type fakeSupervisor struct{ calls []string }
 
