@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -51,6 +52,40 @@ func LoadConfig() (Config, error) {
 		bearer = filepath.Join(d, "hermes.token")
 	}
 	return Config{DataDir: d, SocketPath: s, CredentialPath: c, HermesBaseURL: os.Getenv("LUMEN_HERMES_BASE_URL"), HermesProfile: p, HermesBearerPath: bearer, HermesCAPath: os.Getenv("LUMEN_HERMES_CA_FILE"), HermesClientCertPath: os.Getenv("LUMEN_HERMES_CLIENT_CERT_FILE"), HermesClientKeyPath: os.Getenv("LUMEN_HERMES_CLIENT_KEY_FILE"), HermesServerPin: os.Getenv("LUMEN_HERMES_SERVER_CERT_PIN")}, nil
+}
+
+// ConfigFromFile loads the non-secret settings emitted by lumen setup.
+func ConfigFromFile(path string) (Config, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, err
+	}
+	var w struct {
+		Version int    `json:"version"`
+		DataDir string `json:"data_dir"`
+		Hermes  struct {
+			BaseURL        string `json:"base_url"`
+			Profile        string `json:"profile"`
+			BearerFile     string `json:"bearer_file"`
+			CAFile         string `json:"ca_file"`
+			ClientCertFile string `json:"client_cert_file"`
+			ClientKeyFile  string `json:"client_key_file"`
+			ServerCertPin  string `json:"server_cert_pin"`
+		} `json:"hermes"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&w); err != nil {
+		return Config{}, fmt.Errorf("invalid config: %w", err)
+	}
+	if w.Version != 1 || w.DataDir == "" || w.Hermes.BaseURL == "" || w.Hermes.Profile == "" || w.Hermes.BearerFile == "" {
+		return Config{}, errors.New("incomplete generated configuration")
+	}
+	c := Config{DataDir: w.DataDir, SocketPath: filepath.Join(w.DataDir, "host.sock"), CredentialPath: filepath.Join(w.DataDir, "operator.credential"), HermesBaseURL: w.Hermes.BaseURL, HermesProfile: w.Hermes.Profile, HermesBearerPath: w.Hermes.BearerFile, HermesCAPath: w.Hermes.CAFile, HermesClientCertPath: w.Hermes.ClientCertFile, HermesClientKeyPath: w.Hermes.ClientKeyFile, HermesServerPin: w.Hermes.ServerCertPin}
+	if err := c.valid(); err != nil {
+		return Config{}, err
+	}
+	return c, nil
 }
 func (c Config) valid() error {
 	if c.DataDir == "" || c.SocketPath == "" || c.CredentialPath == "" {
