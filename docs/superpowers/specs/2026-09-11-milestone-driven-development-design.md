@@ -62,4 +62,3 @@ The coordinator owns contracts, sequencing, integration, and final verification.
 - Missing external evidence: keep the relevant claim open without simulating success.
 - Review disagreement: rule against the governing spec and record the cost if wrong.
 - Five failed fix rounds: adjudicate every residual finding; never silently mark the task complete.
-
