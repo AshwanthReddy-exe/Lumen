@@ -227,7 +227,17 @@ func validProfile(p Profile) bool { return p == Development || p == PersonalAlph
 
 var digestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
-func validDigest(s string) bool { return digestPattern.MatchString(s) }
+func validDigest(s string) bool {
+	if !digestPattern.MatchString(s) {
+		return false
+	}
+	for _, c := range s[len("sha256:"):] {
+		if c != '0' {
+			return true
+		}
+	}
+	return false
+}
 func validStage(s Stage) bool {
 	for _, v := range stageOrder {
 		if s == v {

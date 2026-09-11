@@ -317,6 +317,9 @@ func (s *setupState) checkArtifacts() error {
 	if err != nil {
 		return err
 	}
+	if manifest.Topology != s.plan.Topology {
+		return errors.New("manifest topology mismatch")
+	}
 	osName := "linux"
 	switch s.plan.Platform {
 	case setup.PlatformMacOS:
@@ -324,7 +327,11 @@ func (s *setupState) checkArtifacts() error {
 	case setup.PlatformTermux:
 		osName = "android"
 	}
-	for _, name := range []string{"lumen", "hermes"} {
+	names := []string{"lumen"}
+	if s.plan.Topology == setup.TopologyCombined {
+		names = append(names, "hermes")
+	}
+	for _, name := range names {
 		a, err := manifest.Select(name, osName, s.plan.Architecture, s.profile)
 		if err != nil {
 			return err
