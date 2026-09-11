@@ -131,11 +131,19 @@ func serviceCommand(ctx context.Context, action string) setup.Report {
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Actions: []setup.Action{{Code: "invalid_profile"}}}
 	}
+	topology, err := requestedTopology()
+	if err != nil {
+		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: "invalid_topology"}}}
+	}
+	services := ownedServices(topology)
+	if len(services) == 0 {
+		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: "invalid_topology"}}}
+	}
 	manager, available := (cliProbe{dataDir: dataDir}).Supervisor()
 	if !available {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: "supervisor_unavailable"}}}
 	}
-	states, err := (setup.CommandSupervisor{Manager: manager}).Control(ctx, setup.Action{Code: action}, []setup.ServiceName{setup.ServiceHermes, setup.ServiceHost})
+	states, err := (setup.CommandSupervisor{Manager: manager}).Control(ctx, setup.Action{Code: action}, services)
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: "service_unavailable"}}}
 	}
@@ -147,6 +155,25 @@ func serviceCommand(ctx context.Context, action string) setup.Report {
 		}
 	}
 	return r
+}
+
+func requestedTopology() (setup.Topology, error) {
+	topology := setup.Topology(os.Getenv("LUMEN_SETUP_TOPOLOGY"))
+	if err := topology.Validate(); err != nil {
+		return "", err
+	}
+	return topology, nil
+}
+
+func ownedServices(topology setup.Topology) []setup.ServiceName {
+	switch topology {
+	case setup.TopologyCombined:
+		return []setup.ServiceName{setup.ServiceHermes, setup.ServiceHost}
+	case setup.TopologyExternal:
+		return []setup.ServiceName{setup.ServiceHost}
+	default:
+		return nil
+	}
 }
 
 func requestedProfile() (setup.Profile, error) {

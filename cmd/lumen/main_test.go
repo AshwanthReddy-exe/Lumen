@@ -179,3 +179,66 @@ func TestPublicCommandsDoNotExposeUntrustedMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestCombinedServiceControlsBothServices(t *testing.T) {
+	d, calls := fakeSystemd(t)
+	t.Setenv("LUMEN_DATA_DIR", d)
+	t.Setenv("LUMEN_SETUP_TOPOLOGY", "combined")
+	t.Setenv("LUMEN_SUPERVISOR", string(setup.SupervisorSystemd))
+
+	report := runForTest([]string{"service", "restart"})
+	if report.Outcome != setup.Ready {
+		t.Fatalf("service report = %#v", report)
+	}
+	got := readLines(t, calls)
+	if !containsLine(got, "restart lumen-hermes.service") || !containsLine(got, "restart lumen-host.service") {
+		t.Fatalf("combined service calls = %#v", got)
+	}
+}
+
+func TestExternalServiceControlsHostOnly(t *testing.T) {
+	d, calls := fakeSystemd(t)
+	t.Setenv("LUMEN_DATA_DIR", d)
+	t.Setenv("LUMEN_SETUP_TOPOLOGY", "external")
+	t.Setenv("LUMEN_SUPERVISOR", string(setup.SupervisorSystemd))
+
+	report := runForTest([]string{"service", "restart"})
+	if report.Outcome != setup.Ready {
+		t.Fatalf("service report = %#v", report)
+	}
+	got := readLines(t, calls)
+	if containsLine(got, "restart lumen-hermes.service") || !containsLine(got, "restart lumen-host.service") {
+		t.Fatalf("external service calls = %#v", got)
+	}
+}
+
+func fakeSystemd(t *testing.T) (string, string) {
+	t.Helper()
+	d := t.TempDir()
+	calls := filepath.Join(d, "calls")
+	tool := filepath.Join(d, "systemctl")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"" + calls + "\"\nif [ \"$1\" = status ]; then printf '%s\\n' 'active (running)'; fi\n"
+	if err := os.WriteFile(tool, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", d+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return d, calls
+}
+
+func readLines(t *testing.T, path string) []string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Split(strings.TrimSpace(string(b)), "\n")
+}
+
+func containsLine(lines []string, want string) bool {
+	for _, line := range lines {
+		if line == want {
+			return true
+		}
+	}
+	return false
+}

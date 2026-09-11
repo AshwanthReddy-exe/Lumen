@@ -117,6 +117,47 @@ func TestInstallEnablesHermesAndHostInOrder(t *testing.T) {
 	}
 }
 
+func TestInstallServicesDoesNotInitializeHostAfterHostInitialized(t *testing.T) {
+	f := &fakeSupervisor{}
+	initializer := &countingInitializer{}
+	if err := InstallServices(context.Background(), f, ServicePlan{
+		Host: setupDefinition(ServiceHost), Hermes: setupDefinition(ServiceHermes), Initializer: initializer,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if initializer.initializeCalls != 0 {
+		t.Fatalf("InstallServices initialized Host %d times", initializer.initializeCalls)
+	}
+	if initializer.verifyCalls != 1 {
+		t.Fatalf("InstallServices verify calls = %d, want 1", initializer.verifyCalls)
+	}
+}
+
+func TestInstallServicesRequiresVerifierBeforeSupervisorCalls(t *testing.T) {
+	f := &fakeSupervisor{}
+	if err := InstallServices(context.Background(), f, ServicePlan{
+		Host: setupDefinition(ServiceHost), Hermes: setupDefinition(ServiceHermes),
+	}); err == nil {
+		t.Fatal("accepted missing Host verifier")
+	}
+	if len(f.calls) != 0 {
+		t.Fatalf("supervisor calls before verifier failure = %#v", f.calls)
+	}
+}
+
+func setupDefinition(name ServiceName) ServiceDefinition { return ServiceDefinition{Name: name} }
+
+type countingInitializer struct{ initializeCalls, verifyCalls int }
+
+func (i *countingInitializer) Initialize(context.Context) error {
+	i.initializeCalls++
+	return nil
+}
+func (i *countingInitializer) Verify(context.Context) error {
+	i.verifyCalls++
+	return nil
+}
+
 type fakeInitializer struct{}
 
 func (fakeInitializer) Initialize(context.Context) error { return nil }

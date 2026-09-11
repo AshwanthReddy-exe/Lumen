@@ -103,13 +103,8 @@ func InstallServices(ctx context.Context, s SupervisorAPI, p ServicePlan) error 
 	if p.Initializer == nil {
 		return errors.New("host initialization not verified")
 	}
-	if p.Initializer != nil {
-		if err := p.Initializer.Initialize(ctx); err != nil {
-			return fmt.Errorf("initialize Host: %w", err)
-		}
-		if err := p.Initializer.Verify(ctx); err != nil {
-			return fmt.Errorf("verify Host state: %w", err)
-		}
+	if err := p.Initializer.Verify(ctx); err != nil {
+		return fmt.Errorf("verify Host state: %w", err)
 	}
 	if err := s.Install(ctx, p); err != nil {
 		return err
