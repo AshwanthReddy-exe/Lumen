@@ -143,7 +143,13 @@ func (r SetupRunner) Run(ctx context.Context, req Request) (Report, error) {
 }
 
 func (r SetupRunner) validateJournalBinding(req Request) error {
-	b := JournalBinding{Profile: req.Profile, Topology: req.Topology, EndpointOriginDigest: req.EndpointOriginDigest, EndpointIdentityDigest: req.EndpointIdentityDigest, ArtifactDigests: req.ArtifactDigests, PlanDigest: planDigest(r.Plan)}
+	artifacts := make(map[string]string, len(req.ArtifactDigests))
+	for k, v := range req.ArtifactDigests {
+		if v != "" {
+			artifacts[k] = v
+		}
+	}
+	b := JournalBinding{Profile: req.Profile, Topology: req.Topology, EndpointOriginDigest: req.EndpointOriginDigest, EndpointIdentityDigest: req.EndpointIdentityDigest, ArtifactDigests: artifacts, PlanDigest: planDigest(r.Plan)}
 	if err := r.Journal.Bind(b); err != nil {
 		return err
 	}
