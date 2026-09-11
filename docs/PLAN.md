@@ -8,7 +8,7 @@ The product north star is a Jarvis-like personal intelligence Space: the user ca
 
 ## Current execution lock
 
-**Milestone 1 is the only active implementation milestone.** The durable Go Space authority, encrypted store, authenticated local control boundary, Host-to-Hermes Runs execution, and most setup primitives exist. The public `lumen setup`, `lumen doctor`, and `lumen service` paths remain stubs; the release manifest is not distributable; clean-install, reboot, real configured-runtime, and rollback evidence remain incomplete. Node transport, web UI, messaging continuity, voice, canonical conversations, and device capabilities are not implemented.
+**Milestone 1 is the only active implementation milestone.** The durable Go Space authority, encrypted store, authenticated local control boundary, Host-to-Hermes Runs execution, and topology/artifact/adoption setup primitives exist. The public `lumen setup`, `lumen doctor`, and `lumen service` paths remain stubs; the release manifest is not distributable; artifact checksum, clean-install, real configured-runtime, real dual-machine, reboot, and rollback evidence remain incomplete. Node transport, web UI, messaging continuity, voice, canonical conversations, and device capabilities are not implemented. M1 therefore remains active.
 
 The current setup branch must be integrated and verified before product-surface implementation begins. Physical Android, Mac, or iPhone completion is not a prerequisite unless it proves the active milestone's contract.
 
@@ -22,7 +22,7 @@ Every release check records the date, commit, build and dependency versions, top
 | --- | --- | --- |
 | Space authority and encrypted persistence | Implemented and covered by Go tests | Preserve while adding conversations, memory, and node protocol |
 | Host-to-Hermes run execution | Development adapter and recovery path implemented | Real pinned Hermes compatibility and approval evidence |
-| Setup primitives | Planner, journal, artifacts, configuration, adoption, and supervisors implemented | Wire the public orchestration journey |
+| Setup primitives | Planner, journal, topology/artifact contracts, external-adoption persistence, configuration, and supervisors implemented | Wire the public dual-topology orchestration journey |
 | Public `lumen` lifecycle CLI | Contract exists; setup, doctor, and service are stubs | Clean combined Linux/VPS deployment |
 | Distribution | Cross-builds and templates exist; manifest is a fixture | Reproducible integrity-pinned release artifacts |
 | Conversations and memory | Not implemented | Canonical conversation and inspectable-memory nucleus |
@@ -41,32 +41,34 @@ The portable Go domain and encrypted store prove Space creation, identity, capab
 
 **Preserve:** `internal/space`, `internal/store`, public schema discipline, recovery invariants, and negative fixtures.
 
-## Milestone 1 — Reliable combined foundation
+## Milestone 1 — Qualified Host and Hermes foundation
 
 **Status:** active.
 
-**Journey:** install a combined Lumen and Hermes deployment on a clean Linux/VPS environment, reboot it, diagnose it, and complete, approve, cancel, and recover real tasks without manual environment plumbing.
+**Journey:** choose an explicit `combined` Docker deployment or an `external` independently managed Hermes endpoint, set up the Lumen Host, reboot and diagnose the deployment, and complete, approve, cancel, and recover real Host-mediated tasks without manual environment plumbing. The governing [dual-topology design](./superpowers/specs/2026-09-11-milestone-1-dual-topology-design.md) and [implementation plan](./superpowers/plans/2026-09-11-milestone-1-dual-topology-foundation.md) define the contract.
 
 **Deliver:**
 
-1. Connect the public `lumen` CLI to the existing planner, journal, artifact, configuration, Host initialization, supervisor, and validation components.
-2. Implement truthful `lumen setup`, `lumen doctor`, and `lumen service start|stop|restart|status` behavior.
-3. Replace the fixture release manifest with reproducible integrity-pinned Lumen and compatible Hermes artifacts.
-4. Certify configured Hermes capabilities and documented Runs behavior rather than treating an HTTP health response as compatibility.
-5. Add continuous verification for formatting, vet, unit, race, contract, reproducible build, secret scanning, deployment configuration, and clean setup.
-6. Prove interrupted setup, safe rerun, boot restart, failed update, rollback, approval, cancellation, lost event stream, and Host restart recovery.
+1. Connect one public setup runner to the existing planner, journal, artifact, configuration, Host initialization, supervisor, and validation components, persisting topology independently from assurance profile.
+2. In `combined`, own and supervise the Lumen and Hermes artifacts/services in the Docker reference deployment; in `external`, adopt an existing Hermes endpoint and control only the Host.
+3. Certify `HermesRuntimeAdapter v1`, one active runtime binding, capability negotiation, bounded events, exact approvals, cancellation, and honest reconciliation without exposing general Space state.
+4. Make `lumen setup`, `lumen doctor`, and `lumen service start|stop|restart|status` truthful for both topologies, returning only `ready`, `degraded`, or `action_required`.
+5. Replace the fixture release manifest with reproducible integrity-pinned combined inputs and preserve external-adoption identity and credential references without remote mutation.
+6. Add continuous verification for formatting, vet, unit, race, contract, reproducible build, secret scanning, deployment configuration, and clean setup.
+7. Prove interrupted setup, safe rerun, boot restart, failed update, rollback, approval, cancellation, lost event stream, Host/Hermes restart, external outage/recovery, and Host-only external service control.
+8. Record owner evidence for combined and external Linux/VPS topologies, including artifact checksums, real configured-runtime behavior, independent service ownership, reboot, rollback, and canonical state preservation.
 
-macOS and Termux remain supported deployment targets, but physical platform evidence does not block the conversation nucleus. Hardened Termux continues to require an isolated Hermes endpoint.
+macOS and Termux remain supported deployment targets, but physical platform evidence does not block later product work. Hardened Termux continues to require an isolated Hermes endpoint. No local process restart, fake server, fixture manifest, environment marker, or environment variable substitutes for the required evidence.
 
-**Exit:** the combined reference deployment reports `ready`, survives reboot, completes the real Host-to-Hermes journey, rolls back a failed update, and preserves canonical state. See [the foundation gate](./PHASE-2-HOST-HERMES.md).
+**Exit:** both topology gates pass; the combined Docker reference and independently managed external endpoint pass real configured-runtime, artifact checksum, reboot, rollback, recovery, and canonical-state checks; no unresolved Critical or Important finding remains; and evidence is recorded in the format above. Until artifact checksum, real-machine, reboot, and rollback evidence exists, M1 remains active. The exit unlocks M2's feature registry, conversation, and memory nucleus and does not claim node transport, messaging, voice, managed hosting, or earned autonomy. See [the foundation gate](./PHASE-2-HOST-HERMES.md).
 
-## Milestone 2 — Conversation and memory nucleus
+## Milestone 2 — Feature registry, conversation, and memory nucleus
 
 **Journey:** create one Space, talk to Lumen in a responsive web application, retain one useful memory transparently, continue after restart, and inspect or delete what was remembered.
 
 **Deliver:**
 
-1. Add canonical `Conversation`, `Message`, `Participant`, `Surface`, `ContextRecord`, `MemoryProposal`, `RetentionPolicy`, and `ArtifactReference` contracts.
+1. Add the Host-owned feature registry and canonical `Conversation`, `Message`, `Participant`, `Surface`, `ContextRecord`, `MemoryProposal`, `RetentionPolicy`, and `ArtifactReference` contracts.
 2. Map canonical conversations to replaceable Hermes runtime sessions and stream normalized text, tool, approval, usage, artifact, and terminal events.
 3. Project only task-authorized context into Hermes. Accept low-risk memory with provenance and retention; require confirmation for sensitive or consequential memory.
 4. Enforce provider, model, region, retention, locality, cost, and data-class constraints before Hermes routing.
@@ -90,23 +92,24 @@ macOS and Termux remain supported deployment targets, but physical platform evid
 
 **Exit:** pairing, reconnect, duplicate delivery, lost acknowledgement, revocation, stale Host, and malicious capability advertisement tests pass across two independent implementations.
 
-## Milestone 4 — Continuity and first cross-node action
+## Milestone 4 — Hermes plugin and first cross-node action
 
 **Journey:** continue one conversation across web and a lightweight desktop node, ask Lumen to find a permitted document, summarize it, and deliver the result to another surface.
 
 **Deliver:**
 
 1. Ship the first desktop capability node using the public node contract.
-2. Implement `files.search` and `files.read` for owner-selected roots; keep `files.write` a separate later grant.
-3. Reject traversal, symlink escape, path replacement, oversized results, stale resources, and access outside declared roots.
-4. Route authorized file content to Hermes under the task's context policy and preserve a redacted durable receipt.
-5. Add cross-surface handoff, progress, cancellation, approval, and `unknown_outcome` presentation.
+2. Connect the separate narrow Lumen Hermes plugin/broker for typed capability intents and redacted inventory; it must not expose direct Space state or target selection.
+3. Implement `files.search` and `files.read` for owner-selected roots; keep `files.write` a separate later grant.
+4. Reject traversal, symlink escape, path replacement, oversized results, stale resources, and access outside declared roots.
+5. Route authorized file content to Hermes under the task's context policy and preserve a redacted durable receipt.
+6. Add cross-surface handoff, progress, cancellation, approval, and `unknown_outcome` presentation.
 
 **Exit:** the defining continuity-plus-action journey completes within ten minutes of onboarding and fails honestly under node loss, revocation, stale grants, and Hermes interruption.
 
-## Milestone 5 — Jarvis voice and presence
+## Milestone 5 — Jarvis voice, presence, and companions
 
-**Journey:** say the local wake phrase, speak naturally, interrupt Lumen while it responds, follow an action across surfaces, and stop listening immediately.
+**Journey:** say the local wake phrase from a supported voice surface or optional companion, speak naturally, interrupt Lumen while it responds, follow an action across surfaces, and stop listening immediately.
 
 **Deliver:**
 
@@ -115,10 +118,11 @@ macOS and Termux remain supported deployment targets, but physical platform evid
 3. Adopt Hermes voice orchestration and benchmark supported or external STT, TTS, VAD, wake-word, diarization, and interruption components for accuracy, latency, privacy, resources, maintenance, and commercial licensing.
 4. Stream post-activation speech under data-aware provider policy, support barge-in, and propagate one cancellation identity through capture, inference, tools, and playback.
 5. Synchronize the conversation rather than raw audio by default and make listening state unmistakable on every active surface.
+6. Keep the Android desk companion and Mac pet as replaceable clients that expose presence and approval only through Host contracts; neither owns conversation, memory, or runtime state.
 
 **Exit:** network capture proves pre-activation privacy; latency and transcription benchmarks meet the frozen product target; barge-in, locked device, permission revocation, network loss, and cross-surface handoff behave predictably.
 
-## Milestone 6 — Messaging continuity
+## Milestone 6 — Messaging continuity (Hermes gateway cohort)
 
 **Journey:** connect one Hermes-supported messaging account, continue the same Space conversation there, approve a bounded action, and see the result in the web experience.
 
@@ -131,7 +135,7 @@ macOS and Termux remain supported deployment targets, but physical platform evid
 
 **Exit:** web, voice/node, and messaging share one canonical conversation; duplicate delivery does not duplicate effects; disconnect revokes future use; uncertain delivery is visible.
 
-## Milestone 7 — Managed and portable beta
+## Milestone 7 — Managed and portable beta (Hermes deployment cohort)
 
 **Journey:** start with one-click managed Lumen, export the encrypted Space, migrate it to a paid self-hosted combined deployment, and optionally move Hermes to a separate endpoint without changing product behavior.
 
@@ -144,7 +148,7 @@ macOS and Termux remain supported deployment targets, but physical platform evid
 
 **Exit:** all topologies pass the same conformance suite; managed/self-hosted migration preserves identity, conversations, memory, grants, tasks, and audit; a control-plane compromise cannot read canonical content.
 
-## Milestone 8 — Earned autonomy
+## Milestone 8 — Earned autonomy (Hermes automation cohort)
 
 **Journey:** Lumen notices a repeatable pattern, proposes an automation, previews its effects, earns a narrow grant, runs it visibly, and lets the user pause, narrow, or revoke it.
 
@@ -157,7 +161,7 @@ macOS and Termux remain supported deployment targets, but physical platform evid
 
 **Exit:** automation survives restart, never expands its grant, stops through the full child lineage, reports uncertain effects honestly, and can be revoked immediately.
 
-## Milestone 9 — Ecosystem and public launch
+## Milestone 9 — Ecosystem and public launch (Hermes capability cohorts)
 
 **Deliver:**
 

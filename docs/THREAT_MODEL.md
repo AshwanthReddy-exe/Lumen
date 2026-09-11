@@ -27,6 +27,7 @@ The Space owner is the only Space administrative principal. Managed operators an
 | Public protocol and SDK compatibility state | Authenticity, downgrade resistance, fail-closed version negotiation |
 | Commercial entitlement and billing state | Integrity, privacy, separation from Space authority and content |
 | Upstream component registry and artifacts | Provenance, integrity, license compliance, rollback, revocation |
+| Hermes feature registry, runtime profiles, and active-runtime binding | Integrity, provenance, least privilege, compatibility, one-runtime authority |
 
 Availability matters, but it does not override authorization or confidentiality. Lumen may become unavailable rather than fail open.
 
@@ -47,6 +48,7 @@ Availability matters, but it does not override authorization or confidentiality.
 13. **Tenant to tenant:** compute, storage, network identity, caches, logs, backups, queues, metrics, and operator workflows must not mix customer data or authority.
 14. **Public client or integration to protocol endpoint:** version negotiation, manifests, schemas, and SDK behavior are attacker-controlled until authenticated and validated.
 15. **Build and dependency source to release:** Hermes and other upstream source, binaries, containers, plugins, models, skills, and licenses may change or be compromised between qualification and deployment.
+16. **Host feature registry to Hermes runtime/plugin:** discovered features, profiles, plugin intents, and capability metadata are untrusted until the Host certifies and maps them to a task-scoped contract.
 
 Physical compromise of an unlocked node, a compromised operating system, malicious firmware, and denial of service by the network provider cannot be fully prevented by Lumen V1. The product must limit resulting authority, support revocation and recovery, and state these residual risks during setup.
 
@@ -103,6 +105,8 @@ All external content is data, never policy or authority.
 | T-027 | Commercial entitlement bypass grants service, while billing or entitlement failure disables local authority or leaks private activity. | Keep entitlement and billing outside Space authority; use signed, minimal, time-bounded entitlement records with an explicit offline grace policy; never send conversation or capability contents for billing; failure may limit commercial service but cannot corrupt, erase, or silently unlock the Space. | Forge, replay, expire, revoke, and confuse account/tenant entitlement; disconnect billing; inspect billing payloads; verify export and local canonical-state integrity. | Blocking before paid release |
 | T-028 | A compromised, incompatible, abandoned, or improperly licensed upstream component introduces code execution, disclosure, behavioral drift, or unlawful distribution. | Component registry records exact provenance, hashes/signatures, license and hosted-use rights, data access, behavioral compatibility, vulnerabilities, fallback, staged rollout, kill switch, and rollback. Pin qualified artifacts; minimize plugins and transitive access; requalify material changes. | Tampered artifact, dependency confusion, revoked signature, license-policy failure, incompatible Hermes behavior, malicious plugin, vulnerable-version rollback, and kill-switch exercises. | Blocking per component cohort |
 | T-029 | Restricted file access escapes an owner-selected root, follows a malicious link, leaks excessive content, or turns read authority into write/execution authority. | Separate typed search, metadata, read, and write actions; bind grants to canonical owner-selected roots and data limits; resolve and revalidate paths and symlinks on the node; reject traversal, special files, mounts, stale handles, and oversized results; writes require separate authority and atomic/evidence-aware behavior. | Traversal, symlink race, mount escape, case/Unicode confusion, stale path, hard link, special file, oversized/binary content, write-through-read, revocation, and disconnect tests on each supported node OS. | Blocking before file capability ships |
+| T-030 | A Hermes feature, plugin, or discovered capability bypasses its Host profile/task capability and reaches unrelated Space or node authority. | Host-owned deny-by-default feature registry; immutable verifiable profiles; separate narrow plugin/broker; typed intents; no direct state API, self-grant, self-approval, or target selection. | Attempt self-registration, direct state writes, grant/target/context/credential expansion, and unbounded output across every adopted Hermes surface. | Blocking before each Hermes surface ships |
+| T-031 | Multiple Hermes runtimes, stale profiles, or replaced endpoints act concurrently and split task, session, or credential authority. | Bind one active compatibility-certified runtime per Host; persist profile/session and endpoint identity digests; require explicit rebinding or migration; reject stale identity/epoch evidence and automatic failover. | Run concurrent endpoints, replace a runtime, replay stale events, substitute profile/session digests, and restart during rebinding; verify one Host authority and one honest outcome. | Blocking for runtime replacement |
 
 ## Security invariants
 
@@ -121,6 +125,8 @@ All external content is data, never policy or authority.
 - Search or read permission never implies write, execute, broader-root, or cross-node disclosure authority.
 - Commercial entitlement may enable a product service; it cannot mint Space grants or become the only path to owner export and recovery.
 - Protocol compatibility is authenticated and explicit; security-critical behavior never silently downgrades.
+- Hermes features are unavailable until the Host-owned registry certifies them and a profile/task capability bounds their authority.
+- A Host has one active Hermes runtime binding; sessions, profiles, plugins, and workers cannot become a second Space authority.
 
 ## Release-blocking evidence
 
@@ -138,6 +144,7 @@ The following evidence is required before the relevant phase can exit:
 10. Jarvis-experience fixtures prove local pre-activation privacy, impersonation resistance appropriate to action risk, presence minimization, interruption, handoff binding, and permission revocation.
 11. Public protocol and component-registry fixtures prove authenticated negotiation, downgrade rejection, artifact provenance, behavioral compatibility, license approval, staged rollback, and kill switches.
 12. File-capability fixtures prove root confinement, node-local revalidation, bounded disclosure, distinct write authority, revocation, and honest uncertain outcomes.
+13. Hermes registry/profile/plugin fixtures prove feature certification, one active runtime binding, typed intents, and rejection of direct state, grant, target, context, or credential expansion.
 
 Evidence follows the format in [PLAN.md](./PLAN.md#evidence-format) and must use synthetic identifiers and content. Test fixtures must contain no production credentials, personal identifiers, or private context.
 

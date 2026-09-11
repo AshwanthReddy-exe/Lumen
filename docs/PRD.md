@@ -20,10 +20,20 @@ The launch wedge is one conversation that continues across a responsive web appl
 4. **Continuity is canonical.** Web, messaging, voice, and native surfaces share conversations, accepted memory, tasks, and identity rather than creating runtime silos.
 5. **Autonomy is earned.** Lumen may suggest proactively, but execution grows from preview to one-time approval to narrow, inspectable, revocable grants.
 6. **Privacy is structural.** Collect and transmit the minimum context required for one action; pre-activation audio processing stays local with zero outbound audio.
-7. **Hermes comes first for intelligence capabilities.** Adopt, configure, or extend Hermes before evaluating another mature component or building custom infrastructure.
+7. **Hermes is the native intelligence platform, not the Space authority.** Adopt, configure, or extend its full surface through Host-owned profiles and task capabilities before evaluating another mature component or building custom infrastructure.
 8. **Portability is a product right.** Managed and paid self-hosted deployments use the same protocols and encrypted export format.
 9. **Failures are honest.** Unsupported, offline, timed-out, or uncertain work is never represented as completed.
 10. **Journeys organize delivery.** Particular phones, computers, and servers are examples and evidence targets, not roadmap phases.
+
+## Hermes integration boundary
+
+Lumen will reuse Hermes's full native surface—agent loop, model and provider routing, sessions, profiles and personas, tools and toolsets, skills, MCP, browser and computer use, gateways, voice, automation, delegation, workers, remote execution, plugins, and observability—only when a Host-owned feature registry maps a certified feature to an immutable runtime profile and task capability. Discovery is descriptive; it never enables a feature or grants access. These are target integrations, not current availability. See the [Hermes integration research](./research/HERMES-LUMEN-INTEGRATION.md) for the capability matrix and qualification boundary.
+
+The Host has two separate Hermes seams. `HermesRuntimeAdapter v1` is the inbound runtime adapter for one authenticated Hermes endpoint: it negotiates capabilities, submits Host-authorized Runs, consumes one bounded event stream, reconciles status, and treats output as evidence. A separate narrow outbound Lumen Hermes plugin/broker exposes only typed capability intents and redacted inventory; it cannot read or mutate canonical Space state, issue grants, select a node, approve itself, or use the owner control socket.
+
+Each Host binds to one active Hermes runtime. A Hermes session maps to a Host-owned conversation or task and is replaceable; a profile is an immutable digest of approved tools, models/providers, context, budget, deadline, credential handles, and cancellation constraints. `ContextRecord` projections are filtered before serialization, and a runtime's `MemoryProposal` is untrusted until the Host accepts it under provenance, classification, retention, scope, and confirmation rules. For node work, Hermes may propose constraints, but the Host selects the eligible node and the node revalidates the invocation, grant, resource scope, expiry, Host epoch, and local permission.
+
+Milestone 1 offers explicit `combined` and `external` setup choices. Combined owns the Lumen and Hermes artifacts and services in the Docker reference deployment; external adopts an existing independently managed Hermes endpoint and controls only the Host. Both use the same Host-owned task contract and report only `ready`, `degraded`, or `action_required`; topology and assurance remain independent. The [approved dual-topology design](./superpowers/specs/2026-09-11-milestone-1-dual-topology-design.md) defines the evidence required before this milestone can close.
 
 ## Core journeys
 

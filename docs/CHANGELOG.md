@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Reconciled the canonical product, architecture, decisions, threat model, and delivery plan with the approved Lumen-on-Hermes boundary: one Host authority, one active Hermes runtime, a Host-owned feature registry, immutable profiles and task capabilities, separate `HermesRuntimeAdapter v1` and narrow Lumen Hermes plugin seams, canonical conversation/session/context/`MemoryProposal` rules, and Host-selected nodes with node-local revalidation. Milestone 1 remains active because pinned artifact checksum, real-machine, reboot, and rollback evidence is still absent; later Hermes surfaces and M2–M9 journeys remain target behavior, not shipped claims.
+- Defined the Milestone 1 dual-topology contract: combined Docker owns both Lumen and Hermes lifecycle, while external adopts an independently managed Hermes endpoint and controls only the Host. Both paths share Host task semantics and truthful `ready`, `degraded`, and `action_required` outcomes.
 - Reframed Lumen as a proprietary paid personal intelligence Space with public interoperability protocols: one Jarvis-like conversation, inspectable memory, and capability-scoped action across surfaces and nodes.
 - Adopted Hermes-first reuse as a product principle: use Hermes and qualified upstream subsystems before custom development while keeping canonical Space authority, storage, policy, and task truth in Lumen.
 - Replaced device-by-device delivery with a capability-first roadmap covering the reliable combined foundation, conversation and memory, secure node fabric, cross-node action, natural voice and presence, messaging continuity, managed portability, earned autonomy, and ecosystem launch.
