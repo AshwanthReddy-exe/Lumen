@@ -24,7 +24,7 @@ Every submit, approval, and completion carries the current Host epoch and reject
 
 ## Recorded observable success
 
-`tools:space-scenario` creates fake Android, Mac, and iPhone nodes; grants one Mac capability; submits a task; demonstrates `deny`, `ask`, and `allow`; and exits nonzero if a policy or lifecycle invariant fails. Core tests cover policy, idempotency, revocation, exact approval, terminal outcomes, write failure, reopened state, and conservative recovery.
+The historical `tools:space-scenario` runner created fake Android, Mac, and iPhone nodes; granted one Mac capability; submitted a task; demonstrated `deny`, `ask`, and `allow`; and exited nonzero if a policy or lifecycle invariant failed. Historical core tests covered policy, idempotency, revocation, exact approval, terminal outcomes, write failure, reopened state, and conservative recovery. The current production authority is validated by `go test ./internal/space ./internal/store`, including the applicable Space and encrypted-store contract tests.
 
 ## Recovery behavior
 
@@ -36,7 +36,7 @@ The operation ID identifies one startup attempt. Retrying that exact operation r
 
 On write failure, startup remains unavailable and retries from the latest committed state; it must not dispatch work. No retry or target reconciliation is implemented here: unknown outcomes remain terminal pending an explicit evidence-based reconciliation contract.
 
-Validation: `mise run phase1-check` covers mixed lifecycle recovery, Host authorization, Space/epoch mismatches, duplicate startup, key collisions, historical submit replay, late completion, failed writes, reopened state, and a simulated restart in the fake-node scenario.
+Historical validation used the retired `mise run phase1-check` command and removed fake-node scenario paths; it covered mixed lifecycle recovery, Host authorization, Space/epoch mismatches, duplicate startup, key collisions, historical submit replay, late completion, failed writes, reopened state, and a simulated restart. Current production validation uses `go test ./internal/space ./internal/store` and its race-enabled counterpart; these executable checks are the authority for the Go Space and encrypted store.
 
 ## Historical phase boundary
 

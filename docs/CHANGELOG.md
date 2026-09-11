@@ -41,7 +41,7 @@
 - Completed the existing Space-core file split by restoring command, result, and audit definitions.
 
 - Started Phase 1 with a portable in-memory Space core, contract tests, and a fake Android/Mac/iPhone scenario runner.
-- Added `mise run phase1-check` for the core and scenario validation.
+- Historical: added the retired `mise run phase1-check` command for the Kotlin core and scenario validation; current Go authority validation is recorded in `docs/PHASE-1-CONTRACT.md`.
 - Completed Phase 0 with a KMP/native stack decision, privacy-first context defaults, local-only transport, Android Host limits, manual recovery, and four frozen capability contracts.
 - Added `mise run phase0-check` as the reproducible Kotlin/Swift contract baseline.
 - Added production system-design rules for contracts, ownership, recovery, privacy, observability, and change control.
