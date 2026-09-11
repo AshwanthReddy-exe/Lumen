@@ -1,11 +1,14 @@
 package setup
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,6 +16,148 @@ import (
 	"strings"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
+)
+
+func SaveExternalAdoption(path string, adoption ExternalAdoption) error {
+	if !validAdoption(adoption) {
+		return fmt.Errorf("%w: adoption", ErrHermesIncompatible)
+	}
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return fmt.Errorf("%w: target", ErrHermesIncompatible)
+	}
+	parent := filepath.Dir(path)
+	st, err := os.Stat(parent)
+	if err != nil || !st.IsDir() || st.Mode().Perm()&0077 != 0 || !sameOwner(st, uint32(os.Getuid())) {
+		return fmt.Errorf("%w: parent", ErrHermesIncompatible)
+	}
+	if old, err := os.Lstat(path); err == nil && (old.Mode()&0077 != 0 || old.Mode()&os.ModeSymlink != 0 || !old.Mode().IsRegular() || !sameOwner(old, uint32(os.Getuid()))) {
+		return ErrHermesIncompatible
+	}
+	b, err := json.Marshal(adoption)
+	if err != nil {
+		return err
+	}
+	f, err := adoptionCreateTemp(parent, ".adoption-")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if err = f.Chmod(0600); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if _, err = f.Write(append(b, '\n')); err != nil {
+		f.Close()
+		return err
+	}
+	if err = adoptionSyncFile(f); err != nil {
+		f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0600); err != nil {
+		return err
+	}
+	backup := ""
+	if _, err := os.Stat(path); err == nil {
+		backup = path + ".bak"
+		if err := adoptionRemove(backup); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err = adoptionRename(path, backup); err != nil {
+			return err
+		}
+	}
+	if err = adoptionRename(tmp, path); err != nil {
+		if backup != "" {
+			_ = adoptionRename(backup, path)
+			_ = adoptionSyncDirectory(parent)
+		}
+		return err
+	}
+	if err = adoptionSyncDirectory(parent); err != nil {
+		_ = adoptionRemove(path)
+		if backup != "" {
+			_ = adoptionRename(backup, path)
+		}
+		_ = adoptionSyncDirectory(parent)
+		return fmt.Errorf("%w: %v", ErrInstallDurabilityUncertain, err)
+	}
+	if backup != "" {
+		if err := adoptionRemove(backup); err != nil {
+			_ = adoptionRemove(path)
+			_ = adoptionRename(backup, path)
+			_ = adoptionSyncDirectory(parent)
+			return fmt.Errorf("%w: %v", ErrInstallDurabilityUncertain, err)
+		}
+	}
+	return nil
+}
+
+func LoadExternalAdoption(path string) (ExternalAdoption, error) {
+	st, err := os.Lstat(path)
+	if err != nil || !st.Mode().IsRegular() || st.Mode()&0077 != 0 || st.Mode()&os.ModeSymlink != 0 || !sameOwner(st, uint32(os.Getuid())) {
+		return ExternalAdoption{}, ErrHermesIncompatible
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ExternalAdoption{}, err
+	}
+	var a ExternalAdoption
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&a); err != nil {
+		return ExternalAdoption{}, err
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		return ExternalAdoption{}, ErrHermesIncompatible
+	}
+	if !validAdoption(a) {
+		return ExternalAdoption{}, ErrHermesIncompatible
+	}
+	return a, nil
+}
+
+func validAdoption(a ExternalAdoption) bool {
+	u, err := url.Parse(a.Endpoint)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	canonical := strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + strings.TrimRight(u.EscapedPath(), "/")
+	if a.Endpoint != canonical {
+		return false
+	}
+	if !validDigest(a.EndpointOriginDigest) || !validDigest(a.EndpointIdentityDigest) || a.Version == "" {
+		return false
+	}
+	if a.CredentialFile == "" {
+		return false
+	}
+	for _, p := range []string{a.CredentialFile, a.CAFile, a.ClientCertFile, a.ClientKeyFile} {
+		if p == "" {
+			continue
+		}
+		if !filepath.IsAbs(p) || filepath.Clean(p) != p {
+			return false
+		}
+		st, err := os.Lstat(p)
+		if err != nil || !st.Mode().IsRegular() || st.Mode()&os.ModeSymlink != 0 || st.Mode().Perm()&0077 != 0 || !sameOwner(st, uint32(os.Getuid())) {
+			return false
+		}
+	}
+	return true
+}
+
+var (
+	adoptionCreateTemp    = os.CreateTemp
+	adoptionRename        = os.Rename
+	adoptionRemove        = os.Remove
+	adoptionSyncFile      = func(f *os.File) error { return f.Sync() }
+	adoptionSyncDirectory = syncDirectory
 )
 
 var ErrHermesIncompatible = errors.New("Hermes installation is incompatible")

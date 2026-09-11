@@ -13,6 +13,137 @@ import (
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 )
 
+func TestExternalAdoptionSaveLoadIsPrivateAndRedacted(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "adoption.json")
+	if err := os.Chmod(filepath.Dir(p), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cred := filepath.Join(filepath.Dir(p), "credential")
+	if err := os.WriteFile(cred, []byte("opaque"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a := ExternalAdoption{Endpoint: "https://hermes.example", EndpointOriginDigest: "sha256:" + strings.Repeat("a", 64), EndpointIdentityDigest: "sha256:" + strings.Repeat("b", 64), Version: "1.0.0", CredentialFile: "/tmp/credential"}
+	a.CredentialFile = cred
+	if err := SaveExternalAdoption(p, a); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := os.Stat(p)
+	if st.Mode().Perm() != 0600 {
+		t.Fatalf("mode=%o", st.Mode().Perm())
+	}
+	got, err := LoadExternalAdoption(p)
+	if err != nil || got != a {
+		t.Fatalf("got=%#v err=%v", got, err)
+	}
+	b, _ := os.ReadFile(p)
+	if strings.Contains(string(b), "secret") {
+		t.Fatal("secret persisted")
+	}
+}
+
+func TestExternalAdoptionLoadRejectsUnknownAndInvalidJSON(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "adoption.json")
+	os.WriteFile(p, []byte(`{"endpoint":"x","extra":true}`), 0600)
+	if _, err := LoadExternalAdoption(p); err == nil {
+		t.Fatal("accepted invalid record")
+	}
+}
+
+func TestExternalAdoptionLoadRejectsTrailingJSON(t *testing.T) {
+	d := t.TempDir()
+	if err := os.Chmod(d, 0700); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(d, "adoption.json")
+	if err := os.WriteFile(p, []byte(`{} {}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadExternalAdoption(p); err == nil {
+		t.Fatal("accepted trailing JSON")
+	}
+}
+
+func TestExternalAdoptionRequiresCredentialReference(t *testing.T) {
+	a := ExternalAdoption{Endpoint: "https://hermes.example", EndpointOriginDigest: "sha256:" + strings.Repeat("a", 64), EndpointIdentityDigest: "sha256:" + strings.Repeat("b", 64), Version: "1.0.0"}
+	if validAdoption(a) {
+		t.Fatal("accepted adoption without credential reference")
+	}
+}
+
+func TestExternalAdoptionDirectorySyncFailureRestoresPrior(t *testing.T) {
+	d := t.TempDir()
+	if err := os.Chmod(d, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cred := filepath.Join(d, "credential")
+	if err := os.WriteFile(cred, []byte("opaque"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(d, "adoption.json")
+	old := ExternalAdoption{Endpoint: "https://old.example", EndpointOriginDigest: "sha256:" + strings.Repeat("a", 64), EndpointIdentityDigest: "sha256:" + strings.Repeat("b", 64), Version: "1.0.0", CredentialFile: cred}
+	if err := SaveExternalAdoption(p, old); err != nil {
+		t.Fatal(err)
+	}
+	originalSync := adoptionSyncDirectory
+	calls := 0
+	adoptionSyncDirectory = func(path string) error {
+		calls++
+		if calls == 1 {
+			return errors.New("injected sync failure")
+		}
+		return originalSync(path)
+	}
+	t.Cleanup(func() { adoptionSyncDirectory = originalSync })
+	next := old
+	next.Endpoint = "https://new.example"
+	if err := SaveExternalAdoption(p, next); !errors.Is(err, ErrInstallDurabilityUncertain) {
+		t.Fatalf("got %v", err)
+	}
+	got, err := LoadExternalAdoption(p)
+	if err != nil || got != old {
+		t.Fatalf("prior record not restored: got=%#v err=%v", got, err)
+	}
+}
+
+func TestExternalAdoptionRenameFailureRestoresPriorDurably(t *testing.T) {
+	d := t.TempDir()
+	if err := os.Chmod(d, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cred := filepath.Join(d, "credential")
+	if err := os.WriteFile(cred, []byte("opaque"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(d, "adoption.json")
+	old := ExternalAdoption{Endpoint: "https://old.example", EndpointOriginDigest: "sha256:" + strings.Repeat("a", 64), EndpointIdentityDigest: "sha256:" + strings.Repeat("b", 64), Version: "1.0.0", CredentialFile: cred}
+	if err := SaveExternalAdoption(p, old); err != nil {
+		t.Fatal(err)
+	}
+	originalRename, originalSync := adoptionRename, adoptionSyncDirectory
+	renames, syncs := 0, 0
+	adoptionRename = func(oldPath, newPath string) error {
+		renames++
+		if renames == 2 {
+			return errors.New("injected rename failure")
+		}
+		return originalRename(oldPath, newPath)
+	}
+	adoptionSyncDirectory = func(path string) error { syncs++; return originalSync(path) }
+	t.Cleanup(func() { adoptionRename, adoptionSyncDirectory = originalRename, originalSync })
+	next := old
+	next.Endpoint = "https://new.example"
+	if err := SaveExternalAdoption(p, next); err == nil {
+		t.Fatal("expected rename failure")
+	}
+	got, err := LoadExternalAdoption(p)
+	if err != nil || got != old {
+		t.Fatalf("prior record not restored: got=%#v err=%v", got, err)
+	}
+	if syncs == 0 {
+		t.Fatal("restored directory was not synced")
+	}
+}
+
 type scalarSysFileInfo struct{}
 
 func (scalarSysFileInfo) Name() string       { return "hermes" }
