@@ -113,3 +113,48 @@ func TestDoctorPublishesNormalizedDeploymentStateOnly(t *testing.T) {
 		t.Fatal("Hermes-discovered feature became public Lumen state")
 	}
 }
+
+func validExternalEvidence() DoctorEvidence {
+	return DoctorEvidence{Topology: TopologyExternal, PreviouslyValidated: true, EndpointIdentityMatch: true, AuthenticationValid: true, CompatibilityValid: true, BindingMatch: true, Stage: Validated, HostReady: true, HostState: StateRunning, HermesReady: true, HermesState: StateRunning, SupervisorReady: true, SupervisorState: StateRunning, BootReady: true, BootState: StateRunning, CredentialsReady: true, IsolationReady: true, ArtifactsReady: true, ArtifactState: "installed"}
+}
+
+func TestDoctorPreviouslyValidatedTemporaryExternalOutageIsDegraded(t *testing.T) {
+	e := validExternalEvidence()
+	e.HermesReady = false
+	e.HermesState = "unavailable"
+	e.HermesError = errors.New("temporary outage")
+	if r := (Doctor{Observe: func(context.Context) DoctorEvidence { return e }}).Check(context.Background()); r.Outcome != Degraded {
+		t.Fatalf("got %#v", r)
+	}
+}
+
+func TestDoctorExternalIdentityAuthCompatibilityAndBindingMismatchRequireAction(t *testing.T) {
+	for _, name := range []string{"identity", "auth", "compatibility", "binding"} {
+		t.Run(name, func(t *testing.T) {
+			e := validExternalEvidence()
+			switch name {
+			case "identity":
+				e.EndpointIdentityMatch = false
+			case "auth":
+				e.AuthenticationValid = false
+			case "compatibility":
+				e.CompatibilityValid = false
+			case "binding":
+				e.BindingMatch = false
+			}
+			if r := (Doctor{Observe: func(context.Context) DoctorEvidence { return e }}).Check(context.Background()); r.Outcome != ActionRequired {
+				t.Fatalf("got %#v", r)
+			}
+		})
+	}
+}
+
+func TestDoctorExternalChecksDoNotInvokeContextBeforeIdentityBinding(t *testing.T) {
+	called := false
+	e := validExternalEvidence()
+	e.EndpointIdentityMatch = false
+	r := (Doctor{Observe: func(ctx context.Context) DoctorEvidence { called = true; return e }}).Check(context.Background())
+	if r.Outcome != ActionRequired || !called {
+		t.Fatalf("unexpected %#v called=%v", r, called)
+	}
+}

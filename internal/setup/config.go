@@ -10,11 +10,13 @@ import (
 )
 
 type ConfigRequest struct {
-	DataDir, HermesDir                                                         string
-	Profile                                                                    Profile
-	HermesBaseURL                                                              string
-	HermesBearer, HermesCA, HermesClientCert, HermesClientKey, HermesServerPin string
-	Journal                                                                    *Journal
+	DataDir, HermesDir                                                            string
+	Profile                                                                       Profile
+	HermesBaseURL                                                                 string
+	HermesBearer, HermesCA, HermesClientCert, HermesClientKey, HermesServerPin    string
+	Journal                                                                       *Journal
+	Topology                                                                      Topology
+	HermesCredentialFile, HermesCAFile, HermesClientCertFile, HermesClientKeyFile string
 }
 type ConfigPaths struct{ Lumen, Hermes, Bearer, CA, ClientCert, ClientKey string }
 
@@ -25,11 +27,17 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 	if r.Profile != Development && r.Profile != PersonalAlpha && r.Profile != Hardened {
 		return ConfigPaths{}, errors.New("invalid profile")
 	}
+	if r.Topology == "" {
+		r.Topology = TopologyCombined
+	}
+	if err := r.Topology.Validate(); err != nil {
+		return ConfigPaths{}, err
+	}
 	u, err := url.Parse(r.HermesBaseURL)
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return ConfigPaths{}, errors.New("invalid Hermes endpoint")
 	}
-	if r.Profile == Hardened && (u.Scheme != "https" || strings.HasPrefix(u.Hostname(), "127.") || u.Hostname() == "localhost" || u.Hostname() == "::1" || r.HermesServerPin == "" || r.HermesCA == "" || r.HermesClientCert == "" || r.HermesClientKey == "") {
+	if r.Profile == Hardened && (u.Scheme != "https" || strings.HasPrefix(u.Hostname(), "127.") || u.Hostname() == "localhost" || u.Hostname() == "::1" || r.HermesServerPin == "" || (r.Topology != TopologyExternal && (r.HermesCA == "" || r.HermesClientCert == "" || r.HermesClientKey == ""))) {
 		return ConfigPaths{}, errors.New("hardened configuration requires non-loopback TLS identity")
 	}
 	if err := safeDir(r.DataDir); err != nil {
@@ -50,7 +58,23 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 		}
 	}
 	p := ConfigPaths{Lumen: filepath.Join(r.DataDir, "lumen.json"), Hermes: filepath.Join(r.HermesDir, "hermes.json"), Bearer: filepath.Join(r.HermesDir, "hermes.token"), CA: filepath.Join(r.HermesDir, "ca.pem"), ClientCert: filepath.Join(r.HermesDir, "client.crt"), ClientKey: filepath.Join(r.HermesDir, "client.key")}
-	for _, item := range []struct{ path, body string }{{p.Bearer, r.HermesBearer}, {p.CA, r.HermesCA}, {p.ClientCert, r.HermesClientCert}, {p.ClientKey, r.HermesClientKey}} {
+	if r.Topology == TopologyExternal {
+		if r.HermesCredentialFile == "" {
+			return ConfigPaths{}, errors.New("external topology requires credential reference")
+		}
+		if r.Profile == Hardened {
+			if err := validateEndpointFiles(HermesCandidate{CredentialFile: r.HermesCredentialFile, CAFile: r.HermesCAFile, ClientCertFile: r.HermesClientCertFile, ClientKeyFile: r.HermesClientKeyFile, OwnerKnown: true, OwnerUID: uint32(os.Getuid())}); err != nil {
+				return ConfigPaths{}, errors.New("hardened external configuration requires valid credential references")
+			}
+		}
+		p.Bearer, p.CA, p.ClientCert, p.ClientKey = r.HermesCredentialFile, r.HermesCAFile, r.HermesClientCertFile, r.HermesClientKeyFile
+		p.Hermes = ""
+	}
+	items := []struct{ path, body string }{{p.Bearer, r.HermesBearer}, {p.CA, r.HermesCA}, {p.ClientCert, r.HermesClientCert}, {p.ClientKey, r.HermesClientKey}}
+	if r.Topology == TopologyExternal {
+		items = nil
+	}
+	for _, item := range items {
 		path, body := item.path, item.body
 		if body != "" {
 			if err := writePrivate(path, []byte(body)); err != nil {
@@ -68,8 +92,10 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 	if err := writeJSON(p.Lumen, lumen); err != nil {
 		return ConfigPaths{}, err
 	}
-	if err := writeJSON(p.Hermes, hermesCfg); err != nil {
-		return ConfigPaths{}, err
+	if r.Topology != TopologyExternal {
+		if err := writeJSON(p.Hermes, hermesCfg); err != nil {
+			return ConfigPaths{}, err
+		}
 	}
 	if r.Journal != nil {
 		if err := r.Journal.Record(StageEvidence{Stage: ConfigurationReady, InputDigest: "sha256:" + strings.Repeat("2", 64)}); err != nil {

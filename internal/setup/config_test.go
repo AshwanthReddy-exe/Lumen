@@ -82,3 +82,43 @@ func TestWriteConfigRejectsSymlinkedIntermediateExistingFinal(t *testing.T) {
 		t.Fatal("expected intermediate symlink rejection")
 	}
 }
+
+func TestExternalWriteConfigDoesNotWriteHermesOwnedConfigOrSecrets(t *testing.T) {
+	d, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cred := filepath.Join(d, "external-token")
+	if err := os.WriteFile(cred, []byte("remote-secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := WriteConfig(ConfigRequest{DataDir: filepath.Join(d, "lumen"), HermesDir: filepath.Join(d, "hermes"), Profile: Development, Topology: TopologyExternal, HermesBaseURL: "https://hermes.example", HermesCredentialFile: cred, HermesCAFile: filepath.Join(d, "ca"), HermesClientCertFile: filepath.Join(d, "cert"), HermesClientKeyFile: filepath.Join(d, "key")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(p.Hermes); !os.IsNotExist(err) {
+		t.Fatalf("external topology wrote Hermes config: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(d, "hermes", "hermes.token")); !os.IsNotExist(err) {
+		t.Fatalf("external topology wrote secret: %v", err)
+	}
+	b, err := os.ReadFile(p.Lumen)
+	if err != nil || strings.Contains(string(b), "remote-secret") {
+		t.Fatalf("secret leaked: %s (%v)", b, err)
+	}
+}
+
+func TestExternalWriteConfigRejectsWrongOwnerReference(t *testing.T) {
+	d, _ := filepath.EvalSymlinks(t.TempDir())
+	cred := filepath.Join(d, "token")
+	if err := os.WriteFile(cred, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chown(cred, os.Getuid()+1, os.Getgid()); err != nil {
+		t.Skip("chown unavailable")
+	}
+	_, err := WriteConfig(ConfigRequest{DataDir: filepath.Join(d, "lumen"), HermesDir: filepath.Join(d, "hermes"), Profile: Development, Topology: TopologyExternal, HermesBaseURL: "https://hermes.example", HermesCredentialFile: cred})
+	if err == nil {
+		t.Fatal("wrong-owner reference accepted")
+	}
+}

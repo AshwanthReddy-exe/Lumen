@@ -6,25 +6,31 @@ import (
 )
 
 type DoctorEvidence struct {
-	Stage            Stage
-	Profile          Profile
-	Platform         Platform
-	LumenVersion     string
-	HostReady        bool
-	HostState        string
-	HermesReady      bool
-	HermesState      string
-	HermesVersion    string
-	ArtifactsReady   bool
-	ArtifactState    string
-	SupervisorState  string
-	BootState        string
-	SupervisorReady  bool
-	BootReady        bool
-	CredentialsReady bool
-	IsolationReady   bool
-	HostError        error
-	HermesError      error
+	Stage                 Stage
+	Profile               Profile
+	Platform              Platform
+	LumenVersion          string
+	HostReady             bool
+	HostState             string
+	HermesReady           bool
+	HermesState           string
+	HermesVersion         string
+	ArtifactsReady        bool
+	ArtifactState         string
+	SupervisorState       string
+	BootState             string
+	SupervisorReady       bool
+	BootReady             bool
+	CredentialsReady      bool
+	IsolationReady        bool
+	HostError             error
+	HermesError           error
+	Topology              Topology
+	PreviouslyValidated   bool
+	EndpointIdentityMatch bool
+	AuthenticationValid   bool
+	CompatibilityValid    bool
+	BindingMatch          bool
 }
 
 type Doctor struct {
@@ -39,6 +45,12 @@ func (d Doctor) Check(ctx context.Context) Report {
 	}
 	e := d.Observe(ctx)
 	r := Report{States: map[string]string{}}
+	r.Topology = e.Topology
+	externalMismatch := e.Topology == TopologyExternal && ((!e.EndpointIdentityMatch && e.PreviouslyValidated) || (!e.AuthenticationValid && e.PreviouslyValidated) || (!e.CompatibilityValid && e.PreviouslyValidated) || (!e.BindingMatch && e.PreviouslyValidated))
+	if externalMismatch {
+		r.Outcome = ActionRequired
+		r.Actions = append(r.Actions, Action{Code: "hermes_binding_mismatch"})
+	}
 	if e.Stage == "" {
 		r.Stage = Validated
 	} else if validStage(e.Stage) {
@@ -131,7 +143,7 @@ func (d Doctor) Check(ctx context.Context) Report {
 		r.Actions = append(r.Actions, Action{Code: "host_unready"})
 		r.Outcome = ActionRequired
 	}
-	if e.HermesError != nil {
+	if e.HermesError != nil && !externalMismatch {
 		e.HermesReady = false
 		if r.Outcome == "" {
 			r.Outcome = Degraded
