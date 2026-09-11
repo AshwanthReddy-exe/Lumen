@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed for owner review on 2026-09-11. This design refines Milestone 1 in [PLAN.md](../../PLAN.md) so Lumen supports both a combined deployment and an independently managed external Hermes deployment. It preserves the approved milestone lifecycle in [the milestone-driven development design](./2026-09-11-milestone-driven-development-design.md).
+Approved by the owner on 2026-09-11. This design refines Milestone 1 in [PLAN.md](../../PLAN.md) so Lumen supports both a combined deployment and an independently managed external Hermes deployment. It preserves the approved milestone lifecycle in [the milestone-driven development design](./2026-09-11-milestone-driven-development-design.md).
 
 ## Purpose
 
