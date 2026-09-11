@@ -18,12 +18,10 @@ type PlanResult struct {
 	LumenVersion        string
 	HermesVersion       string
 	Topology            Topology
-	// HermesAdopted is retained for source compatibility; Topology is authoritative.
-	HermesAdopted  bool
-	IsolationReady bool
-	Outcome        Outcome
-	Actions        []Action
-	NextStage      Stage
+	IsolationReady      bool
+	Outcome             Outcome
+	Actions             []Action
+	NextStage           Stage
 }
 
 type Probe interface {
@@ -92,7 +90,8 @@ func Plan(ctx context.Context, req Request, probe Probe) (PlanResult, error) {
 		return PlanResult{}, err
 	}
 	_ = adopted
-	result := PlanResult{Profile: req.Profile, Topology: req.Topology, Platform: platform, Architecture: arch, Supervisor: sup, SupervisorAvailable: available, SetupDir: setupDir, LumenVersion: lumenVersion, HermesVersion: hermesVersion, HermesAdopted: adopted, IsolationReady: isolation, Outcome: Ready, NextStage: Detected}
+	_ = adopted
+	result := PlanResult{Profile: req.Profile, Topology: req.Topology, Platform: platform, Architecture: arch, Supervisor: sup, SupervisorAvailable: available, SetupDir: setupDir, LumenVersion: lumenVersion, HermesVersion: hermesVersion, IsolationReady: isolation, Outcome: Ready, NextStage: Detected}
 	if req.Profile == Hardened && !result.IsolationReady {
 		return PlanResult{}, ErrIsolationUnavailable
 	}

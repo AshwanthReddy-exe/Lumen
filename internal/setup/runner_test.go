@@ -176,3 +176,33 @@ func TestRunnerRejectsChangedPlanBinding(t *testing.T) {
 		t.Fatalf("report=%#v err=%v", report, err)
 	}
 }
+
+func TestRunnerRejectsChangedTopologyBeforeMutation(t *testing.T) {
+	j, _ := NewJournal(t.TempDir())
+	calls := 0
+	r := Runner{Journal: j, RunStage: func(context.Context, Stage) error { calls++; return nil }, Verify: func(context.Context, Stage) error { return nil }}
+	if _, err := r.Run(context.Background(), Request{Profile: Development, Topology: TopologyCombined}); err != nil {
+		t.Fatal(err)
+	}
+	calls = 0
+	report, err := r.Run(context.Background(), Request{Profile: Development, Topology: TopologyExternal})
+	if err == nil || report.Actions[0].Code != "setup_identity_mismatch" || calls != 0 {
+		t.Fatalf("report=%#v err=%v calls=%d", report, err, calls)
+	}
+}
+
+func TestRunnerRejectsChangedEndpointIdentityBeforeMutation(t *testing.T) {
+	j, _ := NewJournal(t.TempDir())
+	calls := 0
+	r := Runner{Journal: j, RunStage: func(context.Context, Stage) error { calls++; return nil }, Verify: func(context.Context, Stage) error { return nil }}
+	base := Request{Profile: Development, Topology: TopologyExternal, EndpointIdentityDigest: "sha256:" + strings.Repeat("a", 64)}
+	if _, err := r.Run(context.Background(), base); err != nil {
+		t.Fatal(err)
+	}
+	calls = 0
+	base.EndpointIdentityDigest = "sha256:" + strings.Repeat("b", 64)
+	report, err := r.Run(context.Background(), base)
+	if err == nil || report.Actions[0].Code != "setup_identity_mismatch" || calls != 0 {
+		t.Fatalf("report=%#v err=%v calls=%d", report, err, calls)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"time"
 )
 
@@ -41,7 +42,9 @@ func NewJournal(d string) (*Journal, error) {
 	j := &Journal{dir: d, path: filepath.Join(d, "setup-journal.json"), bindingPath: filepath.Join(d, "setup-binding.json"), syncParent: syncDirectory}
 	if b, e := os.ReadFile(j.bindingPath); e == nil {
 		var binding JournalBinding
-		if json.Unmarshal(b, &binding) != nil {
+		dec := json.NewDecoder(bytes.NewReader(b))
+		dec.DisallowUnknownFields()
+		if dec.Decode(&binding) != nil || binding.Topology.Validate() != nil || !validProfile(binding.Profile) || !validDigest(binding.PlanDigest) {
 			return nil, ErrInvalidJournal
 		}
 		j.binding = &binding
@@ -67,8 +70,13 @@ func NewJournal(d string) (*Journal, error) {
 	return j, validateEvidence(j.evidence)
 }
 func (j *Journal) Bind(b JournalBinding) error {
-	if !validProfile(b.Profile) || b.Topology.Validate() != nil || !validDigest(b.PlanDigest) {
+	if !validProfile(b.Profile) || b.Topology.Validate() != nil || !validDigest(b.PlanDigest) || (b.EndpointOriginDigest != "" && !validDigest(b.EndpointOriginDigest)) || (b.EndpointIdentityDigest != "" && !validDigest(b.EndpointIdentityDigest)) {
 		return ErrInvalidJournal
+	}
+	for _, d := range b.ArtifactDigests {
+		if !validDigest(d) {
+			return ErrInvalidJournal
+		}
 	}
 	if j.binding != nil {
 		if !bindingsEqual(*j.binding, b) {
@@ -80,8 +88,29 @@ func (j *Journal) Bind(b JournalBinding) error {
 		return err
 	}
 	data, _ := json.Marshal(b)
-	if err := os.WriteFile(j.bindingPath, data, 0600); err != nil {
+	tmp, err := os.CreateTemp(j.dir, ".binding-")
+	if err != nil {
 		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if err = tmp.Chmod(0600); err == nil {
+		_, err = tmp.Write(data)
+	}
+	if err == nil {
+		err = tmp.Sync()
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err = os.Rename(name, j.bindingPath); err != nil {
+		return err
+	}
+	if err = j.syncParent(j.dir); err != nil {
+		return fmt.Errorf("binding durability: %w", err)
 	}
 	j.binding = &b
 	return nil
@@ -90,7 +119,20 @@ func bindingsEqual(a, b JournalBinding) bool {
 	if a.Profile != b.Profile || a.Topology != b.Topology || a.EndpointOriginDigest != b.EndpointOriginDigest || a.EndpointIdentityDigest != b.EndpointIdentityDigest || a.PlanDigest != b.PlanDigest {
 		return false
 	}
-	return fmt.Sprint(a.ArtifactDigests) == fmt.Sprint(b.ArtifactDigests)
+	if len(a.ArtifactDigests) != len(b.ArtifactDigests) {
+		return false
+	}
+	keys := make([]string, 0, len(a.ArtifactDigests))
+	for k := range a.ArtifactDigests {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if a.ArtifactDigests[k] != b.ArtifactDigests[k] {
+			return false
+		}
+	}
+	return true
 }
 func (j *Journal) Next() Stage {
 	if len(j.evidence) < len(stageOrder) {
