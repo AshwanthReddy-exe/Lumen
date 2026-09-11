@@ -100,7 +100,7 @@ func TestCLIProcessLifecycleAndBoundary(t *testing.T) {
 	select {
 	case err := <-ready:
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%v; stderr=%s", err, stderr.String())
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("serve did not become ready")
@@ -169,6 +169,39 @@ func TestCLIUsagePrecedesConfigurationFailure(t *testing.T) {
 	t.Setenv("LUMEN_DATA_DIR", "")
 	if code := run([]string{"serve", "extra"}); code != 2 {
 		t.Fatalf("code=%d, want usage exit 2", code)
+	}
+}
+
+func TestCLIDoctorReportsDeploymentProfileWithoutRunningHost(t *testing.T) {
+	bin := buildHostBinary(t)
+	dataDir := t.TempDir()
+	cfg := []string{
+		"LUMEN_DATA_DIR=" + dataDir,
+		"LUMEN_HERMES_BASE_URL=http://127.0.0.1:8642",
+		"LUMEN_HERMES_PROFILE=development",
+		"LUMEN_HERMES_BEARER_FILE=" + filepath.Join(dataDir, "hermes.token"),
+	}
+	out, code := runHost(t, bin, cfg, "doctor")
+	if code != 0 {
+		t.Fatalf("doctor: code=%d output=%q", code, out)
+	}
+	var doctor map[string]any
+	if err := json.Unmarshal([]byte(out), &doctor); err != nil {
+		t.Fatalf("doctor output is not JSON: %q: %v", out, err)
+	}
+	for key, want := range map[string]any{
+		"status":             "ok",
+		"deployment_profile": "development",
+		"host_initialized":   false,
+		"hermes_profile":     "development",
+		"hermes_configured":  true,
+	} {
+		if doctor[key] != want {
+			t.Fatalf("doctor[%s]=%#v, want %#v in %#v", key, doctor[key], want, doctor)
+		}
+	}
+	if strings.Contains(out, "hermes.token") {
+		t.Fatalf("doctor leaked secret path: %q", out)
 	}
 }
 

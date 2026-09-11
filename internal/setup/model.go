@@ -41,8 +41,26 @@ const (
 	Hardened      Profile = "hardened"
 )
 
+type Topology string
+
+const (
+	TopologyCombined Topology = "combined"
+	TopologyExternal Topology = "external"
+)
+
+func (t Topology) Validate() error {
+	if t != TopologyCombined && t != TopologyExternal {
+		return fmt.Errorf("unsupported topology %q", t)
+	}
+	return nil
+}
+
 type Request struct {
-	Profile Profile `json:"profile"`
+	Profile                Profile           `json:"profile"`
+	Topology               Topology          `json:"topology"`
+	EndpointOriginDigest   string            `json:"-"`
+	EndpointIdentityDigest string            `json:"-"`
+	ArtifactDigests        map[string]string `json:"-"`
 }
 
 type Platform string
@@ -63,9 +81,11 @@ const (
 )
 
 type StageEvidence struct {
-	Stage       Stage  `json:"stage"`
-	InputDigest string `json:"inputDigest"`
-	CompletedAt int64  `json:"completedAt"`
+	Stage       Stage   `json:"stage"`
+	InputDigest string  `json:"inputDigest"`
+	Profile     Profile `json:"profile,omitempty"`
+	PlanDigest  string  `json:"planDigest,omitempty"`
+	CompletedAt int64   `json:"completedAt"`
 }
 
 type Action struct {
@@ -74,8 +94,14 @@ type Action struct {
 }
 
 type Report struct {
-	Outcome          Outcome  `json:"outcome"`
-	Stage            Stage    `json:"stage"`
-	Actions          []Action `json:"actions,omitempty"`
-	AvailableInBlock int      `json:"availableInBlock,omitempty"`
+	Outcome          Outcome           `json:"outcome"`
+	Stage            Stage             `json:"stage"`
+	Profile          Profile           `json:"profile,omitempty"`
+	Topology         Topology          `json:"topology,omitempty"`
+	Platform         Platform          `json:"platform,omitempty"`
+	LumenVersion     string            `json:"lumenVersion,omitempty"`
+	HermesVersion    string            `json:"hermesVersion,omitempty"`
+	States           map[string]string `json:"states,omitempty"`
+	Actions          []Action          `json:"actions,omitempty"`
+	AvailableInBlock int               `json:"availableInBlock,omitempty"`
 }

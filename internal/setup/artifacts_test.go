@@ -69,6 +69,10 @@ func TestInstallPreservesExistingOnFailure(t *testing.T) {
 		t.Fatal(string(b))
 	}
 }
+
+func TestFailedReplacementPreservesInstalledArtifact(t *testing.T) {
+	TestInstallRenameFailureRestoresPrior(t)
+}
 func TestStageCancellation(t *testing.T) {
 	d := t.TempDir()
 	i := Installer{StageDir: d}
@@ -95,6 +99,23 @@ func TestStageRejectsShortAndOversized(t *testing.T) {
 	over := testArtifact("abc")
 	if err := mustStage(i, over, "abcd"); !errors.Is(err, ErrSizeMismatch) {
 		t.Fatal(err)
+	}
+}
+
+func TestVerifyArtifactUsesManifestDigestWithoutMutation(t *testing.T) {
+	d := t.TempDir()
+	body := "verified"
+	a := testArtifact(body)
+	p := filepath.Join(d, a.Name)
+	if err := os.WriteFile(p, []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyArtifact(p, a); err != nil {
+		t.Fatal(err)
+	}
+	a.SHA256 = "sha256:" + strings.Repeat("0", 64)
+	if err := VerifyArtifact(p, a); !errors.Is(err, ErrDigestMismatch) {
+		t.Fatalf("mismatch=%v", err)
 	}
 }
 
@@ -189,9 +210,40 @@ func TestInstallSyncFailureIsUncertain(t *testing.T) {
 	if !errors.Is(err, ErrInstallDurabilityUncertain) {
 		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(filepath.Join(i.InstallDir, "lumen"))
-	if string(b) != "new" {
-		t.Fatalf("disk=%q", b)
+	p := filepath.Join(i.InstallDir, "lumen")
+	b, readErr := os.ReadFile(p)
+	if !os.IsNotExist(readErr) || string(b) != "" {
+		t.Fatalf("disk=%q err=%v", b, readErr)
+	}
+}
+
+func TestInstallSyncFailureAfterRenameRestoresPrior(t *testing.T) {
+	d := t.TempDir()
+	i := Installer{StageDir: filepath.Join(d, "stage"), InstallDir: filepath.Join(d, "bin")}
+	os.MkdirAll(i.InstallDir, 0700)
+	p := filepath.Join(i.InstallDir, "lumen")
+	if err := os.WriteFile(p, []byte("old"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	i.SyncDir = func(string) error {
+		calls++
+		if calls == 2 {
+			return errors.New("sync after rename")
+		}
+		return nil
+	}
+	a := testArtifact("new")
+	err := i.Install(context.Background(), a, strings.NewReader("new"))
+	if !errors.Is(err, ErrInstallDurabilityUncertain) {
+		t.Fatal(err)
+	}
+	b, readErr := os.ReadFile(p)
+	if readErr != nil || string(b) != "old" {
+		t.Fatalf("target=%q err=%v", b, readErr)
+	}
+	if _, err := os.Stat(p + ".rollback"); !os.IsNotExist(err) {
+		t.Fatalf("rollback remains: %v", err)
 	}
 }
 

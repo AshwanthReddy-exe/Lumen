@@ -17,7 +17,7 @@ type PlanResult struct {
 	SetupDir            string
 	LumenVersion        string
 	HermesVersion       string
-	HermesAdopted       bool
+	Topology            Topology
 	IsolationReady      bool
 	Outcome             Outcome
 	Actions             []Action
@@ -54,6 +54,9 @@ func Plan(ctx context.Context, req Request, probe Probe) (PlanResult, error) {
 	if req.Profile != Development && req.Profile != PersonalAlpha && req.Profile != Hardened {
 		return PlanResult{}, fmt.Errorf("unsupported profile %q", req.Profile)
 	}
+	if err := req.Topology.Validate(); err != nil {
+		return PlanResult{}, err
+	}
 	goos := probe.GOOS()
 	if err := check(); err != nil {
 		return PlanResult{}, err
@@ -86,7 +89,9 @@ func Plan(ctx context.Context, req Request, probe Probe) (PlanResult, error) {
 	if err := check(); err != nil {
 		return PlanResult{}, err
 	}
-	result := PlanResult{Profile: req.Profile, Platform: platform, Architecture: arch, Supervisor: sup, SupervisorAvailable: available, SetupDir: setupDir, LumenVersion: lumenVersion, HermesVersion: hermesVersion, HermesAdopted: adopted, IsolationReady: isolation, Outcome: Ready, NextStage: Detected}
+	_ = adopted
+	_ = adopted
+	result := PlanResult{Profile: req.Profile, Topology: req.Topology, Platform: platform, Architecture: arch, Supervisor: sup, SupervisorAvailable: available, SetupDir: setupDir, LumenVersion: lumenVersion, HermesVersion: hermesVersion, IsolationReady: isolation, Outcome: Ready, NextStage: Detected}
 	if req.Profile == Hardened && !result.IsolationReady {
 		return PlanResult{}, ErrIsolationUnavailable
 	}

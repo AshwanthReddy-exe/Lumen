@@ -1,0 +1,39 @@
+#!/bin/zsh
+set -euo pipefail
+
+repo_root=${LUMEN_REPO_ROOT:-$(cd "${0:A:h}/.." && pwd)}
+sdk_root=${ANDROID_HOME:-$HOME/Library/Android/sdk}
+adb="$sdk_root/platform-tools/adb"
+remote_dir=/sdcard/Download/lumen
+bearer_file=${LUMEN_HERMES_BEARER_FILE:-$HOME/.local/share/lumen/hermes.token}
+
+[[ -x "$adb" ]] || { print -u2 "adb not found at $adb"; exit 1; }
+[[ -d "$sdk_root" ]] || { print -u2 "Android SDK not found at $sdk_root"; exit 1; }
+[[ -s "$bearer_file" ]] || { print -u2 "Hermes bearer token not found at $bearer_file"; exit 1; }
+export ANDROID_HOME="$sdk_root"
+
+"$adb" wait-for-device
+[[ $("$adb" get-state) == device ]] || { print -u2 "no authorized ADB device"; exit 1; }
+("$adb" reverse tcp:8642 tcp:8642)
+(cd "$repo_root" && mise run phase2-check)
+"$adb" shell "mkdir -p $remote_dir"
+"$adb" push "$repo_root/build/lumen-host/lumen-host-android-arm64" "$remote_dir/lumen-host-android-arm64"
+"$adb" push "$repo_root/deploy/termux/install-lumen-host" "$remote_dir/install-lumen-host"
+"$adb" push "$repo_root/deploy/termux/run" "$remote_dir/run"
+"$adb" push "$repo_root/deploy/termux/finish" "$remote_dir/finish"
+config_file=$(mktemp)
+trap 'rm -f "$config_file"' EXIT
+cat >"$config_file" <<'EOF'
+LUMEN_DATA_DIR=$HOME/.local/share/lumen
+LUMEN_SOCKET_PATH=$HOME/.local/share/lumen/host.sock
+LUMEN_OPERATOR_CREDENTIAL_FILE=$HOME/.local/share/lumen/operator.credential
+LUMEN_HERMES_PROFILE=development
+LUMEN_HERMES_BASE_URL=http://127.0.0.1:8642
+LUMEN_HERMES_BEARER_FILE=$HOME/.local/share/lumen/hermes.token
+EOF
+chmod 600 "$config_file"
+"$adb" push "$config_file" "$remote_dir/host.env"
+"$adb" push "$bearer_file" "$remote_dir/hermes.token"
+
+print "Pushed development installer bundle to $remote_dir; ADB reverse maps phone localhost:8642 to Mac Hermes."
+print "In Termux: termux-setup-storage && sh ~/storage/downloads/lumen/install-lumen-host"

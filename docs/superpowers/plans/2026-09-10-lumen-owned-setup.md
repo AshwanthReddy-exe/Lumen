@@ -1,5 +1,7 @@
 # Lumen-Owned Setup Implementation Plan
 
+> **Status:** Superseded historical task record. Completed tasks remain implementation evidence, but no task in this file is active. Remaining foundation work moved to the [Milestone 1 foundation-closure plan](./2026-09-11-milestone-1-foundation-closure.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Ship `lumen setup` as the one-command, resumable installation and configuration journey for a supervised Lumen Host and compatible Hermes runtime.
@@ -205,6 +207,8 @@ git commit -m "feat(setup): verify Lumen and Hermes artifacts"
 
 ### Task 4: Create private directories, credentials, and Lumen/Hermes configuration
 
+**Checkpoint:** Implemented and task-reviewed through commit `b671c71`.
+
 **Files:**
 - Create: `internal/setup/config.go`
 - Create: `internal/setup/config_test.go`
@@ -253,6 +257,8 @@ git commit -m "feat(setup): generate Host and Hermes configuration"
 ```
 
 ### Task 5: Initialize the Host, then install and control platform supervisors
+
+**Checkpoint:** Implementation commits exist through `a8f54bf`, but the five-round task review breaker left concrete create-once integration, lifecycle/boot coverage, and mandatory manifest-bound Termux digests to be closed before acceptance. Task 6 was not started.
 
 **Files:**
 - Create: `internal/setup/supervisor.go`
@@ -468,4 +474,4 @@ git commit -m "feat(setup): deliver Lumen-owned Host bootstrap"
 - Block 3 implements single-use short-lived QR/manual pairing, node-generated keys, explicit Host authorization, authenticated transport, reconnect, revocation, and device management.
 - Block 4 turns the Redmi/Xiaomi Android app into a companion and capability node without Host authority.
 - Block 5 exposes Telegram, WhatsApp, browser, MCP, tools, skills, voice, delegation, and remote execution incrementally through typed Lumen capability contracts.
-- Blocks 6-8 add Mac coding, iPhone interaction, schedules, remote use, migration, and private-alpha evidence.
+- Later capability-first milestones in [PLAN.md](../../PLAN.md) own conversation, node, voice, messaging, autonomy, migration, and launch sequencing.

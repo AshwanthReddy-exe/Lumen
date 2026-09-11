@@ -4,7 +4,7 @@ This document is the engineering lens for Lumen. It complements the product beha
 
 ## 1. Design around the Space
 
-Lumen is a private, multi-device Space. A device is only a node; a companion is only an interface. The active Host owns canonical state, policy, routing, and audit history. No UI, model, Hermes process, relay, or node may become an accidental second authority.
+Lumen is a private, multi-device Space. A device is only a node; web, messaging, voice, native apps, and companions are only surfaces. The active Host owns canonical conversations, accepted memory, policy, routing, task truth, and audit history. It actively coordinates eligible Hermes and node capabilities; it is not passive storage. No UI, model, Hermes process, relay, integration, or node may become an accidental second authority.
 
 Start each feature with its user journey, authority, contract, lifecycle, failure behavior, and observable success. Keep the first implementation a small vertical slice with a real boundary and a useful end-to-end result.
 
@@ -36,6 +36,8 @@ The portable domain owns policy, task transitions, context rules, and invariants
 
 Every action has a stable capability ID, schema version, typed arguments, declared context, required permissions, risk class, and execution modes. Grants default to deny and may allow or ask only for declared actions and scopes. Approvals bind to the exact action and arguments (or artifact digest), are single-use, and expire. Credentials are scoped handles, not prompt text or ordinary log content.
 
+Device access is composed from narrow actions, never granted wholesale. Reading a selected root does not imply writing it, following a symlink outside it, controlling another application, accessing a browser profile, or running a shell. The Host authorizes cross-node dispatch and the target node independently revalidates action, resource, expiry, Host epoch, and OS permission before execution.
+
 ## 5. Design state changes before code
 
 For every state-changing operation, document:
@@ -58,6 +60,8 @@ Process death, restart, duplicated or reordered messages, stale grants, clock ch
 
 Collect the least data needed for the action and retain it for the shortest useful period. Context is typed records with classification, retention, origin, version, and digest—not an unbounded prompt. Synchronization is capability-specific and defaults to the least sharing level that preserves continuity. Redact secrets and unnecessary personal content from events, diagnostics, exports, and error messages. Deletion and revocation must have durable records and clear scope.
 
+Conversations and accepted memories belong to the Space, not a surface or runtime session. Memory must be inspectable, attributable, correctable, exportable, and deletable. Low-risk memory may be accepted under an explicit retention policy; sensitive or consequential memory requires confirmation. Only the policy-approved projection for one task crosses into Hermes, a model, an integration, or a node.
+
 ## 8. Make operations observable without making them invasive
 
 Emit structured, redacted events for authorization, dispatch, lifecycle transitions, synchronization, recovery, and failure. Health signals must distinguish unavailable, degraded, stale, denied, and unknown outcomes and provide an actionable next step. Logs support diagnosis only; audit state remains in the Host’s durable record. Metrics and traces must not become a covert context channel.
@@ -65,6 +69,26 @@ Emit structured, redacted events for authorization, dispatch, lifecycle transiti
 ## 9. Prefer reversible change and tested contracts
 
 Public schemas, persistence formats, and adapter contracts are versioned. Migrations are explicit, reversible where practical, and tested against old and new data. Configuration is explicit and safe by default. Compatibility fixtures cover valid and rejected messages. Production readiness requires acceptance, negative, recovery, and operational checks on the target platform—not only a happy-path unit test.
+
+## 10. Reuse intelligence before building it
+
+Hermes is Lumen's preferred native capability platform, not merely a text-generation endpoint. Adopt its agent loop, model routing, tools, skills, MCP, browser, gateways, voice, automation, delegation, and worker support when they satisfy Lumen's contract. Extend through supported Hermes mechanisms next. Benchmark mature external open-source components only for a demonstrated gap; build custom intelligence infrastructure last.
+
+Reuse never transfers authority. Every component is pinned, license- and commercial-use reviewed, benchmarked for its relevant quality and operational properties, constrained to the task, compatibility-tested, observable, reversible, and independently disableable. A discovered capability remains unavailable until Lumen grants it through a typed contract.
+
+## 11. Make presence understandable
+
+Jarvis-like presence means continuity, awareness within permission, useful agency, and visible restraint. Every voice surface exposes the same listening, understanding, thinking, approval, acting, speaking, interrupted, offline, and degraded states. Pre-activation wake word and voice-activity detection stay local with zero outbound audio or activation metadata. The user can always see or hear when capture is active, interrupt speech, and stop work immediately.
+
+Proactivity graduates through trust: suggest, preview, approve once, approve a workflow, then allow only a narrow revocable grant. Familiarity never substitutes for authority.
+
+## 12. Separate topology from assurance
+
+Combined, separated, managed, and hybrid describe where components run. Development, personal, and hardened describe the security and operational evidence they meet. Never imply that another machine is automatically safer or that one machine cannot enforce isolation. All supported combinations preserve one Space contract, canonical ownership, honest failure behavior, encrypted portability, and the same authorization semantics.
+
+## 13. Keep interoperability public and product ownership clear
+
+Lumen's proprietary product may provide paid managed and self-hosted experiences while publishing the protocols and SDK needed to build compatible nodes and integrations. Public interoperability covers schemas, transport, capability invocation, runtime events, ingress and delivery adapters, context proposals, conformance fixtures, and version policy. It never weakens entitlement, pairing, authorization, approval, or local permission checks.
 
 ## Code organization rule
 

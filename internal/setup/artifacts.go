@@ -178,13 +178,21 @@ func (i Installer) InstallStaged(a Artifact, s StagedArtifact) error {
 		return e
 	}
 	if e = sd(i.InstallDir); e != nil {
+		_ = os.Remove(target)
+		if had {
+			_ = rn(backup, target)
+		}
+		_ = sd(i.InstallDir)
 		return fmt.Errorf("%w: %v", ErrInstallDurabilityUncertain, e)
 	}
 	if had {
-		_ = os.Remove(backup)
 		if e = sd(i.InstallDir); e != nil {
+			_ = os.Remove(target)
+			_ = rn(backup, target)
+			_ = sd(i.InstallDir)
 			return fmt.Errorf("%w: %v", ErrInstallDurabilityUncertain, e)
 		}
+		_ = os.Remove(backup)
 	}
 	return nil
 }
@@ -212,6 +220,15 @@ func verifyStaged(path string, a Artifact) error {
 		return ErrDigestMismatch
 	}
 	return nil
+}
+
+// VerifyArtifact checks an already installed artifact against its manifest
+// without changing the installation.
+func VerifyArtifact(path string, a Artifact) error {
+	if validateArtifact(a) != nil {
+		return ErrInvalidArtifact
+	}
+	return verifyStaged(path, a)
 }
 func hexDigest(b []byte) string {
 	const d = "0123456789abcdef"

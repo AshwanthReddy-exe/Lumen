@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>Label</key><string>dev.lumen.hermes</string><key>ProgramArguments</key><array><string>/usr/local/bin/hermes</string><string>serve</string></array><key>EnvironmentVariables</key><dict><key>LUMEN_HERMES_CONFIG</key><string>/Users/your-user/Library/Application Support/Lumen/hermes.json</string></dict><key>Umask</key><integer>63</integer><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict><key>ThrottleInterval</key><integer>5</integer><key>ExitTimeOut</key><integer>30</integer></dict></plist>

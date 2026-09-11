@@ -34,6 +34,36 @@ func TestConfigFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestConfigFromFileRejectsTrailingAndRelativeSecrets(t *testing.T) {
+	d := t.TempDir()
+	p := filepath.Join(d, "c.json")
+	good := `{"version":1,"data_dir":"` + d + `","hermes":{"base_url":"http://127.0.0.1","profile":"personal-alpha","bearer_file":"relative"}}`
+	if err := os.WriteFile(p, []byte(good), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConfigFromFile(p); err == nil {
+		t.Fatal("expected relative secret rejection")
+	}
+	if err := os.WriteFile(p, []byte(`{"version":1,"data_dir":"`+d+`","hermes":{"base_url":"http://127.0.0.1","profile":"personal-alpha","bearer_file":"`+filepath.Join(d, "token")+`"}} junk`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConfigFromFile(p); err == nil {
+		t.Fatal("expected trailing JSON rejection")
+	}
+}
+
+func TestConfigFromFileRejectsWeakHardenedEndpoint(t *testing.T) {
+	d := t.TempDir()
+	p := filepath.Join(d, "c.json")
+	raw := `{"version":1,"data_dir":"` + d + `","hermes":{"base_url":"http://127.0.0.1","profile":"hardened","bearer_file":"` + filepath.Join(d, "token") + `"}}`
+	if err := os.WriteFile(p, []byte(raw), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConfigFromFile(p); err == nil {
+		t.Fatal("expected hardened rejection")
+	}
+}
+
 func TestProductionNewBuildsNonNilRuntimeAdapter(t *testing.T) {
 	d := t.TempDir()
 	tokenPath := filepath.Join(d, "hermes.token")
@@ -92,6 +122,30 @@ func TestInitIsCreateOnly(t *testing.T) {
 	}
 	if _, err := os.Stat(c.CredentialPath); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestVerifyInitializedProvesStableHostIdentity(t *testing.T) {
+	c := Config{DataDir: t.TempDir(), SocketPath: filepath.Join(t.TempDir(), "host.sock"), CredentialPath: filepath.Join(t.TempDir(), "operator")}
+	// Keep all paths under one private root, as production does.
+	c.SocketPath = filepath.Join(c.DataDir, "host.sock")
+	c.CredentialPath = filepath.Join(c.DataDir, "operator")
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	first, err := VerifyInitialized(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == "" {
+		t.Fatal("missing identity proof")
+	}
+	if err := Initialize(c); !errors.Is(err, ErrAlreadyInitialized) {
+		t.Fatalf("rerun=%v", err)
+	}
+	second, err := VerifyInitialized(c)
+	if err != nil || second != first {
+		t.Fatalf("first=%q second=%q err=%v", first, second, err)
 	}
 }
 

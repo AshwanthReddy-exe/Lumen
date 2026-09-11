@@ -1,7 +1,8 @@
 [tools]
+github-cli = "2.99.0"
+go = "1.27.1"
 gradle = "9.5.0"
 java = "25.0.2"
-go = "1.27.1"
 
 [tasks.phase0-check]
 description = "Run the Phase 0 cross-platform contract baseline"
@@ -21,12 +22,13 @@ run = [
   "go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host ./cmd/lumen-host",
   "go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host.second ./cmd/lumen-host",
   "GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host-linux-arm64 ./cmd/lumen-host",
-  "GOOS=linux GOARCH=arm64 go build -trimpath -buildmode=pie -ldflags='-s -w' -o build/lumen-host/lumen-host-linux-arm64-pie ./cmd/lumen-host",
+  "GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host-android-arm64 ./cmd/lumen-host",
   "GOOS=linux GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host-linux-arm64.second ./cmd/lumen-host",
   "test \"$(shasum -a 256 build/lumen-host/lumen-host | cut -d' ' -f1)\" = \"$(shasum -a 256 build/lumen-host/lumen-host.second | cut -d' ' -f1)\"",
   "test \"$(shasum -a 256 build/lumen-host/lumen-host-linux-arm64 | cut -d' ' -f1)\" = \"$(shasum -a 256 build/lumen-host/lumen-host-linux-arm64.second | cut -d' ' -f1)\"",
-  "sh -n deploy/launchd/dev.lumen.host-launcher.sh deploy/termux/run deploy/termux/finish && zsh -n scripts/lumen-mac-host scripts/lumen-mac-test",
-  "test -x deploy/launchd/dev.lumen.host-launcher.sh && test -x deploy/termux/run && test -x deploy/termux/finish && test -x scripts/lumen-mac-host && test -x scripts/lumen-mac-test",
+  "LUMEN_TERMUX_PIE_ARTIFACT=\"$(pwd)/build/lumen-host/lumen-host-android-arm64\" go test ./test/contract -run TestTermuxPIEArtifactIsPositionIndependentWhenBuilt -count=1",
+  "sh -n deploy/launchd/dev.lumen.host-launcher.sh deploy/termux/run deploy/termux/finish deploy/termux/install-lumen-host && zsh -n scripts/lumen-mac-host scripts/lumen-mac-test scripts/push-termux-host",
+  "test -x deploy/launchd/dev.lumen.host-launcher.sh && test -x deploy/termux/run && test -x deploy/termux/finish && test -x deploy/termux/install-lumen-host && test -x scripts/lumen-mac-host && test -x scripts/lumen-mac-test && test -x scripts/push-termux-host",
   "plutil -lint deploy/launchd/dev.lumen.host.plist",
   "if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then docker compose -f deploy/docker/compose.yaml config >/dev/null; else grep -q 'restart: on-failure:3' deploy/docker/compose.yaml && grep -q 'STOPSIGNAL SIGTERM' deploy/docker/Dockerfile; fi",
   "test -n \"${ANDROID_HOME:-}\" && test -d \"$ANDROID_HOME\" || { echo 'Android companion checks require ANDROID_HOME'; exit 1; }",

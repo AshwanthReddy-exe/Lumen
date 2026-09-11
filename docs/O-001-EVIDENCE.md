@@ -1,5 +1,7 @@
 # O-001 comparison evidence
 
+> **Historical evidence.** These measurements describe disposable 2026-09-04 prototypes. They are retained for auditability and must not be read as current production implementation or roadmap gates.
+
 ## Test environment
 
 | Field | Value |
@@ -14,7 +16,7 @@
 | Android SDK/device | Not available; pending |
 | Full Xcode/iOS simulator | Not available; pending |
 
-All fixtures contain synthetic identifiers and content. This document records prototype evidence only; `O-001` is resolved separately as `D-020`.
+All fixtures contain synthetic identifiers and content. This document records prototype evidence only; `O-001` is resolved separately as `D-020`. The production Space authority later moved to the native Go Host.
 
 ## Automated contract results
 
@@ -51,16 +53,16 @@ All fixtures contain synthetic identifiers and content. This document records pr
 
 The artifact sizes and source counts are descriptive only. They use different artifact types and do not establish a winner.
 
-## Security evidence still pending
+## Security evidence not established by this spike
 
 - Device-key generation, signature creation and verification, and pairing key proof using platform-backed keys.
 - Durable nonce persistence and replay rejection before and after restart.
 - Invalid signature, unknown key, altered identity, and malformed timestamp fixtures.
 - SSE malformed events, duplicate IDs, disconnect/reconnect, and last-event replay.
 
-## Manual evidence still required
+## Historical follow-up evidence
 
-The headless comparison is insufficient to pass the platform implementation gates. Before those phases exit, run and record:
+The headless comparison was insufficient to qualify either platform prototype. If a future surface adopts one of these paths, run and record the relevant evidence before that surface ships:
 
 1. Android foreground-service and encrypted-store prototypes on the intended old-phone class of device.
 2. Native Apple encrypted-store and migration prototypes with full Xcode on macOS and iOS.
@@ -70,4 +72,4 @@ The headless comparison is insufficient to pass the platform implementation gate
 
 ## Decision status
 
-`O-001` is accepted as `D-020`: Kotlin Multiplatform shares portable protocol and Space rules while Android and Apple applications remain native. This headless evidence does not replace the pending platform checks; those checks gate the phases that implement Android lifecycle, Apple packaging, encrypted stores, and KMP-to-Swift integration.
+`O-001` was accepted as `D-020`: Kotlin Multiplatform shared the original portable protocol and Space rules while Android and Apple applications remained native. The native Go Host now owns production Space authority. This evidence remains useful for protocol-fixture and client-boundary history; pending platform checks gate only surfaces that actually adopt those implementations.

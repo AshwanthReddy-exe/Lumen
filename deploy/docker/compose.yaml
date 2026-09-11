@@ -1,4 +1,18 @@
 services:
+  lumen-hermes:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.hermes
+      args:
+        HERMES_COMMIT: 2237be355906fbe6065ce1815711eee52b2d646e
+        HERMES_SOURCE_ARCHIVE_SHA256: ${HERMES_SOURCE_ARCHIVE_SHA256:?set SHA-256 for staged Hermes archive}
+    command: ["serve"]
+    read_only: true
+    restart: on-failure:3
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    user: "65532:65532"
+    networks: [lumen-private]
   lumen-host:
     build:
       context: ../..
@@ -24,5 +38,10 @@ services:
     restart: on-failure:3
     stop_signal: SIGTERM
     stop_grace_period: 30s
+    user: "65532:65532"
+    networks: [lumen-private]
+networks:
+  lumen-private:
+    internal: true
 volumes:
   lumen-state:

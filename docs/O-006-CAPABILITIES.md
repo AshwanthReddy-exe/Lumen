@@ -2,10 +2,12 @@
 
 ## Status
 
-Accepted for V1 contract freeze. These are the smallest actions that support the
-reference journeys. The actions are versioned, typed, and evaluated by Lumen
-policy before an adapter is called. An adapter cannot add actions, widen scopes,
-or convert a runtime approval into a Lumen grant.
+Accepted as the historical Phase 0 capability cohort. These four actions proved
+the common authorization contract; they are not the complete active product
+catalog and no longer freeze roadmap scope. New Hermes and node capabilities
+must reuse the same versioning, policy, approval, idempotency, context, receipt,
+and audit rules and receive an action-level contract before shipping. An adapter
+cannot add actions, widen scopes, or convert runtime approval into a Lumen grant.
 
 ## Common contract
 
@@ -23,13 +25,19 @@ Scopes are restrictions, never additional authority. A grant may restrict:
 - `data`: context synchronization level and allowed classification;
 - `time`: validity window and, for schedules, the schedule expiry;
 - `frequency`: maximum invocations per time window.
+- `location`: exact file roots, applications, services, or device resources.
 
 The effective grant is the intersection of capability, node, resource, data,
-time, and frequency scopes. Missing or unknown fields, expired grants, revoked
+location, time, and frequency scopes. Missing or unknown fields, expired grants, revoked
 nodes, unhealthy or ineligible targets, invalid arguments, and stale grant
 references fail closed.
 
 ## Actions
+
+The actions below are preserved as the first certified cohort. Current planning
+also anticipates restricted file, application, screen, shell, microphone,
+speaker, camera, model, and artifact capabilities, but naming a family here does
+not grant it or freeze its arguments.
 
 ### `coding.run`
 
@@ -127,4 +135,4 @@ context, or consume a newly issued approval until it reconnects to the Host.
 7. Context fixtures prove the O-002 level is enforced before serialization and
    at Host persistence for all four capabilities.
 
-`browser.run` and later Hermes-backed capabilities are deliberately not frozen by this Phase 0 contract. They must reuse the same manifest, policy, approval, idempotency, context, and audit rules and receive their own action-level contract before implementation.
+`browser.run`, restricted file access, and later Hermes- or node-backed capabilities are deliberately not frozen by this historical cohort. A restricted file contract must, at minimum, distinguish search, read, and write; bind grants to owner-selected roots; validate canonical paths and symlinks on the node at invocation time; bound content and metadata returned; treat writes as separate authority; and return a durable receipt or honest `unknown_outcome`. No model, Host route, or directory grant may widen that local decision.

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"time"
 )
 
@@ -21,13 +22,44 @@ var (
 var stageOrder = []Stage{Detected, ArtifactsReady, DirectoriesReady, CredentialsReady, ConfigurationReady, HostInitialized, ServicesInstalled, ServicesStarted, Validated}
 
 type Journal struct {
-	dir, path  string
-	evidence   []StageEvidence
-	syncParent func(string) error
+	dir, path   string
+	bindingPath string
+	evidence    []StageEvidence
+	binding     *JournalBinding
+	syncParent  func(string) error
+}
+
+type JournalBinding struct {
+	Profile                Profile           `json:"profile"`
+	Topology               Topology          `json:"topology"`
+	EndpointOriginDigest   string            `json:"endpointOriginDigest,omitempty"`
+	EndpointIdentityDigest string            `json:"endpointIdentityDigest,omitempty"`
+	ArtifactDigests        map[string]string `json:"artifactDigests,omitempty"`
+	PlanDigest             string            `json:"planDigest"`
 }
 
 func NewJournal(d string) (*Journal, error) {
-	j := &Journal{dir: d, path: filepath.Join(d, "setup-journal.json"), syncParent: syncDirectory}
+	j := &Journal{dir: d, path: filepath.Join(d, "setup-journal.json"), bindingPath: filepath.Join(d, "setup-binding.json"), syncParent: syncDirectory}
+	if b, e := os.ReadFile(j.bindingPath); e == nil {
+		var binding JournalBinding
+		dec := json.NewDecoder(bytes.NewReader(b))
+		dec.DisallowUnknownFields()
+		if dec.Decode(&binding) != nil || binding.Topology.Validate() != nil || !validProfile(binding.Profile) || !validDigest(binding.PlanDigest) || (binding.EndpointOriginDigest != "" && !validDigest(binding.EndpointOriginDigest)) || (binding.EndpointIdentityDigest != "" && !validDigest(binding.EndpointIdentityDigest)) {
+			return nil, ErrInvalidJournal
+		}
+		for _, digest := range binding.ArtifactDigests {
+			if !validDigest(digest) {
+				return nil, ErrInvalidJournal
+			}
+		}
+		var extra any
+		if dec.Decode(&extra) != io.EOF {
+			return nil, ErrInvalidJournal
+		}
+		j.binding = &binding
+	} else if !errors.Is(e, os.ErrNotExist) {
+		return nil, e
+	}
 	b, e := os.ReadFile(j.path)
 	if errors.Is(e, os.ErrNotExist) {
 		return j, nil
@@ -45,6 +77,71 @@ func NewJournal(d string) (*Journal, error) {
 		return nil, fmt.Errorf("%w: trailing content", ErrInvalidJournal)
 	}
 	return j, validateEvidence(j.evidence)
+}
+func (j *Journal) Bind(b JournalBinding) error {
+	if !validProfile(b.Profile) || b.Topology.Validate() != nil || !validDigest(b.PlanDigest) || (b.EndpointOriginDigest != "" && !validDigest(b.EndpointOriginDigest)) || (b.EndpointIdentityDigest != "" && !validDigest(b.EndpointIdentityDigest)) {
+		return ErrInvalidJournal
+	}
+	for _, d := range b.ArtifactDigests {
+		if !validDigest(d) {
+			return ErrInvalidJournal
+		}
+	}
+	if j.binding != nil {
+		if !bindingsEqual(*j.binding, b) {
+			return ErrInputChanged
+		}
+		return nil
+	}
+	if err := os.MkdirAll(j.dir, 0700); err != nil {
+		return err
+	}
+	data, _ := json.Marshal(b)
+	tmp, err := os.CreateTemp(j.dir, ".binding-")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if err = tmp.Chmod(0600); err == nil {
+		_, err = tmp.Write(data)
+	}
+	if err == nil {
+		err = tmp.Sync()
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err = os.Rename(name, j.bindingPath); err != nil {
+		return err
+	}
+	if err = j.syncParent(j.dir); err != nil {
+		return fmt.Errorf("binding durability: %w", err)
+	}
+	j.binding = &b
+	return nil
+}
+func bindingsEqual(a, b JournalBinding) bool {
+	if a.Profile != b.Profile || a.Topology != b.Topology || a.EndpointOriginDigest != b.EndpointOriginDigest || a.EndpointIdentityDigest != b.EndpointIdentityDigest || a.PlanDigest != b.PlanDigest {
+		return false
+	}
+	if len(a.ArtifactDigests) != len(b.ArtifactDigests) {
+		return false
+	}
+	keys := make([]string, 0, len(a.ArtifactDigests))
+	for k := range a.ArtifactDigests {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if a.ArtifactDigests[k] != b.ArtifactDigests[k] {
+			return false
+		}
+	}
+	return true
 }
 func (j *Journal) Next() Stage {
 	if len(j.evidence) < len(stageOrder) {
@@ -119,16 +216,28 @@ func persist(d, p string, e []StageEvidence, sync func(string) error) (bool, err
 }
 func validateEvidence(e []StageEvidence) error {
 	for i, v := range e {
-		if i >= len(stageOrder) || v.Stage != stageOrder[i] || !validDigest(v.InputDigest) {
+		if i >= len(stageOrder) || v.Stage != stageOrder[i] || !validDigest(v.InputDigest) || (v.Profile != "" && !validProfile(v.Profile)) || (v.PlanDigest != "" && !validDigest(v.PlanDigest)) {
 			return ErrInvalidJournal
 		}
 	}
 	return nil
 }
 
+func validProfile(p Profile) bool { return p == Development || p == PersonalAlpha || p == Hardened }
+
 var digestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
-func validDigest(s string) bool { return digestPattern.MatchString(s) }
+func validDigest(s string) bool {
+	if !digestPattern.MatchString(s) {
+		return false
+	}
+	for _, c := range s[len("sha256:"):] {
+		if c != '0' {
+			return true
+		}
+	}
+	return false
+}
 func validStage(s Stage) bool {
 	for _, v := range stageOrder {
 		if s == v {

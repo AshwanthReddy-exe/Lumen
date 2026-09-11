@@ -121,6 +121,15 @@ func TestSupervisorDefinitionsAreStructuredAndBounded(t *testing.T) {
 	}
 }
 
+func TestTermuxInstallerHardensManifestArtifacts(t *testing.T) {
+	b := readDefinition(t, "../../deploy/termux/install-lumen-host")
+	for _, want := range []string{"! -L", "sha256sum", "LUMEN_HOST_SHA256", "LUMEN_HERMES_SHA256", "LUMEN_TOKEN_SHA256"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("installer missing %q", want)
+		}
+	}
+}
+
 func TestSupervisorLaunchesForegroundLifecycle(t *testing.T) {
 	if goruntime.GOOS == "windows" {
 		t.Skip("Unix lifecycle")

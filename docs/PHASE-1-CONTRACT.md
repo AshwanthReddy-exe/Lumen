@@ -1,10 +1,12 @@
 # Phase 1 Space core
 
+> **Historical contract evidence.** This document records the Kotlin portable-core slice that established the original Space invariants. The production authority has moved to the Go Host. [ARCHITECTURE.md](./ARCHITECTURE.md), [DECISIONS.md](./DECISIONS.md), and [PLAN.md](./PLAN.md) govern current design and sequencing.
+
 ## Scope
 
-Phase 1 proves portable Space rules with fake nodes and a durable Host boundary. It does not implement device keys, encrypted serialization, transport, UI, adapters, or platform lifecycle. Those are native boundaries beginning in Phase 2.
+Phase 1 proved portable Space rules with fake nodes and a durable Host boundary. It did not implement device keys, encrypted serialization, transport, UI, adapters, or platform lifecycle. Those limitations remain facts about this evidence, not current roadmap boundaries.
 
-## Frozen core contract
+## Frozen historical core contract
 
 The portable `core:space` module exposes immutable `SpaceState` plus operations that return either a new state and value or a stable rejection reason.
 
@@ -18,11 +20,11 @@ The portable `core:space` module exposes immutable `SpaceState` plus operations 
 
 Every submit, approval, and completion carries the current Host epoch and rejects a stale epoch before state changes. Every state-changing operation records a redacted audit event containing actor, active Host authority, epoch, operation, outcome, and idempotency key—never task arguments or content. Revocation also records each task it invalidates. A command fingerprint canonically binds Space, epoch, origin, target, capability, action, and argument or artifact digest. Repeating its idempotency key with the same fingerprint returns the first recorded result; reusing it with a different fingerprint is rejected.
 
-`SpaceHost` is the serial portable Host boundary. `SpaceStateStore` creates a Space only when empty and serializes each transition with its atomic replacement. The Host returns an accepted, rejected, or replayed transition only after that write; a failed write returns `persistence_unavailable` while retaining the last committed state. On open, it first reads the committed state, applies restart recovery, and writes that recovery result before becoming ready. The platform adapter owns encryption, key access, schema migration, and storage errors. This is retained Kotlin historical evidence; the production Go Host boundary is documented in [Phase 2](./PHASE-2-HOST-HERMES.md).
+`SpaceHost` is the serial portable Host boundary. `SpaceStateStore` creates a Space only when empty and serializes each transition with its atomic replacement. The Host returns an accepted, rejected, or replayed transition only after that write; a failed write returns `persistence_unavailable` while retaining the last committed state. On open, it first reads the committed state, applies restart recovery, and writes that recovery result before becoming ready. The platform adapter owns encryption, key access, schema migration, and storage errors. This is retained Kotlin historical evidence; the production Go Host boundary is documented in [Host and Hermes foundation closure](./PHASE-2-HOST-HERMES.md).
 
-## Observable success
+## Recorded observable success
 
-`tools:space-scenario` creates fake Android, Mac, and iPhone nodes; grants one Mac capability; submits a task; demonstrates `deny`, `ask`, and `allow`; and exits nonzero if a policy or lifecycle invariant fails. Core tests cover policy, idempotency, revocation, exact approval, terminal outcomes, write failure, reopened state, and conservative recovery.
+The historical `tools:space-scenario` runner created fake Android, Mac, and iPhone nodes; granted one Mac capability; submitted a task; demonstrated `deny`, `ask`, and `allow`; and exited nonzero if a policy or lifecycle invariant failed. Historical core tests covered policy, idempotency, revocation, exact approval, terminal outcomes, write failure, reopened state, and conservative recovery. The current production authority is validated by `go test ./internal/space ./internal/store`, including the applicable Space and encrypted-store contract tests.
 
 ## Recovery behavior
 
@@ -34,8 +36,8 @@ The operation ID identifies one startup attempt. Retrying that exact operation r
 
 On write failure, startup remains unavailable and retries from the latest committed state; it must not dispatch work. No retry or target reconciliation is implemented here: unknown outcomes remain terminal pending an explicit evidence-based reconciliation contract.
 
-Validation: `mise run phase1-check` covers mixed lifecycle recovery, Host authorization, Space/epoch mismatches, duplicate startup, key collisions, historical submit replay, late completion, failed writes, reopened state, and a simulated restart in the fake-node scenario.
+Historical validation used the retired `mise run phase1-check` command and removed fake-node scenario paths; it covered mixed lifecycle recovery, Host authorization, Space/epoch mismatches, duplicate startup, key collisions, historical submit replay, late completion, failed writes, reopened state, and a simulated restart. Current production validation uses `go test ./internal/space ./internal/store` and its race-enabled counterpart; these executable checks are the authority for the Go Space and encrypted store.
 
-## Phase boundary
+## Historical phase boundary
 
-This phase has no claim of encrypted serialization, real process lifecycle, authenticated transport, durable dispatch evidence, cancellation, or target reconciliation. Phase 2 extends the inward-facing task contract for Host-local execution; the native Go Host implements encrypted persistence, migrations, lifecycle, and physical restart evidence. The merged Android store is superseded experiment evidence and must not become production authority.
+This phase made no claim of encrypted serialization, real process lifecycle, authenticated transport, durable dispatch evidence, cancellation, or target reconciliation. The native Go Host superseded this implementation as production authority and extended the inward-facing task contract with encrypted persistence, migrations, lifecycle, dispatch evidence, cancellation, and recovery. The merged Android store remains superseded experiment evidence and must not become production authority. Current gaps and qualification evidence are tracked in [Host and Hermes foundation closure](./PHASE-2-HOST-HERMES.md).

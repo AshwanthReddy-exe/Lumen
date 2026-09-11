@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/NousResearch/hermes-agent.git",
+  "tag": "v2026.9.7",
+  "commit": "2237be355906fbe6065ce1815711eee52b2d646e",
+  "archive": "hermes-source.tar.gz",
+  "archiveSha256": null,
+  "python": "3.11",
+  "lockfile": "uv.lock",
+  "frozen": true,
+  "buildCommand": "uv sync --frozen"
+}

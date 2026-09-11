@@ -1,109 +1,183 @@
-# Lumen V1 delivery plan
+# Lumen delivery plan
 
-## How delivery works
+## Product delivery rule
 
-Lumen is built in blocks, not as disconnected features. Each block starts with one useful personal journey, a frozen contract, automated checks, and a live owner test. It ends only when the journey works repeatedly on the intended devices and its failure path is honest.
+Lumen ships complete capability journeys, not collections of platform features. Each milestone must give the user a useful end-to-end outcome across real trust boundaries and pass acceptance, negative, recovery, privacy, and operational checks before the next milestone becomes active.
 
-Do not begin a later block because its UI can be mocked. Fix or simplify the current block when recovery, approval, privacy, or daily-use evidence fails. Record build, devices, preconditions, expected and actual result, pass/fail, and a redacted evidence reference for every owner check.
+The product north star is a Jarvis-like personal intelligence Space: the user can speak naturally from any supported surface, continue one relationship and inspectable memory, and safely act across permitted devices and services. Hermes supplies the intelligence and existing agent subsystems; Lumen owns the Space, authority, continuity, product experience, and commercial service.
 
 ## Current execution lock
 
-**Block 2 remains the only active delivery block. The Android authority quarantine and native Go migration are complete; the remaining release gates are a physical Android Termux lifecycle proof and one real isolated-Hermes task behind pinned mutual TLS. Do not resume pairing, node transport, Android companion features, hardware capabilities, Mac, or iPhone implementation until the Block 2 exit gate passes.** See [PHASE-2-HOST-HERMES.md](./PHASE-2-HOST-HERMES.md).
+**Milestone 1 is the only active implementation milestone.** The durable Go Space authority, encrypted store, authenticated local control boundary, Host-to-Hermes Runs execution, and most setup primitives exist. The public `lumen setup`, `lumen doctor`, and `lumen service` paths remain stubs; the release manifest is not distributable; clean-install, reboot, real configured-runtime, and rollback evidence remain incomplete. Node transport, web UI, messaging continuity, voice, canonical conversations, and device capabilities are not implemented.
+
+The current setup branch must be integrated and verified before product-surface implementation begins. Physical Android, Mac, or iPhone completion is not a prerequisite unless it proves the active milestone's contract.
 
 ## Evidence format
 
-Every owner check records the date, build or commit, intended device and runtime versions, preconditions, exact bounded action, expected and actual result, pass/fail, and a redacted evidence reference. Evidence must use synthetic identifiers and content; it must never contain credentials, private prompts, raw audio, or personal device data. A passing desktop development harness is labeled as development evidence and cannot satisfy a hardened or physical-device release gate.
+Every release check records the date, commit, build and dependency versions, topology and assurance profile, preconditions, exact bounded journey, expected and actual result, pass/fail, and a redacted evidence reference. Evidence uses synthetic identities and content and never contains credentials, private prompts, raw audio, or personal device data.
 
-## Block 1 — Space foundation
+## Status snapshot
 
-**Status:** complete. The portable Space core proves creation, pairing, capability policy, exact approvals, idempotency, revocation, redacted audit, durable transition acknowledgment, and conservative restart recovery. See [PHASE-1-CONTRACT.md](./PHASE-1-CONTRACT.md).
+| Area | Current truth | Next proof |
+| --- | --- | --- |
+| Space authority and encrypted persistence | Implemented and covered by Go tests | Preserve while adding conversations, memory, and node protocol |
+| Host-to-Hermes run execution | Development adapter and recovery path implemented | Real pinned Hermes compatibility and approval evidence |
+| Setup primitives | Planner, journal, artifacts, configuration, adoption, and supervisors implemented | Wire the public orchestration journey |
+| Public `lumen` lifecycle CLI | Contract exists; setup, doctor, and service are stubs | Clean combined Linux/VPS deployment |
+| Distribution | Cross-builds and templates exist; manifest is a fixture | Reproducible integrity-pinned release artifacts |
+| Conversations and memory | Not implemented | Canonical conversation and inspectable-memory nucleus |
+| Node fabric and remote capabilities | Domain fixtures only | Authenticated transport plus one restricted capability |
+| Product surfaces | Disabled Android shell only | Responsive web conversation surface |
+| Jarvis voice and presence | Not implemented | Local activation, streaming speech, barge-in, and handoff |
+| Messaging | Designed only | One Hermes gateway mapped into Space conversations |
+| Managed service | Not implemented | Dedicated per-Space data plane and portable migration |
+| Earned autonomy | Not implemented | Hermes automation behind graduated grants |
 
-**Live proof:** create a three-node fake Space, grant and revoke a capability, route an authorized task, and restart while work is queued.
+## Milestone 0 — Space foundation
 
-## Block 2 — Headless Host and Hermes execution loop
+**Status:** complete at its intended contract boundary.
 
-**Status:** desktop development journey passing; release owner proof pending. The native Go Host, durable store, JSON operator CLI, supervisor definitions, Hermes adapter, bounded durable output, and Termux PIE artifact are present. The Android foreground-Host experiment and Kotlin authority are superseded evidence, not a base for more features.
+The portable Go domain and encrypted store prove Space creation, identity, capability policy, exact approvals, idempotency, revocation, redacted audit, durable transition acknowledgement, and conservative recovery. Historical cross-language and Android experiments remain evidence rather than active product architecture.
 
-**Goal:** run the canonical Host as a terminal service and complete one bounded Hermes task with honest authority, persistence, events, approval, cancellation, failure, and restart behavior.
+**Preserve:** `internal/space`, `internal/store`, public schema discipline, recovery invariants, and negative fixtures.
 
-**Execution sequence:** ~~superseded Android authority quarantine~~ → cross-language fixtures and Go Space contract → Host process and CLI → encrypted durable store → authenticated Hermes adapter → run/events → approval and cancellation → recovery and reconciliation → supervisor parity → Kotlin authority-core removal → Android Termux proof.
+## Milestone 1 — Reliable combined foundation
 
-**Completed first slice:** the Android APK no longer depends on `core:space`, creates or opens canonical Space state, declares a foreground Host service, or requests foreground-service permissions. It remains installable only as a disabled companion shell until Block 4 pairing work begins. Existing encrypted prototype state is ignored and must be explicitly archived or cleared by its owner; it is never imported into the production Host.
+**Status:** active.
 
-**Build:** one native Go `lumen-host` distribution; foreground `serve` command; owner-restricted authenticated operator socket; encrypted, locked, atomic Host state; redacted health; a versioned Hermes runtime adapter and capability registry; and systemd, launchd, Docker, and Termux/runit examples. Kotlin remains only in the Android companion after Go parity is proven.
+**Journey:** install a combined Lumen and Hermes deployment on a clean Linux/VPS environment, reboot it, diagnose it, and complete, approve, cancel, and recover real tasks without manual environment plumbing.
 
-**Live proof:** initialize and supervise the Host, submit a task from its CLI, observe a real Hermes event stream, resolve one exact approval, cancel one run, interrupt another, restart, and confirm the Host records a proven terminal state or `unknown_outcome`. Repeat the service lifecycle and one task in Android Termux.
+**Deliver:**
 
-**Exit:** [the Phase 2 automated and owner gates](./PHASE-2-HOST-HERMES.md#exit) pass. Host/Hermes completion is required before any node work.
+1. Connect the public `lumen` CLI to the existing planner, journal, artifact, configuration, Host initialization, supervisor, and validation components.
+2. Implement truthful `lumen setup`, `lumen doctor`, and `lumen service start|stop|restart|status` behavior.
+3. Replace the fixture release manifest with reproducible integrity-pinned Lumen and compatible Hermes artifacts.
+4. Certify configured Hermes capabilities and documented Runs behavior rather than treating an HTTP health response as compatibility.
+5. Add continuous verification for formatting, vet, unit, race, contract, reproducible build, secret scanning, deployment configuration, and clean setup.
+6. Prove interrupted setup, safe rerun, boot restart, failed update, rollback, approval, cancellation, lost event stream, and Host restart recovery.
 
-**Evidence (2026-09-09):** `ANDROID_HOME=/Users/ashwanthreddyboddireddy/Library/Android/sdk GOCACHE=/private/tmp/lumen-go-cache mise run phase2-check` passed formatting, vet, all Go and race tests, native and Linux ARM64 builds, ELF64 AArch64 PIE validation, supervisor/Compose contracts, Android companion unit tests, and debug APK assembly. A separately supervised loopback Hermes gateway completed quote task `manual-hermes-quote-001`; Lumen retained its final AI output in the durable task record. Cancellation task `manual-hermes-cancel-001` progressed through `cancelling` to durable `cancelled`. Earlier task `manual-agent-dryrun-004` reconciled to `completed` after a forced Host restart. The gateway auto-approved shell probes, so a live runtime approval under deny-by-default Hermes remains pending even though the exact approval path passes adapter and Host contract tests. Hardened isolated-Hermes/mTLS and physical Termux lifecycle proof also remain pending; the phone was not visible to ADB when artifact transfer was attempted.
+macOS and Termux remain supported deployment targets, but physical platform evidence does not block the conversation nucleus. Hardened Termux continues to require an isolated Hermes endpoint.
 
-## Block 3 — Paired-node protocol and local transport
+**Exit:** the combined reference deployment reports `ready`, survives reboot, completes the real Host-to-Hermes journey, rolls back a failed update, and preserves canonical state. See [the foundation gate](./PHASE-2-HOST-HERMES.md).
 
-**Goal:** let the proven Host authenticate and coordinate one external node without weakening its local authority contract.
+## Milestone 2 — Conversation and memory nucleus
 
-**Build:** Host and node signing identities; QR/SAS pairing; durable membership; versioned signed envelopes; mTLS; replay and duplicate protection; mDNS as discovery only; revocation; and reconnect reconciliation.
+**Journey:** create one Space, talk to Lumen in a responsive web application, retain one useful memory transparently, continue after restart, and inspect or delete what was remembered.
 
-**Checks:** wrong identity or Space, stale epoch, expiry, replay, duplicate collision, reordered delivery, revocation, Wi-Fi loss, reconnect, and lost acknowledgements.
+**Deliver:**
 
-**Live proof:** pair one test node, disconnect and reconnect it, route one harmless command, replay the envelope, revoke the node, and prove future work is rejected.
+1. Add canonical `Conversation`, `Message`, `Participant`, `Surface`, `ContextRecord`, `MemoryProposal`, `RetentionPolicy`, and `ArtifactReference` contracts.
+2. Map canonical conversations to replaceable Hermes runtime sessions and stream normalized text, tool, approval, usage, artifact, and terminal events.
+3. Project only task-authorized context into Hermes. Accept low-risk memory with provenance and retention; require confirmation for sensitive or consequential memory.
+4. Enforce provider, model, region, retention, locality, cost, and data-class constraints before Hermes routing.
+5. Build the responsive Lumen experience around Conversation, Memory, Devices and abilities, Activity, and Automations. Hide infrastructure detail until requested.
+6. Add the Hermes/upstream component registry with version, provenance, license, data flow, benchmark, health, fallback, upgrade, rollback, and kill-switch evidence.
 
-**Exit:** the authenticated-node scenario and independent protocol/security review pass without relying on discovery as trust.
+**Exit:** conversation and memory survive Host and Hermes restarts; runtime replacement does not lose canonical history; deletion affects future context; unauthorized providers receive no classified context.
 
-## Block 4 — Android companion and device capabilities
+## Milestone 3 — Secure node fabric
 
-**Goal:** make the old Android phone a useful desk companion and capability node for the already-running Host.
+**Journey:** pair a generic node, see its live abilities, disconnect and reconnect it, invoke a harmless capability, then revoke it.
 
-**Build:** finish the Android companion module/package rename after the earlier authority quarantine; add node identity, pairing, Host connection, task and approval views, and reactive local voice. Pre-activation wake-word/VAD runs entirely on the node with Hermes client-capture disabled and zero outbound audio; microphone, camera, and speaker remain separate foreground capabilities with explicit Android permission and local policy checks.
+**Deliver:**
 
-**Live proof:** install with `adb install -r`, pair with the Host, follow the Host/Hermes task from the desk display, deny and grant each hardware capability separately, force-stop the app, and prove the Host continues running.
+1. Publish versioned pairing, identity, capability, invocation, event, cancellation, receipt, and reconciliation schemas plus conformance fixtures.
+2. Implement device-generated identity, short-lived QR/manual pairing, explicit owner confirmation, mutually authenticated encrypted sessions, freshness, replay defense, and Host-epoch validation.
+3. Let nodes advertise typed health and constraints without granting themselves authority.
+4. Make the Host select eligible targets using capability, grant, health, locality, latency, and explicit preference; ambiguity asks the user.
+5. Require the target node to revalidate the signed invocation, current local policy, resource scope, expiry, and approval before acting.
+6. Support outbound persistent node sessions for NAT-friendly managed and remote use while keeping relays content-blind and non-authoritative.
 
-**Exit:** companion removal or failure cannot change Host authority; permission-denial and reconnect paths are honest on the Xiaomi reference phone.
+**Exit:** pairing, reconnect, duplicate delivery, lost acknowledgement, revocation, stale Host, and malicious capability advertisement tests pass across two independent implementations.
 
-## Block 5 — Private daily loop, context, and browser actions
+## Milestone 4 — Continuity and first cross-node action
 
-**Goal:** make the Host/Hermes system useful daily without creating a surveillance archive or an unsupervised account operator.
+**Journey:** continue one conversation across web and a lightweight desktop node, ask Lumen to find a permitted document, summarize it, and deliver the result to another surface.
 
-**Build:** typed Host-owned context with provenance, retention, expiry, inspect/edit/delete/export controls; import approved Hermes tools, skills, MCP servers, browser automation, model routing, delegation, and remote execution into the Lumen capability registry; begin `browser.run` with read-only research on allowlisted public sites, then separately gate `draft` and `submit` with exact preview, one-time approval, receipt, cancellation, and uncertain outcomes. Use Hermes implementations instead of parallel Lumen subsystems.
+**Deliver:**
 
-**Checks:** a runtime cannot persist memory or expand grants; every run profile contains only approved tools, credentials, models, and remote backend; delegation is disabled unless the parent grant covers the complete inherited surface; deletion and expiry are durable; blocked domains, changed targets, credential entry, upload, download, payment, and 2FA fail closed or ask again; retries do not duplicate a submission.
+1. Ship the first desktop capability node using the public node contract.
+2. Implement `files.search` and `files.read` for owner-selected roots; keep `files.write` a separate later grant.
+3. Reject traversal, symlink escape, path replacement, oversized results, stale resources, and access outside declared roots.
+4. Route authorized file content to Hermes under the task's context policy and preserve a redacted durable receipt.
+5. Add cross-surface handoff, progress, cancellation, approval, and `unknown_outcome` presentation.
 
-**Live proof:** complete repeated research tasks, inspect and delete retained context, block one domain, reject one stale approval, submit one harmless approved action, and interrupt another.
+**Exit:** the defining continuity-plus-action journey completes within ten minutes of onboarding and fails honestly under node loss, revocation, stale grants, and Hermes interruption.
 
-**Exit:** ten useful tasks complete; denied synchronization stays absent; every attempted side effect has approval, receipt, and an honest final or unknown outcome.
+## Milestone 5 — Jarvis voice and presence
 
-## Block 6 — Mac coding node and companion
+**Journey:** say the local wake phrase, speak naturally, interrupt Lumen while it responds, follow an action across surfaces, and stop listening immediately.
 
-**Goal:** safely use Hermes for bounded coding work on the Mac.
+**Deliver:**
 
-**Build:** Mac pairing and health; isolated Git worktree execution; `coding.run` scope and patch-digest validation; review, apply, cleanup, and stale-base handling.
+1. Standardize `idle`, `wake_detected`, `listening`, `understanding`, `thinking`, `acting`, `approval_needed`, `speaking`, `interrupted`, `offline`, and `degraded` presence states.
+2. Keep wake word and voice-activity detection local with zero outbound audio or activation metadata before successful activation.
+3. Adopt Hermes voice orchestration and benchmark supported or external STT, TTS, VAD, wake-word, diarization, and interruption components for accuracy, latency, privacy, resources, maintenance, and commercial licensing.
+4. Stream post-activation speech under data-aware provider policy, support barge-in, and propagate one cancellation identity through capture, inference, tools, and playback.
+5. Synchronize the conversation rather than raw audio by default and make listening state unmistakable on every active surface.
 
-**Live proof:** give Lumen a small task in this repository, review the patch, alter the base before approval, and verify stale application is refused.
+**Exit:** network capture proves pre-activation privacy; latency and transcription benchmarks meet the frozen product target; barge-in, locked device, permission revocation, network loss, and cross-surface handoff behave predictably.
 
-**Exit:** every canonical-project change is reviewed under capability policy and no direct `main` write occurs.
+## Milestone 6 — Messaging continuity
 
-## Block 7 — iPhone interaction and reminders
+**Journey:** connect one Hermes-supported messaging account, continue the same Space conversation there, approve a bounded action, and see the result in the web experience.
 
-**Goal:** make the iPhone a useful approval, notification, and reminder node.
+**Deliver:**
 
-**Build:** pairing, Keychain-backed identity, Host connection, reactive text and voice, task and approval views, notifications, App Intents, and `reminder.manage`.
+1. Define one conversation-ingress and delivery contract for provider identity, thread mapping, content, attachments, reply targets, credentials, idempotency, receipts, disconnect, and uncertainty.
+2. Adopt one Hermes gateway for the controlled beta, then add further gateways through the same contract.
+3. Keep provider mechanics in Hermes while Lumen owns identity mapping, canonical conversation, policy, approval, task state, memory, audit, and connection lifecycle.
+4. Treat provider messages and gateway metadata as untrusted content; never let a gateway become an authority path.
 
-**Exit:** OS permission denial and Host unavailability have clear, testable behavior.
+**Exit:** web, voice/node, and messaging share one canonical conversation; duplicate delivery does not duplicate effects; disconnect revokes future use; uncertain delivery is visible.
 
-## Block 8 — schedules, remote use, and private alpha
+## Milestone 7 — Managed and portable beta
 
-**Goal:** make Lumen resilient enough for continued personal use before inviting others.
+**Journey:** start with one-click managed Lumen, export the encrypted Space, migrate it to a paid self-hosted combined deployment, and optionally move Hermes to a separate endpoint without changing product behavior.
 
-**Build:** schedules; offline reconciliation; encrypted export, restore, and explicit Host migration; remote encrypted transport; observability and privacy review.
+**Deliver:**
 
-**Live proof:** use the Android, Mac, and iPhone Space for 20 real tasks over 14 days. Test revocation, restart, offline recovery, migration, export, and deletion.
+1. Build a shared commercial control plane that provisions a dedicated Host, encrypted store, Hermes runtime, credentials, backup, and deletion boundary for each customer.
+2. Offer combined, separated, managed, and hybrid topologies under one Space contract; keep topology independent of development, personal, and hardened assurance.
+3. Add paid entitlement, support-access approval and expiry, minimal content-free telemetry, regional placement, encrypted backup, export/import, and explicit Host migration.
+4. Stage Lumen, Hermes, and upstream updates behind compatibility certification, capability kill switches, health gates, and automatic rollback.
 
-**Exit:** the V1 gate in [PRD.md](./PRD.md) passes.
+**Exit:** all topologies pass the same conformance suite; managed/self-hosted migration preserves identity, conversations, memory, grants, tasks, and audit; a control-plane compromise cannot read canonical content.
+
+## Milestone 8 — Earned autonomy
+
+**Journey:** Lumen notices a repeatable pattern, proposes an automation, previews its effects, earns a narrow grant, runs it visibly, and lets the user pause, narrow, or revoke it.
+
+**Deliver:**
+
+1. Reuse Hermes cron, goals, heartbeats, loops, delegation, kanban, batch work, and remote execution rather than rebuilding their engines.
+2. Graduate trust through `suggest → preview → approve once → approve workflow → narrow automatic grant`.
+3. Seal tools, credentials, context, targets, provider policy, budget, deadline, and cancellation lineage into every parent and child runtime profile.
+4. Provide one inspectable activity and intervention surface for scheduled, delegated, and background work.
+
+**Exit:** automation survives restart, never expands its grant, stops through the full child lineage, reports uncertain effects honestly, and can be revoked immediately.
+
+## Milestone 9 — Ecosystem and public launch
+
+**Deliver:**
+
+1. Publish node and capability protocols, SDKs, conformance fixtures, compatibility policy, and integration documentation while keeping the Lumen product proprietary.
+2. Release certified Hermes-backed capability cohorts: additional gateways, browser/computer use, MCP and skills, vision and media, smart-home/service integrations, and native or ambient surfaces.
+3. Qualify every upstream component for provenance, commercial rights, security, maintenance, data flow, performance, fallback, and rollback.
+4. Complete billing, entitlement recovery, privacy operations, support, abuse controls, regional operations, and content-free product analytics.
+
+**Launch gate:** real users repeatedly complete the continuity, memory, action, voice, messaging, migration, and earned-autonomy journeys with acceptable onboarding completion, latency, reliability, recovery, privacy, and retention.
+
+## Cross-cutting verification
+
+- **Space conformance:** identity, authority, conversations, memory, grants, tasks, automation, audit, export, and migration.
+- **Hermes certification:** capability discovery, Runs behavior, tools, events, approvals, cancellation, delegation, gateways, and supported version upgrades.
+- **Node conformance:** pairing, authentication, advertisement, invocation, local revalidation, receipts, reconnect, revocation, and offline recovery.
+- **Deployment conformance:** combined, separated, managed, self-hosted, hybrid, and assurance-level behavior.
+- **Jarvis experience:** activation privacy, latency, interruption, presence, handoff, degraded behavior, and cross-surface continuity.
+- **Upstream qualification:** quality, cost, resources, security, maintenance, licensing, data flow, rollback, and measurable benefit.
+- **Privacy canaries:** prompts, logs, telemetry, gateways, plugins, providers, compression, exports, and crash paths reveal no unauthorized content or credentials.
 
 ## Coordination rule
 
-For independent work, use a coordinator plus at most three lanes: portable core, platform adapter, and verification. Freeze shared schemas first. Only the coordinator changes shared schemas during integration; verification independently reviews protocol, authorization, persistence, migration, and sandbox changes.
-
-## Hermes adoption rule
-
-Hermes is the preferred implementation for reasoning, model routing, tools, skills, MCP, browser, post-activation voice adapters, delegation, and remote execution. Each feature is adopted behind an existing or newly frozen Lumen capability contract and immutable verified runtime profile; discovery never grants authority. Delegation stays disabled unless the parent grant covers Hermes's full inherited runtime surface. Block 2 proves the common run boundary only. Later blocks enable Hermes features incrementally with capability-specific policy, negative tests, live evidence, and rollback rather than forking or recreating Hermes internals.
+Use one coordinator and at most three independent lanes: Space/domain contract, adapter or experience implementation, and verification/security review. Freeze shared schemas before parallel work. Only the coordinator integrates shared protocol, authority, persistence, migration, or threat-model changes.

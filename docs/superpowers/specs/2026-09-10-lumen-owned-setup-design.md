@@ -2,7 +2,7 @@
 
 ## Status
 
-Approved in conversation on 2026-09-10. This design refines Block 2 installation and reserves the Block 3 connection handoff. It does not claim that either implementation is complete.
+Approved in conversation on 2026-09-10 and retained as historical setup-boundary input. The [milestone-driven development design](./2026-09-11-milestone-driven-development-design.md) and [Milestone 1 foundation-closure plan](../plans/2026-09-11-milestone-1-foundation-closure.md) supersede its cross-platform completion and execution sequencing. This document does not own current product sequencing or completion claims.
 
 ## Purpose
 
@@ -43,9 +43,9 @@ On success, Lumen and Hermes are installed or located, privately configured, ini
 
 Setup accepts explicit non-interactive inputs for automation, but secrets must come from protected files, file descriptors, platform credential stores, or interactive hidden input. Secrets never appear in command arguments, generated logs, ordinary status, or task prompts.
 
-## Deployment profiles
+## Historical assurance profiles
 
-The setup planner chooses behavior from explicit profiles. Detection may recommend a profile but cannot silently weaken one.
+These profiles describe assurance, not placement. The product reset separately defines combined, separated, managed, and hybrid topologies. The setup planner chooses behavior from both explicit axes; detection may recommend values but cannot silently weaken either.
 
 ### Development
 
