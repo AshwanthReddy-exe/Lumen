@@ -218,3 +218,22 @@ func TestCompletedEvidenceResumesAtNextStage(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestJournalRejectsTamperedBindingBeforeMutation(t *testing.T) {
+	for _, raw := range []string{
+		`{"profile":"development","topology":"external","endpointIdentityDigest":"secret","planDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
+		`{"profile":"development","topology":"external","artifactDigests":{"lumen":"secret"},"planDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`,
+		`{"profile":"development","topology":"external","planDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"} {}`,
+	} {
+		d := t.TempDir()
+		if err := os.WriteFile(filepath.Join(d, "setup-binding.json"), []byte(raw), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewJournal(d); !errors.Is(err, ErrInvalidJournal) {
+			t.Fatalf("accepted tampered binding: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(d, "setup-journal.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("mutation occurred")
+		}
+	}
+}

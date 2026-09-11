@@ -44,7 +44,16 @@ func NewJournal(d string) (*Journal, error) {
 		var binding JournalBinding
 		dec := json.NewDecoder(bytes.NewReader(b))
 		dec.DisallowUnknownFields()
-		if dec.Decode(&binding) != nil || binding.Topology.Validate() != nil || !validProfile(binding.Profile) || !validDigest(binding.PlanDigest) {
+		if dec.Decode(&binding) != nil || binding.Topology.Validate() != nil || !validProfile(binding.Profile) || !validDigest(binding.PlanDigest) || (binding.EndpointOriginDigest != "" && !validDigest(binding.EndpointOriginDigest)) || (binding.EndpointIdentityDigest != "" && !validDigest(binding.EndpointIdentityDigest)) {
+			return nil, ErrInvalidJournal
+		}
+		for _, digest := range binding.ArtifactDigests {
+			if !validDigest(digest) {
+				return nil, ErrInvalidJournal
+			}
+		}
+		var extra any
+		if dec.Decode(&extra) != io.EOF {
 			return nil, ErrInvalidJournal
 		}
 		j.binding = &binding
