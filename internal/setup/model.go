@@ -41,9 +41,26 @@ const (
 	Hardened      Profile = "hardened"
 )
 
+type Topology string
+
+const (
+	TopologyCombined Topology = "combined"
+	TopologyExternal Topology = "external"
+)
+
+func (t Topology) Validate() error {
+	if t != TopologyCombined && t != TopologyExternal {
+		return fmt.Errorf("unsupported topology %q", t)
+	}
+	return nil
+}
+
 type Request struct {
-	Profile         Profile           `json:"profile"`
-	ArtifactDigests map[string]string `json:"-"`
+	Profile                Profile           `json:"profile"`
+	Topology               Topology          `json:"topology"`
+	EndpointOriginDigest   string            `json:"-"`
+	EndpointIdentityDigest string            `json:"-"`
+	ArtifactDigests        map[string]string `json:"-"`
 }
 
 type Platform string
@@ -80,6 +97,7 @@ type Report struct {
 	Outcome          Outcome           `json:"outcome"`
 	Stage            Stage             `json:"stage"`
 	Profile          Profile           `json:"profile,omitempty"`
+	Topology         Topology          `json:"topology,omitempty"`
 	Platform         Platform          `json:"platform,omitempty"`
 	LumenVersion     string            `json:"lumenVersion,omitempty"`
 	HermesVersion    string            `json:"hermesVersion,omitempty"`

@@ -46,6 +46,9 @@ func (r SetupRunner) Run(ctx context.Context, req Request) (Report, error) {
 	if !validProfile(req.Profile) {
 		return Report{Outcome: ActionRequired, Profile: req.Profile, Actions: []Action{{Code: "invalid_profile"}}}, errors.New("invalid setup profile")
 	}
+	if req.Topology.Validate() != nil {
+		return Report{Outcome: ActionRequired, Profile: req.Profile, Topology: req.Topology, Actions: []Action{{Code: "invalid_topology"}}}, errors.New("invalid setup topology")
+	}
 	if r.Journal == nil || r.Verify == nil || r.RunStage == nil {
 		return Report{Outcome: ActionRequired, Actions: []Action{{Code: "setup_unavailable"}}}, errors.New("setup runner is incomplete")
 	}
@@ -71,6 +74,9 @@ func (r SetupRunner) Run(ctx context.Context, req Request) (Report, error) {
 		}
 		if r.Plan.Profile != "" && r.Plan.Profile != req.Profile {
 			return Report{Outcome: ActionRequired, Profile: req.Profile, Actions: []Action{{Code: "plan_mismatch"}}}, errors.New("setup plan profile mismatch")
+		}
+		if r.Plan.Topology != "" && r.Plan.Topology != req.Topology {
+			return Report{Outcome: ActionRequired, Profile: req.Profile, Topology: req.Topology, Actions: []Action{{Code: "plan_mismatch"}}}, errors.New("setup plan topology mismatch")
 		}
 		if r.Plan.NextStage != "" && !validStage(r.Plan.NextStage) {
 			return Report{Outcome: ActionRequired, Profile: req.Profile, Actions: []Action{{Code: "invalid_stage_plan"}}}, errors.New("setup plan has invalid next stage")
@@ -137,6 +143,10 @@ func (r SetupRunner) Run(ctx context.Context, req Request) (Report, error) {
 }
 
 func (r SetupRunner) validateJournalBinding(req Request) error {
+	b := JournalBinding{Profile: req.Profile, Topology: req.Topology, EndpointOriginDigest: req.EndpointOriginDigest, EndpointIdentityDigest: req.EndpointIdentityDigest, ArtifactDigests: req.ArtifactDigests, PlanDigest: planDigest(r.Plan)}
+	if err := r.Journal.Bind(b); err != nil {
+		return err
+	}
 	for _, evidence := range r.Journal.evidence {
 		if evidence.Profile != req.Profile || evidence.Profile == "" {
 			return errors.New("setup evidence belongs to another profile")
@@ -155,7 +165,7 @@ func planDigest(p *PlanResult) string {
 	return requestDigest(Request{Profile: p.Profile}, p.NextStage, p)
 }
 func safePlanReport(req Request, p PlanResult) Report {
-	r := Report{Outcome: p.Outcome, Profile: req.Profile, Platform: p.Platform, LumenVersion: safeVersion(p.LumenVersion), HermesVersion: safeVersion(p.HermesVersion)}
+	r := Report{Outcome: p.Outcome, Profile: req.Profile, Topology: req.Topology, Platform: p.Platform, LumenVersion: safeVersion(p.LumenVersion), HermesVersion: safeVersion(p.HermesVersion)}
 	for _, action := range p.Actions {
 		if validActionCode(action.Code) {
 			r.Actions = append(r.Actions, Action{Code: action.Code})
@@ -219,7 +229,7 @@ func stageOrderIndex(stage Stage) int {
 	return -1
 }
 func requestDigest(req Request, stage Stage, p *PlanResult) string {
-	material := string(req.Profile) + "\x00" + string(stage)
+	material := string(req.Profile) + "\x00" + string(req.Topology) + "\x00" + req.EndpointOriginDigest + "\x00" + req.EndpointIdentityDigest + "\x00" + string(stage)
 	if p != nil {
 		material += "\x00" + p.LumenVersion + "\x00" + p.HermesVersion + "\x00" + string(p.Platform) + "\x00" + p.Architecture
 	}
@@ -235,7 +245,7 @@ func requestDigest(req Request, stage Stage, p *PlanResult) string {
 	return "sha256:" + hex.EncodeToString(h[:])
 }
 func (r SetupRunner) readyReport(req Request) Report {
-	out := Report{Outcome: Ready, Stage: Validated, Profile: req.Profile}
+	out := Report{Outcome: Ready, Stage: Validated, Profile: req.Profile, Topology: req.Topology}
 	if r.Plan != nil {
 		out.Platform, out.LumenVersion, out.HermesVersion = r.Plan.Platform, safeVersion(r.Plan.LumenVersion), safeVersion(r.Plan.HermesVersion)
 	}

@@ -21,13 +21,33 @@ var (
 var stageOrder = []Stage{Detected, ArtifactsReady, DirectoriesReady, CredentialsReady, ConfigurationReady, HostInitialized, ServicesInstalled, ServicesStarted, Validated}
 
 type Journal struct {
-	dir, path  string
-	evidence   []StageEvidence
-	syncParent func(string) error
+	dir, path   string
+	bindingPath string
+	evidence    []StageEvidence
+	binding     *JournalBinding
+	syncParent  func(string) error
+}
+
+type JournalBinding struct {
+	Profile                Profile           `json:"profile"`
+	Topology               Topology          `json:"topology"`
+	EndpointOriginDigest   string            `json:"endpointOriginDigest,omitempty"`
+	EndpointIdentityDigest string            `json:"endpointIdentityDigest,omitempty"`
+	ArtifactDigests        map[string]string `json:"artifactDigests,omitempty"`
+	PlanDigest             string            `json:"planDigest"`
 }
 
 func NewJournal(d string) (*Journal, error) {
-	j := &Journal{dir: d, path: filepath.Join(d, "setup-journal.json"), syncParent: syncDirectory}
+	j := &Journal{dir: d, path: filepath.Join(d, "setup-journal.json"), bindingPath: filepath.Join(d, "setup-binding.json"), syncParent: syncDirectory}
+	if b, e := os.ReadFile(j.bindingPath); e == nil {
+		var binding JournalBinding
+		if json.Unmarshal(b, &binding) != nil {
+			return nil, ErrInvalidJournal
+		}
+		j.binding = &binding
+	} else if !errors.Is(e, os.ErrNotExist) {
+		return nil, e
+	}
 	b, e := os.ReadFile(j.path)
 	if errors.Is(e, os.ErrNotExist) {
 		return j, nil
@@ -45,6 +65,32 @@ func NewJournal(d string) (*Journal, error) {
 		return nil, fmt.Errorf("%w: trailing content", ErrInvalidJournal)
 	}
 	return j, validateEvidence(j.evidence)
+}
+func (j *Journal) Bind(b JournalBinding) error {
+	if !validProfile(b.Profile) || b.Topology.Validate() != nil || !validDigest(b.PlanDigest) {
+		return ErrInvalidJournal
+	}
+	if j.binding != nil {
+		if !bindingsEqual(*j.binding, b) {
+			return ErrInputChanged
+		}
+		return nil
+	}
+	if err := os.MkdirAll(j.dir, 0700); err != nil {
+		return err
+	}
+	data, _ := json.Marshal(b)
+	if err := os.WriteFile(j.bindingPath, data, 0600); err != nil {
+		return err
+	}
+	j.binding = &b
+	return nil
+}
+func bindingsEqual(a, b JournalBinding) bool {
+	if a.Profile != b.Profile || a.Topology != b.Topology || a.EndpointOriginDigest != b.EndpointOriginDigest || a.EndpointIdentityDigest != b.EndpointIdentityDigest || a.PlanDigest != b.PlanDigest {
+		return false
+	}
+	return fmt.Sprint(a.ArtifactDigests) == fmt.Sprint(b.ArtifactDigests)
 }
 func (j *Journal) Next() Stage {
 	if len(j.evidence) < len(stageOrder) {

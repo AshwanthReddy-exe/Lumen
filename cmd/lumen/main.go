@@ -55,7 +55,7 @@ func setupCommand(ctx context.Context) setup.Report {
 		return setup.Report{Outcome: setup.ActionRequired, Actions: []setup.Action{{Code: "invalid_profile"}}}
 	}
 	probe := cliProbe{dataDir: dataDir}
-	plan, err := setup.Plan(ctx, setup.Request{Profile: profile}, probe)
+	plan, err := setup.Plan(ctx, setup.Request{Topology: setup.TopologyCombined, Profile: profile}, probe)
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: setupErrorCode(err)}}}
 	}
@@ -73,7 +73,7 @@ func setupCommand(ctx context.Context) setup.Report {
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: "journal_unavailable"}}}
 	}
-	request := setup.Request{Profile: profile, ArtifactDigests: map[string]string{"lumen": os.Getenv("LUMEN_LUMEN_SHA256"), "hermes": os.Getenv("LUMEN_HERMES_SHA256")}}
+	request := setup.Request{Topology: setup.TopologyCombined, Profile: profile, ArtifactDigests: map[string]string{"lumen": os.Getenv("LUMEN_LUMEN_SHA256"), "hermes": os.Getenv("LUMEN_HERMES_SHA256")}}
 	state := &setupState{plan: plan, dataDir: dataDir, profile: profile}
 	runner := setup.Runner{
 		Journal: journal,
@@ -116,7 +116,7 @@ func doctorCommand(ctx context.Context) setup.Report {
 		return setup.Report{Outcome: setup.ActionRequired, Actions: []setup.Action{{Code: "invalid_profile"}}}
 	}
 	state := &setupState{dataDir: dataDir, profile: profile}
-	if plan, e := setup.Plan(ctx, setup.Request{Profile: profile}, cliProbe{dataDir: dataDir}); e == nil {
+	if plan, e := setup.Plan(ctx, setup.Request{Topology: setup.TopologyCombined, Profile: profile}, cliProbe{dataDir: dataDir}); e == nil {
 		state.plan = plan
 	}
 	return (setup.Doctor{Observe: state.observe}).Check(ctx)
