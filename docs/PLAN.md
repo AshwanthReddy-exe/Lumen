@@ -8,7 +8,7 @@ The product north star is a Jarvis-like personal intelligence Space: the user ca
 
 ## Current execution lock
 
-**Milestone 1 is the only active implementation milestone.** The durable Go Space authority, encrypted store, authenticated local control boundary, Host-to-Hermes Runs execution, and topology/artifact/adoption setup primitives exist. The public `lumen setup`, `lumen doctor`, and `lumen service` paths remain stubs; the release manifest is not distributable; artifact checksum, clean-install, real configured-runtime, real dual-machine, reboot, and rollback evidence remain incomplete. Node transport, web UI, messaging continuity, voice, canonical conversations, and device capabilities are not implemented. M1 therefore remains active.
+**Milestone 1 is the only active implementation milestone.** The durable Go Space authority, encrypted store, authenticated local control boundary, Host-to-Hermes Runs execution, dual-topology public setup, and durable doctor/service paths exist. The official Hermes source archive is pinned and its container builds, while the release manifest is still not distributable and the clean combined/external journeys, real configured-runtime, real dual-machine, reboot, and rollback evidence remain incomplete. Node transport, web UI, messaging continuity, voice, canonical conversations, and device capabilities are not implemented. M1 therefore remains active.
 
 The current setup branch must be integrated and verified before product-surface implementation begins. Physical Android, Mac, or iPhone completion is not a prerequisite unless it proves the active milestone's contract.
 
@@ -22,9 +22,8 @@ Every release check records the date, commit, build and dependency versions, top
 | --- | --- | --- |
 | Space authority and encrypted persistence | Implemented and covered by Go tests | Preserve while adding conversations, memory, and node protocol |
 | Host-to-Hermes run execution | Development adapter and recovery path implemented | Real pinned Hermes compatibility and approval evidence |
-| Setup primitives | Planner, journal, topology/artifact contracts, external-adoption persistence, configuration, and supervisors implemented | Wire the public dual-topology orchestration journey |
-| Public `lumen` lifecycle CLI | Contract exists; setup, doctor, and service are stubs | Clean combined Linux/VPS deployment |
-| Distribution | Cross-builds and templates exist; manifest is a fixture | Reproducible integrity-pinned release artifacts |
+| Setup and public lifecycle | Dual-topology planner/journal/configuration, external adoption, create-once Host initialization, topology-scoped supervision, durable doctor, and service control implemented | Clean combined and external Linux journeys |
+| Distribution | Official Hermes `v2026.9.7` source archive and container recipe are pinned and locally build-verified; release manifest remains a fixture | Reproducible Lumen artifact plus distributable combined manifest |
 | Conversations and memory | Not implemented | Canonical conversation and inspectable-memory nucleus |
 | Node fabric and remote capabilities | Domain fixtures only | Authenticated transport plus one restricted capability |
 | Product surfaces | Disabled Android shell only | Responsive web conversation surface |
