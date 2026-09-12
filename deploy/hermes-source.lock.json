@@ -4,7 +4,7 @@
   "tag": "v2026.9.7",
   "commit": "2237be355906fbe6065ce1815711eee52b2d646e",
   "archive": "hermes-source.tar.gz",
-  "archiveSha256": null,
+  "archiveSha256": "907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688",
   "python": "3.11",
   "lockfile": "uv.lock",
   "frozen": true,
