@@ -509,6 +509,35 @@ func TestRuntimeApprovalIsBoundAndForwardsOnceOrDeny(t *testing.T) {
 	}
 }
 
+func TestRuntimeApprovalDoesNotTrustMismatchedStatusRun(t *testing.T) {
+	r := &fakeRuntime{
+		create:         hermes.Run{RunID: "run-approval-status", Status: "started"},
+		events:         []hermes.Event{{ID: "approval", Type: "approval.requested", Data: []byte(`{"status":"awaiting_approval","approval_id":"runtime-status","target_node_id":"host","action_fingerprint":"digest","expires_at":120}`)}},
+		statusDefault:  hermes.Run{RunID: "other-run", Status: "completed"},
+		approvalErrors: []error{errors.New("approval delivery uncertain")},
+	}
+	s := executionService(t, r)
+	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-runtime-status", "task-runtime-status")); err != nil {
+		t.Fatal(err)
+	}
+	waitForTask(t, s, "task-runtime-status", space.OutcomeAwaitingPermission)
+	command := space.Command{Type: space.CommandResolveRuntimeApproval, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "resolve-runtime-status", TaskID: "task-runtime-status", RuntimeRunID: "run-approval-status", RuntimeProfileDigest: "sha256:profile", RuntimeApprovalID: "runtime-status", TargetNodeID: "host", ActionFingerprint: "digest", Decision: "once", ObservedAt: 110}
+	if _, err := s.ResolveRuntimeApproval(context.Background(), RuntimeApprovalRequest{Command: command}); err == nil {
+		t.Fatal("expected first delivery to be uncertain")
+	}
+	if _, err := s.ResolveRuntimeApproval(context.Background(), RuntimeApprovalRequest{Command: command}); err == nil {
+		t.Fatal("mismatched status run was trusted")
+	}
+	state, err := s.state.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval := state.RuntimeApprovals["runtime-status"]
+	if approval.DeliveryState == "delivered" || state.Tasks["task-runtime-status"].Status != space.OutcomeAwaitingPermission {
+		t.Fatalf("mismatched status changed durable state: approval=%#v task=%#v", approval, state.Tasks["task-runtime-status"])
+	}
+}
+
 func TestLiveHermesApprovalIsBoundFromDurableTask(t *testing.T) {
 	r := &fakeRuntime{create: hermes.Run{RunID: "run-live-approval", Status: "started"}, events: []hermes.Event{{ID: "approval-live", Type: "approval.request", Data: []byte(`{"event":"approval.request","run_id":"run-live-approval","timestamp":100,"choices":["once","deny"],"command":"echo hello"}`)}}}
 	s := executionService(t, r)

@@ -506,8 +506,11 @@ func (c *Client) Stop(ctx context.Context, runID string) (Run, error) {
 	if err := decodeEvidenceJSON(b, &out); err != nil {
 		return out, err
 	}
-	if err := validateRun(out, false); err != nil {
+	if err := validateRun(out, true); err != nil {
 		return out, err
+	}
+	if out.RunID != runID {
+		return out, fmt.Errorf("%w: stop response run ID mismatch", ErrInvalidEvidence)
 	}
 	return out, nil
 }

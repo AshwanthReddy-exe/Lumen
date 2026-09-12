@@ -408,7 +408,7 @@ func AdoptHermes(ctx context.Context, c HermesCandidate) error {
 		return fmt.Errorf("%w: authentication", ErrHermesIncompatible)
 	}
 	for _, name := range []string{hermes.CapabilityRunSubmission, hermes.CapabilityRunStatus, hermes.CapabilityRunEvents, hermes.CapabilityRunApproval, hermes.CapabilityRunStop} {
-		if !caps.Features[name] {
+		if !caps.Features[name] && !(name == hermes.CapabilityRunApproval && caps.Features["run_approval_response"]) {
 			return fmt.Errorf("%w: required capability", ErrHermesIncompatible)
 		}
 	}

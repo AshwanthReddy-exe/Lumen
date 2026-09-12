@@ -547,7 +547,10 @@ func (s *Service) deliverRuntimeApproval(ctx context.Context, command space.Comm
 	}()
 	if approval.DeliveryState == "uncertain" || approval.DeliveryState == "sending" {
 		status, statusErr := s.executor.runtime.RunStatus(ctx, run.RuntimeRunID)
-		if statusErr != nil {
+		if statusErr != nil || status.RunID != run.RuntimeRunID {
+			if statusErr == nil {
+				statusErr = errors.New("runtime approval status run mismatch")
+			}
 			dispatched, applyErr := s.recordRuntimeApprovalDelivery(tr, state, run, approval, "uncertain", attempt)
 			if applyErr != nil {
 				return tr, errors.Join(statusErr, applyErr)
@@ -613,6 +616,9 @@ func (s *Service) CancelTask(ctx context.Context, req CancelRequest) (space.Tran
 	}
 	stopped, stopErr := s.executor.runtime.Stop(ctx, run.RuntimeRunID)
 	if stopErr == nil {
+		if stopped.RunID != run.RuntimeRunID {
+			return tr, s.reconcileAfterStop(ctx, req.Command.TaskID)
+		}
 		if evidence, ok := evidenceForRunStatus(stopped.Status); ok {
 			output, truncated := boundRunOutput(stopped.Output)
 			if persistErr := s.persistEvidenceOutput(req.Command.TaskID, run, evidence, "stop", output, truncated); persistErr != nil {

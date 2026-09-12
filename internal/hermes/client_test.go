@@ -331,7 +331,7 @@ func TestStopUsesRunsEndpoint(t *testing.T) {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"stopping"}`))
+		_, _ = w.Write([]byte(`{"run_id":"run_1","status":"stopping"}`))
 	}))
 	c, err := New(testConfig(srv.URL))
 	if err != nil {
@@ -340,6 +340,20 @@ func TestStopUsesRunsEndpoint(t *testing.T) {
 	got, err := c.Stop(context.Background(), "run_1")
 	if err != nil || got.Status != "stopping" {
 		t.Fatalf("stop=%#v err=%v", got, err)
+	}
+}
+
+func TestStopRejectsMismatchedRunEvidence(t *testing.T) {
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"run_id":"other","status":"completed"}`))
+	}))
+	c, err := New(testConfig(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Stop(context.Background(), "run_1"); !errors.Is(err, ErrInvalidEvidence) {
+		t.Fatalf("mismatched stop evidence accepted: %v", err)
 	}
 }
 

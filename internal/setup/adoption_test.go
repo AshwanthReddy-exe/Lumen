@@ -498,6 +498,18 @@ func TestAdoptHermesAcceptsAndPreserves(t *testing.T) {
 		t.Fatal("candidate mutated")
 	}
 }
+
+func TestAdoptHermesAcceptsApprovalResponseCapabilityAlias(t *testing.T) {
+	c, _ := goodAdoption(t)
+	f := c.Adapter.(adoptionFake)
+	delete(f.caps.Features, hermes.CapabilityRunApproval)
+	f.caps.Features["run_approval_response"] = true
+	c.Adapter = f
+	if err := AdoptHermes(context.Background(), c); err != nil {
+		t.Fatalf("documented approval response alias rejected: %v", err)
+	}
+}
+
 func TestAdoptHermesRejectsMatrix(t *testing.T) {
 	cases := []struct {
 		name   string
