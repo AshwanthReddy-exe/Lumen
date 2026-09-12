@@ -151,10 +151,9 @@ func TestSetupComposesPlannerAndJournal(t *testing.T) {
 }
 
 func TestDoctorComposesWholeDeploymentStates(t *testing.T) {
-	d := t.TempDir()
-	t.Setenv("LUMEN_DATA_DIR", d)
-	t.Setenv("LUMEN_SETUP_PROFILE", "development")
-	t.Setenv("LUMEN_SETUP_TOPOLOGY", "combined")
+	f := newDurableDoctorFixture(t, setup.TopologyCombined)
+	t.Setenv("LUMEN_SETUP_TOPOLOGY", "external")
+	t.Setenv("LUMEN_SETUP_PROFILE", "hardened")
 	report := runForTest([]string{"doctor"})
 	if report.Actions == nil || report.Actions[0].Code == "setup_adapters_required" {
 		t.Fatalf("doctor still uses placeholder composition: %#v", report)
@@ -163,7 +162,7 @@ func TestDoctorComposesWholeDeploymentStates(t *testing.T) {
 		t.Fatalf("doctor omitted normalized states: %#v", report)
 	}
 	body, err := json.Marshal(report)
-	if err != nil || strings.Contains(string(body), d) {
+	if err != nil || strings.Contains(string(body), f.dataDir) {
 		t.Fatalf("doctor leaked path or failed to encode: %s (%v)", body, err)
 	}
 }
@@ -241,13 +240,12 @@ func TestPublicCommandsDoNotExposeUntrustedMetadata(t *testing.T) {
 }
 
 func TestCombinedServiceControlsBothServices(t *testing.T) {
-	d, calls := fakeSystemd(t)
-	t.Setenv("LUMEN_DATA_DIR", d)
-	t.Setenv("LUMEN_SETUP_TOPOLOGY", "combined")
-	t.Setenv("LUMEN_SUPERVISOR", string(setup.SupervisorSystemd))
+	f := newDurableDoctorFixture(t, setup.TopologyCombined)
+	calls := f.calls
+	clearFile(t, calls)
 
 	report := runForTest([]string{"service", "restart"})
-	if report.Outcome != setup.Ready {
+	if report.Outcome != setup.Ready || report.Topology != setup.TopologyCombined {
 		t.Fatalf("service report = %#v", report)
 	}
 	got := readLines(t, calls)
@@ -257,13 +255,12 @@ func TestCombinedServiceControlsBothServices(t *testing.T) {
 }
 
 func TestExternalServiceControlsHostOnly(t *testing.T) {
-	d, calls := fakeSystemd(t)
-	t.Setenv("LUMEN_DATA_DIR", d)
-	t.Setenv("LUMEN_SETUP_TOPOLOGY", "external")
-	t.Setenv("LUMEN_SUPERVISOR", string(setup.SupervisorSystemd))
+	f := newDurableDoctorFixture(t, setup.TopologyExternal)
+	calls := f.calls
+	clearFile(t, calls)
 
 	report := runForTest([]string{"service", "restart"})
-	if report.Outcome != setup.Ready {
+	if report.Outcome != setup.Ready || report.Topology != setup.TopologyExternal {
 		t.Fatalf("service report = %#v", report)
 	}
 	got := readLines(t, calls)

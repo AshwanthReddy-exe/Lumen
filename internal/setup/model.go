@@ -58,8 +58,11 @@ func (t Topology) Validate() error {
 type Request struct {
 	Profile                Profile           `json:"profile"`
 	Topology               Topology          `json:"topology"`
+	Supervisor             Supervisor        `json:"-"`
 	EndpointOriginDigest   string            `json:"-"`
 	EndpointIdentityDigest string            `json:"-"`
+	ReferenceDigests       map[string]string `json:"-"`
+	ArtifactPaths          map[string]string `json:"-"`
 	ArtifactDigests        map[string]string `json:"-"`
 }
 
@@ -80,6 +83,15 @@ const (
 	SupervisorDocker  Supervisor = "docker"
 )
 
+func (s Supervisor) Validate() error {
+	switch s {
+	case SupervisorLaunchd, SupervisorSystemd, SupervisorRunit, SupervisorDocker:
+		return nil
+	default:
+		return fmt.Errorf("unsupported supervisor %q", s)
+	}
+}
+
 type StageEvidence struct {
 	Stage       Stage   `json:"stage"`
 	InputDigest string  `json:"inputDigest"`
@@ -94,14 +106,19 @@ type Action struct {
 }
 
 type Report struct {
-	Outcome          Outcome           `json:"outcome"`
-	Stage            Stage             `json:"stage"`
-	Profile          Profile           `json:"profile,omitempty"`
-	Topology         Topology          `json:"topology,omitempty"`
-	Platform         Platform          `json:"platform,omitempty"`
-	LumenVersion     string            `json:"lumenVersion,omitempty"`
-	HermesVersion    string            `json:"hermesVersion,omitempty"`
-	States           map[string]string `json:"states,omitempty"`
-	Actions          []Action          `json:"actions,omitempty"`
-	AvailableInBlock int               `json:"availableInBlock,omitempty"`
+	Outcome               Outcome           `json:"outcome"`
+	Stage                 Stage             `json:"stage"`
+	Profile               Profile           `json:"profile,omitempty"`
+	Topology              Topology          `json:"topology,omitempty"`
+	Platform              Platform          `json:"platform,omitempty"`
+	LumenVersion          string            `json:"lumenVersion,omitempty"`
+	HermesVersion         string            `json:"hermesVersion,omitempty"`
+	States                map[string]string `json:"states,omitempty"`
+	Actions               []Action          `json:"actions,omitempty"`
+	AvailableInBlock      int               `json:"availableInBlock,omitempty"`
+	PreviouslyValidated   bool              `json:"previouslyValidated,omitempty"`
+	EndpointIdentityMatch bool              `json:"endpointIdentityMatch,omitempty"`
+	AuthenticationValid   bool              `json:"authenticationValid,omitempty"`
+	CompatibilityValid    bool              `json:"compatibilityValid,omitempty"`
+	BindingMatch          bool              `json:"bindingMatch,omitempty"`
 }

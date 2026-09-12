@@ -75,6 +75,67 @@ func TestSupervisorRestartUsesBoundedContext(t *testing.T) {
 	}
 }
 
+func TestSupervisorBootStatusUsesLiveEnableObservation(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &bootStatusRunner{}
+	commandRunner = r
+	ready, err := (CommandSupervisor{Manager: SupervisorSystemd}).BootStatus(context.Background(), []ServiceName{ServiceHost})
+	if err != nil || !ready || !reflect.DeepEqual(r.calls, [][]string{{"systemctl", "is-enabled", "lumen-host.service"}}) {
+		t.Fatalf("ready=%v err=%v calls=%#v", ready, err, r.calls)
+	}
+}
+
+func TestSupervisorBootStatusUsesDockerRestartPolicy(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &bootStatusOutputRunner{stdout: []byte("unless-stopped\n")}
+	commandRunner = r
+	ready, err := (CommandSupervisor{Manager: SupervisorDocker}).BootStatus(context.Background(), []ServiceName{ServiceHost})
+	if err != nil || !ready || !reflect.DeepEqual(r.calls, [][]string{{"docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", "lumen-host"}}) {
+		t.Fatalf("ready=%v err=%v calls=%#v", ready, err, r.calls)
+	}
+}
+
+func TestSupervisorBootStatusRejectsAmbiguousRunitBootState(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &bootStatusOutputRunner{stdout: []byte("run: lumen-host: (pid 1) 10s\n")}
+	commandRunner = r
+	ready, err := (CommandSupervisor{Manager: SupervisorRunit}).BootStatus(context.Background(), []ServiceName{ServiceHost})
+	if err == nil || ready || len(r.calls) != 0 {
+		t.Fatalf("ready=%v err=%v calls=%#v", ready, err, r.calls)
+	}
+}
+
+func TestSupervisorBootStatusRejectsAmbiguousLaunchdBootState(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &bootStatusRunner{}
+	commandRunner = r
+	ready, err := (CommandSupervisor{Manager: SupervisorLaunchd}).BootStatus(context.Background(), []ServiceName{ServiceHost})
+	if err == nil || ready || len(r.calls) != 0 {
+		t.Fatalf("ready=%v err=%v calls=%#v", ready, err, r.calls)
+	}
+}
+
+type bootStatusRunner struct{ calls [][]string }
+
+func (r *bootStatusRunner) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	return []byte("enabled\n"), nil, nil
+}
+
+type bootStatusOutputRunner struct {
+	calls  [][]string
+	stdout []byte
+}
+
+func (r *bootStatusOutputRunner) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	return r.stdout, nil, nil
+}
+
 type fakeSupervisor struct{ calls []string }
 
 func (f *fakeSupervisor) Install(context.Context, ServicePlan) error {

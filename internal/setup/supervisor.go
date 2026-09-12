@@ -250,6 +250,54 @@ func (s CommandSupervisor) Control(ctx context.Context, a Action, names []Servic
 	}
 	return states, nil
 }
+
+// BootStatus observes whether the supervisor has enabled every selected
+// service. Managers without a stable enabled-state query fail closed instead
+// of inferring boot readiness from service status or setup history.
+func (s CommandSupervisor) BootStatus(ctx context.Context, names []ServiceName) (bool, error) {
+	if err := s.Manager.Validate(); err != nil {
+		return false, err
+	}
+	if len(names) == 0 {
+		return false, &ValidationError{"services", "empty"}
+	}
+	if s.Manager == SupervisorRunit {
+		return false, &ActionRequiredError{Manager: s.Manager, Service: names[0], Operation: "boot-status"}
+	}
+	if s.Manager == SupervisorDocker {
+		for _, name := range names {
+			out, _, err := s.call(ctx, name, "boot-status", "docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", "lumen-"+string(name))
+			if err != nil {
+				return false, err
+			}
+			policy := strings.TrimSpace(string(out))
+			if policy == "" || policy == "no" {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+	if s.Manager == SupervisorLaunchd {
+		return false, &ActionRequiredError{Manager: s.Manager, Service: names[0], Operation: "boot-status"}
+	}
+	if s.Manager != SupervisorSystemd {
+		return false, &ActionRequiredError{Manager: s.Manager, Service: names[0], Operation: "boot-status"}
+	}
+	for _, name := range names {
+		if err := validateName(name); err != nil {
+			return false, err
+		}
+		out, _, err := s.call(ctx, name, "is-enabled", "systemctl", "is-enabled", unitName(ServiceDefinition{Name: name}))
+		if err != nil {
+			return false, err
+		}
+		if strings.TrimSpace(string(out)) != "enabled" {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func unitName(d ServiceDefinition) string {
 	if d.Path != "" {
 		return d.Path

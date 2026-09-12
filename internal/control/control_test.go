@@ -13,6 +13,14 @@ import (
 	"time"
 )
 
+func TestCallContextHonorsCancellationBeforeDial(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := CallContext(ctx, "/tmp/no-such-lumen.sock", "", Request{Command: "status"}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CallContext error = %v", err)
+	}
+}
+
 func TestFrameRejectsOversizedRequest(t *testing.T) {
 	r, w := net.Pipe()
 	defer r.Close()

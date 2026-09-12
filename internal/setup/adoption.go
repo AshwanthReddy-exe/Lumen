@@ -208,6 +208,56 @@ type ExternalAdoption struct {
 	ServerCertPin          string `json:"server_cert_pin,omitempty"`
 }
 
+// DigestReferences binds non-secret credential and TLS source names without
+// persisting their contents.
+func DigestReferences(refs map[string]string) map[string]string {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(refs))
+	for name, value := range refs {
+		if value != "" {
+			out[name] = digest(value)
+		}
+	}
+	return out
+}
+
+func ReferenceDigestsMatch(want, got map[string]string) bool {
+	if len(want) != len(got) {
+		return false
+	}
+	for name, value := range want {
+		if got[name] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func EndpointOriginDigest(endpoint string) (string, error) {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", fmt.Errorf("%w: endpoint", ErrHermesIncompatible)
+	}
+	canonical := strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + strings.TrimRight(u.EscapedPath(), "/")
+	return digest(canonical), nil
+}
+
+// CheckExternalBinding compares live transport identity with the immutable
+// adoption record. It does not perform network calls or inspect credentials.
+func CheckExternalBinding(a ExternalAdoption, endpoint, verifiedIdentity string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("%w: endpoint binding", ErrHermesIncompatible)
+	}
+	canonical := strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + strings.TrimRight(u.EscapedPath(), "/")
+	if a.Endpoint != canonical || a.EndpointOriginDigest != digest(canonical) || verifiedIdentity == "" || a.EndpointIdentityDigest != digest(verifiedIdentity) {
+		return fmt.Errorf("%w: endpoint identity binding", ErrHermesIncompatible)
+	}
+	return nil
+}
+
 func AdoptExternalHermes(ctx context.Context, c HermesCandidate) (ExternalAdoption, error) {
 	if _, ok := ctx.Deadline(); !ok {
 		return ExternalAdoption{}, fmt.Errorf("%w: bounded context required", ErrHermesIncompatible)

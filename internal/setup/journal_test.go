@@ -237,3 +237,63 @@ func TestJournalRejectsTamperedBindingBeforeMutation(t *testing.T) {
 		}
 	}
 }
+
+func TestJournalBindingReturnsDeepCopy(t *testing.T) {
+	d := t.TempDir()
+	j, err := NewJournal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := JournalBinding{
+		Profile:         Development,
+		Topology:        TopologyExternal,
+		PlanDigest:      "sha256:" + strings.Repeat("a", 64),
+		ArtifactDigests: map[string]string{"lumen": "sha256:" + strings.Repeat("b", 64)},
+	}
+	if err := j.Bind(binding); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := j.Binding()
+	if !ok {
+		t.Fatal("expected binding")
+	}
+	got.ArtifactDigests["lumen"] = "sha256:" + strings.Repeat("c", 64)
+	got.ArtifactDigests["new"] = "sha256:" + strings.Repeat("d", 64)
+	again, ok := j.Binding()
+	if !ok || again.ArtifactDigests["lumen"] != binding.ArtifactDigests["lumen"] || len(again.ArtifactDigests) != 1 {
+		t.Fatalf("binding was not copied: %#v", again)
+	}
+}
+
+func TestJournalBindingPersistsSelectedSupervisor(t *testing.T) {
+	d := t.TempDir()
+	j, err := NewJournal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := JournalBinding{
+		Profile:    Development,
+		Topology:   TopologyExternal,
+		Supervisor: SupervisorSystemd,
+		PlanDigest: "sha256:" + strings.Repeat("a", 64),
+	}
+	if err := j.Bind(want); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewJournal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := reopened.Binding()
+	if !ok || got.Supervisor != want.Supervisor {
+		t.Fatalf("binding supervisor = %#v, want %q", got, want.Supervisor)
+	}
+}
+
+func TestJournalBindingRejectsUnsupportedSupervisor(t *testing.T) {
+	j := newTestJournal(t)
+	err := j.Bind(JournalBinding{Profile: Development, Topology: TopologyExternal, Supervisor: Supervisor("other"), PlanDigest: "sha256:" + strings.Repeat("a", 64)})
+	if !errors.Is(err, ErrInvalidJournal) {
+		t.Fatalf("got %v", err)
+	}
+}

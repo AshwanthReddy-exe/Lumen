@@ -116,6 +116,63 @@ func TestPersonalAlphaExternalAdoptionRequiresTLSMaterial(t *testing.T) {
 	}
 }
 
+func TestCheckExternalBindingMatchesEndpointAndIdentity(t *testing.T) {
+	endpoint := "https://hermes.example/api"
+	identity := "tls-leaf-sha256:leaf"
+	a := ExternalAdoption{
+		Endpoint:               endpoint,
+		EndpointOriginDigest:   digest(endpoint),
+		EndpointIdentityDigest: digest(identity),
+		Version:                "1.0.0",
+		CredentialFile:         "/tmp/credential",
+	}
+	if err := CheckExternalBinding(a, endpoint, identity); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckExternalBinding(a, "https://other.example/api", identity); !errors.Is(err, ErrHermesIncompatible) {
+		t.Fatalf("endpoint mismatch = %v", err)
+	}
+	if err := CheckExternalBinding(a, endpoint, "tls-leaf-sha256:other"); !errors.Is(err, ErrHermesIncompatible) {
+		t.Fatalf("identity mismatch = %v", err)
+	}
+}
+
+func TestReferenceDigestsBindCredentialAndTLSReferences(t *testing.T) {
+	a := ExternalAdoption{
+		CredentialFile: "/state/hermes.token",
+		CAFile:         "/state/ca.pem",
+		ClientCertFile: "/state/client.crt",
+		ClientKeyFile:  "/state/client.key",
+		ServerCertPin:  "pin",
+	}
+	want := DigestReferences(map[string]string{
+		"credential":  a.CredentialFile,
+		"ca":          a.CAFile,
+		"client_cert": a.ClientCertFile,
+		"client_key":  a.ClientKeyFile,
+		"server_pin":  a.ServerCertPin,
+	})
+	if !ReferenceDigestsMatch(want, DigestReferences(map[string]string{
+		"credential":  a.CredentialFile,
+		"ca":          a.CAFile,
+		"client_cert": a.ClientCertFile,
+		"client_key":  a.ClientKeyFile,
+		"server_pin":  a.ServerCertPin,
+	})) {
+		t.Fatal("matching references were rejected")
+	}
+	changed := DigestReferences(map[string]string{
+		"credential":  "/state/other.token",
+		"ca":          a.CAFile,
+		"client_cert": a.ClientCertFile,
+		"client_key":  a.ClientKeyFile,
+		"server_pin":  a.ServerCertPin,
+	})
+	if ReferenceDigestsMatch(want, changed) {
+		t.Fatal("changed credential reference was accepted")
+	}
+}
+
 func TestExternalAdoptionDirectorySyncFailureRestoresPrior(t *testing.T) {
 	d := realTempDir(t)
 	if err := os.Chmod(d, 0700); err != nil {
