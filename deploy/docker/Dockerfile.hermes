@@ -15,6 +15,7 @@ RUN test "$HERMES_COMMIT" = "$HERMES_EXPECTED_COMMIT" \
 RUN uv sync --frozen
 
 FROM python:3.11-slim
-WORKDIR /app
-COPY --from=build /src /app
-ENTRYPOINT ["/app/.venv/bin/hermes-agent"]
+WORKDIR /src
+COPY --from=build /src /src
+USER 65532:65532
+ENTRYPOINT ["/src/.venv/bin/hermes"]

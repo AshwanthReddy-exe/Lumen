@@ -42,6 +42,9 @@ func TestHermesSourcePinIsCompleteAndDockerEnforcesIt(t *testing.T) {
 		"test \"$HERMES_COMMIT\" = \"$HERMES_EXPECTED_COMMIT\"",
 		"test \"$HERMES_SOURCE_ARCHIVE_SHA256\" = \"$HERMES_EXPECTED_ARCHIVE_SHA256\"",
 		"hermes-agent-2026.9.7/",
+		"RUN uv sync --frozen",
+		"COPY --from=build /src /src",
+		"ENTRYPOINT [\"/src/.venv/bin/hermes\"]",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("Dockerfile missing pin enforcement %q", want)
