@@ -28,6 +28,9 @@ type ServiceDefinition struct {
 }
 type ServicePlan struct {
 	Hermes, Host ServiceDefinition
+	// Services is the exact locally owned service set. Empty preserves the
+	// original combined topology for callers that predate topology support.
+	Services []ServiceDefinition
 	// Deprecated fields retained for source compatibility; initialization must use Initializer.
 	HostInitialized bool
 	Verify          func() error
@@ -94,11 +97,14 @@ func InstallServices(ctx context.Context, s SupervisorAPI, p ServicePlan) error 
 	if s == nil {
 		return &ValidationError{"supervisor", "nil"}
 	}
-	if err := validateName(p.Hermes.Name); err != nil {
-		return err
+	services := p.serviceDefinitions()
+	if len(services) == 0 {
+		return &ValidationError{"services", "empty"}
 	}
-	if err := validateName(p.Host.Name); err != nil {
-		return err
+	for _, service := range services {
+		if err := validateName(service.Name); err != nil {
+			return err
+		}
 	}
 	if p.Initializer == nil {
 		return errors.New("host initialization not verified")
@@ -109,7 +115,18 @@ func InstallServices(ctx context.Context, s SupervisorAPI, p ServicePlan) error 
 	if err := s.Install(ctx, p); err != nil {
 		return err
 	}
-	return s.Enable(ctx, []ServiceName{ServiceHermes, ServiceHost})
+	names := make([]ServiceName, 0, len(services))
+	for _, service := range services {
+		names = append(names, service.Name)
+	}
+	return s.Enable(ctx, names)
+}
+
+func (p ServicePlan) serviceDefinitions() []ServiceDefinition {
+	if len(p.Services) != 0 {
+		return p.Services
+	}
+	return []ServiceDefinition{p.Hermes, p.Host}
 }
 
 type CommandSupervisor struct{ Manager Supervisor }
@@ -131,8 +148,8 @@ func (execRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 var commandRunner CommandRunner = execRunner{}
 
 func (s CommandSupervisor) Install(ctx context.Context, p ServicePlan) error {
-	for _, d := range []ServiceDefinition{p.Hermes, p.Host} {
-		if d.Path == "" && (d.Source == "" || d.Destination == "") {
+	for _, d := range p.serviceDefinitions() {
+		if s.Manager != SupervisorDocker && d.Path == "" && (d.Source == "" || d.Destination == "") {
 			return errors.New("service definition path required")
 		}
 		if err := validateName(d.Name); err != nil {
@@ -168,7 +185,7 @@ func copyDefinition(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if !st.Mode().IsRegular() || st.Mode()&0077 != 0 {
+	if !st.Mode().IsRegular() || st.Mode()&os.ModeSymlink != 0 || st.Mode()&0022 != 0 {
 		return errors.New("unsafe definition")
 	}
 	in, err := os.Open(src)

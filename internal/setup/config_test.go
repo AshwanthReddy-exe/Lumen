@@ -122,3 +122,32 @@ func TestExternalWriteConfigRejectsWrongOwnerReference(t *testing.T) {
 		t.Fatal("wrong-owner reference accepted")
 	}
 }
+
+func TestExternalPersonalAlphaConfigUsesTLSFileReferences(t *testing.T) {
+	d, _ := filepath.EvalSymlinks(t.TempDir())
+	files := make(map[string]string)
+	for _, name := range []string{"token", "ca.pem", "client.crt", "client.key"} {
+		path := filepath.Join(d, name)
+		if err := os.WriteFile(path, []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+		files[name] = path
+	}
+	p, err := WriteConfig(ConfigRequest{
+		DataDir: filepath.Join(d, "lumen"), HermesDir: filepath.Join(d, "unused-hermes"),
+		Profile: PersonalAlpha, Topology: TopologyExternal, HermesBaseURL: "https://hermes.example",
+		HermesCredentialFile: files["token"], HermesCAFile: files["ca.pem"],
+		HermesClientCertFile: files["client.crt"], HermesClientKeyFile: files["client.key"],
+		HermesServerPin: strings.Repeat("a", 64),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := host.ConfigFromFile(p.Lumen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HermesProfile != "hardened" || cfg.HermesCAPath != files["ca.pem"] {
+		t.Fatalf("external personal config = %#v", cfg)
+	}
+}

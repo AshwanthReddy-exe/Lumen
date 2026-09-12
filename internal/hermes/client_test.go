@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
@@ -419,6 +420,60 @@ func TestHardenedConfigRequiresTLS13PinAndClientCertificate(t *testing.T) {
 	cfg.TLS = TLSConfig{MinVersion: tls.VersionTLS13}
 	if _, err := New(cfg); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("expected hardened identity requirements, got %v", err)
+	}
+}
+
+func TestVerifiedEndpointIdentityUsesLoopbackOrigin(t *testing.T) {
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	c, err := New(testConfig(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer, ok := any(c).(interface {
+		VerifiedEndpointIdentity(context.Context) (string, error)
+	})
+	if !ok {
+		t.Fatal("Hermes client does not expose verified endpoint identity")
+	}
+	identity, err := observer.VerifiedEndpointIdentity(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity != "loopback:"+srv.URL {
+		t.Fatalf("identity = %q, want loopback origin", identity)
+	}
+}
+
+func TestVerifiedEndpointIdentityUsesPinnedTLSPeer(t *testing.T) {
+	pki := makeTestPKI(t)
+	srv := newMutualTLSServer(t, pki, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	pin := sha256.Sum256(pki.ServerLeaf.Raw)
+	cfg := testConfig(srv.URL)
+	cfg.ProfileMode = ProfileHardened
+	cfg.TLS = TLSConfig{RootCAs: pki.Roots, ClientCertificate: pki.Client, ServerCertSHA256: pin[:], MinVersion: tls.VersionTLS13}
+	c, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer, ok := any(c).(interface {
+		VerifiedEndpointIdentity(context.Context) (string, error)
+	})
+	if !ok {
+		t.Fatal("Hermes client does not expose verified endpoint identity")
+	}
+	identity, err := observer.VerifiedEndpointIdentity(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "tls-leaf-sha256:" + hex.EncodeToString(pin[:])
+	if identity != want {
+		t.Fatalf("identity = %q, want pinned TLS leaf identity %q", identity, want)
 	}
 }
 

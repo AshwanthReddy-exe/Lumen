@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -95,6 +96,16 @@ func TestDefinitionInstallCopiesExactBytes(t *testing.T) {
 	b, err := os.ReadFile(dst)
 	if err != nil || string(b) != "unit" {
 		t.Fatalf("installed bytes: %q %v", b, err)
+	}
+}
+
+func TestDefinitionInstallAcceptsTrackedPublicSystemdUnits(t *testing.T) {
+	for _, name := range []string{"lumen-hermes.service", "lumen-host.service"} {
+		src := filepath.Join("..", "..", "deploy", "systemd", name)
+		dst := filepath.Join(t.TempDir(), name)
+		if err := copyDefinition(src, dst); err != nil {
+			t.Fatalf("copy tracked %s: %v", name, err)
+		}
 	}
 }
 func (f *fakeSupervisor) Enable(_ context.Context, names []ServiceName) error {

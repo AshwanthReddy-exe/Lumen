@@ -190,6 +190,13 @@ type Adapter interface {
 	Stop(context.Context, string) (Run, error)
 }
 
+// EndpointIdentityObserver exposes identity evidence from the transport that
+// authenticated the endpoint. It is intentionally separate from Adapter so
+// runtime fakes and Host execution cannot accidentally claim transport trust.
+type EndpointIdentityObserver interface {
+	VerifiedEndpointIdentity(context.Context) (string, error)
+}
+
 type RuntimeAdapter = Adapter
 
 type Client struct {
@@ -314,6 +321,33 @@ func New(cfg Config) (*Client, error) {
 		bearerTokenSource:    cfg.BearerTokenSource,
 		requiredCapabilities: required,
 	}, nil
+}
+
+// VerifiedEndpointIdentity observes the identity of the configured endpoint
+// without trusting caller-provided labels. Development uses a synthetic
+// identity derived only from the constrained loopback origin; hardened uses
+// the leaf certificate from a successfully verified TLS connection.
+func (c *Client) VerifiedEndpointIdentity(ctx context.Context) (string, error) {
+	if c.baseURL.Scheme == "http" {
+		if !isLoopback(c.baseURL.Hostname()) {
+			return "", fmt.Errorf("%w: non-loopback HTTP endpoint", ErrInvalidConfig)
+		}
+		return "loopback:" + canonicalEndpoint(c.baseURL), nil
+	}
+	var state *tls.ConnectionState
+	if _, err := c.requestObserved(ctx, http.MethodGet, "/health", nil, "application/json", "", func(resp *http.Response) {
+		if resp.TLS != nil {
+			copy := *resp.TLS
+			state = &copy
+		}
+	}); err != nil {
+		return "", err
+	}
+	if state == nil || len(state.PeerCertificates) == 0 {
+		return "", errors.New("Hermes TLS peer identity unavailable")
+	}
+	sum := sha256.Sum256(state.PeerCertificates[0].Raw)
+	return "tls-leaf-sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
 func (c *Client) Capabilities(ctx context.Context) (Capabilities, error) {
@@ -479,6 +513,10 @@ func (c *Client) Stop(ctx context.Context, runID string) (Run, error) {
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body any, accept, idempotencyKey string) ([]byte, error) {
+	return c.requestObserved(ctx, method, path, body, accept, idempotencyKey, nil)
+}
+
+func (c *Client) requestObserved(ctx context.Context, method, path string, body any, accept, idempotencyKey string, observe func(*http.Response)) ([]byte, error) {
 	u := *c.baseURL
 	u.Path = strings.TrimRight(u.Path, "/") + path
 	u.RawPath = ""
@@ -513,6 +551,9 @@ func (c *Client) request(ctx context.Context, method, path string, body any, acc
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if observe != nil {
+		observe(resp)
+	}
 	b, readErr := boundedRead(resp.Body, c.maxResponseBytes, ErrResponseTooLarge)
 	if readErr != nil {
 		return nil, readErr
@@ -521,6 +562,10 @@ func (c *Client) request(ctx context.Context, method, path string, body any, acc
 		return nil, safeHTTPError(resp.StatusCode, b)
 	}
 	return b, nil
+}
+
+func canonicalEndpoint(u *url.URL) string {
+	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + strings.TrimRight(u.EscapedPath(), "/")
 }
 
 func (c *Client) token() (string, error) {

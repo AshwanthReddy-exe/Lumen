@@ -37,8 +37,13 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return ConfigPaths{}, errors.New("invalid Hermes endpoint")
 	}
-	if r.Profile == Hardened && (u.Scheme != "https" || strings.HasPrefix(u.Hostname(), "127.") || u.Hostname() == "localhost" || u.Hostname() == "::1" || r.HermesServerPin == "" || (r.Topology != TopologyExternal && (r.HermesCA == "" || r.HermesClientCert == "" || r.HermesClientKey == ""))) {
+	secureExternal := r.Topology == TopologyExternal && (r.Profile == PersonalAlpha || r.Profile == Hardened)
+	secureCombined := r.Topology != TopologyExternal && r.Profile == Hardened
+	if (secureExternal || secureCombined) && (u.Scheme != "https" || strings.HasPrefix(u.Hostname(), "127.") || u.Hostname() == "localhost" || u.Hostname() == "::1" || r.HermesServerPin == "") {
 		return ConfigPaths{}, errors.New("hardened configuration requires non-loopback TLS identity")
+	}
+	if secureCombined && (r.HermesCA == "" || r.HermesClientCert == "" || r.HermesClientKey == "") {
+		return ConfigPaths{}, errors.New("hardened configuration requires TLS material")
 	}
 	if err := safeDir(r.DataDir); err != nil {
 		return ConfigPaths{}, err
@@ -46,11 +51,13 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 	if err := os.Chmod(r.DataDir, 0700); err != nil {
 		return ConfigPaths{}, err
 	}
-	if err := safeDir(r.HermesDir); err != nil {
-		return ConfigPaths{}, err
-	}
-	if err := os.Chmod(r.HermesDir, 0700); err != nil {
-		return ConfigPaths{}, err
+	if r.Topology != TopologyExternal {
+		if err := safeDir(r.HermesDir); err != nil {
+			return ConfigPaths{}, err
+		}
+		if err := os.Chmod(r.HermesDir, 0700); err != nil {
+			return ConfigPaths{}, err
+		}
 	}
 	if r.Journal != nil {
 		if err := r.Journal.Record(StageEvidence{Stage: DirectoriesReady, InputDigest: "sha256:" + strings.Repeat("0", 64)}); err != nil {
@@ -62,7 +69,7 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 		if r.HermesCredentialFile == "" {
 			return ConfigPaths{}, errors.New("external topology requires credential reference")
 		}
-		if r.Profile == Hardened {
+		if secureExternal {
 			if err := validateEndpointFiles(HermesCandidate{CredentialFile: r.HermesCredentialFile, CAFile: r.HermesCAFile, ClientCertFile: r.HermesClientCertFile, ClientKeyFile: r.HermesClientKeyFile, OwnerKnown: true, OwnerUID: uint32(os.Getuid())}); err != nil {
 				return ConfigPaths{}, errors.New("hardened external configuration requires valid credential references")
 			}
@@ -87,7 +94,11 @@ func WriteConfig(r ConfigRequest) (ConfigPaths, error) {
 			return ConfigPaths{}, err
 		}
 	}
-	lumen := map[string]any{"version": 1, "data_dir": r.DataDir, "hermes": map[string]string{"base_url": r.HermesBaseURL, "profile": string(r.Profile), "bearer_file": p.Bearer, "ca_file": p.CA, "client_cert_file": p.ClientCert, "client_key_file": p.ClientKey, "server_cert_pin": r.HermesServerPin}}
+	profile := string(r.Profile)
+	if r.Profile == PersonalAlpha && r.Topology == TopologyExternal {
+		profile = "hardened"
+	}
+	lumen := map[string]any{"version": 1, "data_dir": r.DataDir, "hermes": map[string]string{"base_url": r.HermesBaseURL, "profile": profile, "bearer_file": p.Bearer, "ca_file": p.CA, "client_cert_file": p.ClientCert, "client_key_file": p.ClientKey, "server_cert_pin": r.HermesServerPin}}
 	hermesCfg := map[string]any{"version": 1, "profile": string(r.Profile), "base_url": r.HermesBaseURL, "bearer_file": p.Bearer}
 	if err := writeJSON(p.Lumen, lumen); err != nil {
 		return ConfigPaths{}, err
@@ -115,6 +126,9 @@ func safeDir(p string) error {
 			if !s.IsDir() {
 				return errors.New("configuration directory must not contain symlinks")
 			}
+			if cur == filepath.Clean(p) && !sameOwner(s, uint32(os.Getuid())) {
+				return errors.New("configuration directory must be private and owner-controlled")
+			}
 		} else if os.IsNotExist(err) {
 			if err := os.Mkdir(cur, 0700); err != nil {
 				return err
@@ -124,6 +138,38 @@ func safeDir(p string) error {
 		}
 	}
 	return os.Chmod(p, 0700)
+}
+
+func validatePrivatePath(path string, owner uint32, file bool) error {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return errors.New("private path must be absolute and clean")
+	}
+	parts := strings.Split(filepath.Clean(path), string(filepath.Separator))[1:]
+	cur := string(filepath.Separator)
+	for i, part := range parts {
+		cur = filepath.Join(cur, part)
+		st, err := os.Lstat(cur)
+		if err != nil {
+			return err
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			return errors.New("private path contains unsafe component")
+		}
+		if i < len(parts)-1 {
+			privateOwner := sameOwner(st, owner)
+			trustedSystem := sameOwner(st, 0) && st.Mode().Perm()&0022 == 0
+			if !st.IsDir() || (privateOwner && st.Mode().Perm()&0022 != 0) || (!privateOwner && !trustedSystem) {
+				return errors.New("private path parent is not a directory")
+			}
+		} else if file {
+			if !st.Mode().IsRegular() || !sameOwner(st, owner) || st.Mode().Perm()&0077 != 0 {
+				return errors.New("private path is not a regular file")
+			}
+		} else if !st.IsDir() || !sameOwner(st, owner) || st.Mode().Perm()&0077 != 0 {
+			return errors.New("private path is not a directory")
+		}
+	}
+	return nil
 }
 func writePrivate(p string, b []byte) error {
 	f, e := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)

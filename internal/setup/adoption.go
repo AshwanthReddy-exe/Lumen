@@ -26,8 +26,7 @@ func SaveExternalAdoption(path string, adoption ExternalAdoption) error {
 		return fmt.Errorf("%w: target", ErrHermesIncompatible)
 	}
 	parent := filepath.Dir(path)
-	st, err := os.Stat(parent)
-	if err != nil || !st.IsDir() || st.Mode().Perm()&0077 != 0 || !sameOwner(st, uint32(os.Getuid())) {
+	if err := validatePrivatePath(parent, uint32(os.Getuid()), false); err != nil {
 		return fmt.Errorf("%w: parent", ErrHermesIncompatible)
 	}
 	if old, err := os.Lstat(path); err == nil && (old.Mode()&0077 != 0 || old.Mode()&os.ModeSymlink != 0 || !old.Mode().IsRegular() || !sameOwner(old, uint32(os.Getuid()))) {
@@ -98,6 +97,9 @@ func SaveExternalAdoption(path string, adoption ExternalAdoption) error {
 }
 
 func LoadExternalAdoption(path string) (ExternalAdoption, error) {
+	if err := validatePrivatePath(path, uint32(os.Getuid()), true); err != nil {
+		return ExternalAdoption{}, ErrHermesIncompatible
+	}
 	st, err := os.Lstat(path)
 	if err != nil || !st.Mode().IsRegular() || st.Mode()&0077 != 0 || st.Mode()&os.ModeSymlink != 0 || !sameOwner(st, uint32(os.Getuid())) {
 		return ExternalAdoption{}, ErrHermesIncompatible
@@ -134,6 +136,12 @@ func validAdoption(a ExternalAdoption) bool {
 	if !validDigest(a.EndpointOriginDigest) || !validDigest(a.EndpointIdentityDigest) || a.Version == "" {
 		return false
 	}
+	if a.ServerCertPin != "" {
+		pin, err := hex.DecodeString(a.ServerCertPin)
+		if err != nil || len(pin) != sha256.Size {
+			return false
+		}
+	}
 	if a.CredentialFile == "" {
 		return false
 	}
@@ -144,8 +152,7 @@ func validAdoption(a ExternalAdoption) bool {
 		if !filepath.IsAbs(p) || filepath.Clean(p) != p {
 			return false
 		}
-		st, err := os.Lstat(p)
-		if err != nil || !st.Mode().IsRegular() || st.Mode()&os.ModeSymlink != 0 || st.Mode().Perm()&0077 != 0 || !sameOwner(st, uint32(os.Getuid())) {
+		if err := validatePrivatePath(p, uint32(os.Getuid()), true); err != nil {
 			return false
 		}
 	}
@@ -164,11 +171,14 @@ var ErrHermesIncompatible = errors.New("Hermes installation is incompatible")
 var ErrHermesUnavailable = errors.New("Hermes endpoint unavailable")
 
 type HermesCandidate struct {
-	Endpoint                                     string
+	Endpoint string
+	// VerifiedEndpointIdentity is retained for source compatibility. External
+	// adoption ignores it and obtains identity from the adapter transport.
 	VerifiedEndpointIdentity                     string
 	ExpectedOriginDigest, ExpectedIdentityDigest string
 	CredentialFile                               string
 	CAFile, ClientCertFile, ClientKeyFile        string
+	ServerCertPin                                string
 	Path                                         string
 	ExpectedVersion                              string
 	Profile                                      Profile
@@ -195,6 +205,7 @@ type ExternalAdoption struct {
 	CAFile                 string `json:"ca_file,omitempty"`
 	ClientCertFile         string `json:"client_cert_file,omitempty"`
 	ClientKeyFile          string `json:"client_key_file,omitempty"`
+	ServerCertPin          string `json:"server_cert_pin,omitempty"`
 }
 
 func AdoptExternalHermes(ctx context.Context, c HermesCandidate) (ExternalAdoption, error) {
@@ -220,7 +231,7 @@ func AdoptExternalHermes(ctx context.Context, c HermesCandidate) (ExternalAdopti
 	if c.Profile != Development && u.Scheme != "https" {
 		return ExternalAdoption{}, ErrHermesIncompatible
 	}
-	if c.Profile == Hardened && (!c.TLSVerified || !c.LeafPinVerified || !c.MutualTLSConfigured || c.CAFile == "" || c.ClientCertFile == "" || c.ClientKeyFile == "") {
+	if (c.Profile == Hardened || c.Profile == PersonalAlpha) && (c.CAFile == "" || c.ClientCertFile == "" || c.ClientKeyFile == "" || c.ServerCertPin == "") {
 		return ExternalAdoption{}, ErrHermesIncompatible
 	}
 	if err := validateEndpointFiles(c); err != nil {
@@ -228,11 +239,22 @@ func AdoptExternalHermes(ctx context.Context, c HermesCandidate) (ExternalAdopti
 	}
 	canonical := strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host) + strings.TrimRight(u.EscapedPath(), "/")
 	originDigest := digest(canonical)
-	identityDigest := digest(c.VerifiedEndpointIdentity)
-	if c.VerifiedEndpointIdentity == "" || identityDigest == "sha256:"+strings.Repeat("0", 64) || (c.ExpectedOriginDigest != "" && c.ExpectedOriginDigest != originDigest) || (c.ExpectedIdentityDigest != "" && c.ExpectedIdentityDigest != identityDigest) {
+	observer, ok := c.Adapter.(hermes.EndpointIdentityObserver)
+	if !ok {
+		return ExternalAdoption{}, ErrHermesIncompatible
+	}
+	verifiedIdentity, err := observer.VerifiedEndpointIdentity(ctx)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return ExternalAdoption{}, err
+	}
+	if err != nil {
+		return ExternalAdoption{}, fmt.Errorf("%w: endpoint identity: %v", ErrHermesUnavailable, err)
+	}
+	identityDigest := digest(verifiedIdentity)
+	if verifiedIdentity == "" || identityDigest == "sha256:"+strings.Repeat("0", 64) || (c.ExpectedOriginDigest != "" && c.ExpectedOriginDigest != originDigest) || (c.ExpectedIdentityDigest != "" && c.ExpectedIdentityDigest != identityDigest) {
 		return ExternalAdoption{}, fmt.Errorf("%w: endpoint identity", ErrHermesIncompatible)
 	}
-	if c.Adapter == nil || !c.EndpointIdentityVerified || !c.CredentialsSeparated {
+	if c.Adapter == nil {
 		return ExternalAdoption{}, ErrHermesIncompatible
 	}
 	h, err := c.Adapter.Health(ctx)
@@ -266,7 +288,7 @@ func AdoptExternalHermes(ctx context.Context, c HermesCandidate) (ExternalAdopti
 			return ExternalAdoption{}, fmt.Errorf("%w: required capability", ErrHermesIncompatible)
 		}
 	}
-	return ExternalAdoption{Endpoint: canonical, EndpointOriginDigest: originDigest, EndpointIdentityDigest: identityDigest, Version: h.Version, CredentialFile: c.CredentialFile, CAFile: c.CAFile, ClientCertFile: c.ClientCertFile, ClientKeyFile: c.ClientKeyFile}, nil
+	return ExternalAdoption{Endpoint: canonical, EndpointOriginDigest: originDigest, EndpointIdentityDigest: identityDigest, Version: h.Version, CredentialFile: c.CredentialFile, CAFile: c.CAFile, ClientCertFile: c.ClientCertFile, ClientKeyFile: c.ClientKeyFile, ServerCertPin: c.ServerCertPin}, nil
 }
 
 func digest(s string) string {
@@ -281,12 +303,8 @@ func validateEndpointFiles(c HermesCandidate) error {
 		if !filepath.IsAbs(p) || filepath.Clean(p) != p {
 			return ErrHermesIncompatible
 		}
-		s, err := os.Lstat(p)
-		if err != nil || !s.Mode().IsRegular() || s.Mode()&os.ModeSymlink != 0 || s.Mode().Perm()&0077 != 0 {
+		if err := validatePrivatePath(p, c.OwnerUID, true); err != nil {
 			return ErrHermesIncompatible
-		}
-		if c.OwnerKnown && !sameOwner(s, c.OwnerUID) {
-			return fmt.Errorf("%w: credential owner", ErrHermesIncompatible)
 		}
 	}
 	return nil

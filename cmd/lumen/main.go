@@ -3,15 +3,20 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
@@ -54,13 +59,17 @@ func setupCommand(ctx context.Context) setup.Report {
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Actions: []setup.Action{{Code: "invalid_profile"}}}
 	}
-	probe := cliProbe{dataDir: dataDir}
-	plan, err := setup.Plan(ctx, setup.Request{Topology: setup.TopologyCombined, Profile: profile}, probe)
+	topology, err := requestedTopology()
 	if err != nil {
-		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: setupErrorCode(err)}}}
+		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: "invalid_topology"}}}
+	}
+	probe := cliProbe{dataDir: dataDir}
+	plan, err := setup.Plan(ctx, setup.Request{Topology: topology, Profile: profile}, probe)
+	if err != nil {
+		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: setupErrorCode(err)}}}
 	}
 	if plan.Outcome != setup.Ready {
-		r := setup.Report{Outcome: plan.Outcome, Profile: profile}
+		r := setup.Report{Outcome: plan.Outcome, Profile: profile, Topology: topology}
 		for _, action := range plan.Actions {
 			r.Actions = append(r.Actions, setup.Action{Code: action.Code})
 		}
@@ -69,12 +78,40 @@ func setupCommand(ctx context.Context) setup.Report {
 		}
 		return r
 	}
+	state := &setupState{plan: plan, dataDir: dataDir, profile: profile, topology: topology}
+	if topology == setup.TopologyExternal {
+		adoption, err := adoptExternalHermes(ctx, plan, profile)
+		if err != nil {
+			return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "external_adoption_failed"}}}
+		}
+		adoptionPath := filepath.Join(plan.SetupDir, "external-adoption.json")
+		if _, statErr := os.Lstat(adoptionPath); statErr == nil {
+			existing, loadErr := setup.LoadExternalAdoption(adoptionPath)
+			if loadErr != nil || existing != adoption {
+				return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "external_adoption_failed"}}}
+			}
+			state.adoption = &existing
+		} else if errors.Is(statErr, os.ErrNotExist) {
+			if err := ensurePrivateDir(plan.SetupDir); err != nil {
+				return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "journal_unavailable"}}}
+			}
+			if err := setup.SaveExternalAdoption(adoptionPath, adoption); err != nil {
+				return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "external_adoption_failed"}}}
+			}
+			state.adoption = &adoption
+		} else {
+			return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "external_adoption_failed"}}}
+		}
+	}
 	journal, err := setup.NewJournal(plan.SetupDir)
 	if err != nil {
-		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: "journal_unavailable"}}}
+		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "journal_unavailable"}}}
 	}
-	request := setup.Request{Topology: setup.TopologyCombined, Profile: profile, ArtifactDigests: map[string]string{"lumen": os.Getenv("LUMEN_LUMEN_SHA256"), "hermes": os.Getenv("LUMEN_HERMES_SHA256")}}
-	state := &setupState{plan: plan, dataDir: dataDir, profile: profile}
+	request := setup.Request{Topology: topology, Profile: profile, ArtifactDigests: state.artifactDigests()}
+	if state.adoption != nil {
+		request.EndpointOriginDigest = state.adoption.EndpointOriginDigest
+		request.EndpointIdentityDigest = state.adoption.EndpointIdentityDigest
+	}
 	runner := setup.Runner{
 		Journal: journal,
 		Plan:    &plan,
@@ -115,8 +152,12 @@ func doctorCommand(ctx context.Context) setup.Report {
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Actions: []setup.Action{{Code: "invalid_profile"}}}
 	}
-	state := &setupState{dataDir: dataDir, profile: profile}
-	if plan, e := setup.Plan(ctx, setup.Request{Topology: setup.TopologyCombined, Profile: profile}, cliProbe{dataDir: dataDir}); e == nil {
+	topology, err := requestedTopology()
+	if err != nil {
+		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: "invalid_topology"}}}
+	}
+	state := &setupState{dataDir: dataDir, profile: profile, topology: topology}
+	if plan, e := setup.Plan(ctx, setup.Request{Topology: topology, Profile: profile}, cliProbe{dataDir: dataDir}); e == nil {
 		state.plan = plan
 	}
 	return (setup.Doctor{Observe: state.observe}).Check(ctx)
@@ -223,6 +264,8 @@ type setupState struct {
 	plan      setup.PlanResult
 	dataDir   string
 	profile   setup.Profile
+	topology  setup.Topology
+	adoption  *setup.ExternalAdoption
 	manager   setup.Supervisor
 	installed bool
 	started   bool
@@ -232,11 +275,23 @@ func (s *setupState) hostConfig() (host.Config, error) {
 	if p := filepath.Join(s.dataDir, "lumen.json"); fileExists(p) {
 		return host.ConfigFromFile(p)
 	}
-	return host.Config{
+	cfg := host.Config{
 		DataDir: s.dataDir, SocketPath: filepath.Join(s.dataDir, "host.sock"), CredentialPath: filepath.Join(s.dataDir, "operator.credential"),
 		HermesBaseURL: hermesEndpoint(), HermesProfile: string(hermesProfile(s.profile)), HermesBearerPath: filepath.Join(s.dataDir, "hermes", "hermes.token"),
 		HermesCAPath: os.Getenv("LUMEN_HERMES_CA_FILE"), HermesClientCertPath: os.Getenv("LUMEN_HERMES_CLIENT_CERT_FILE"), HermesClientKeyPath: os.Getenv("LUMEN_HERMES_CLIENT_KEY_FILE"), HermesServerPin: os.Getenv("LUMEN_HERMES_SERVER_CERT_PIN"),
-	}, nil
+	}
+	if s.adoption != nil {
+		cfg.HermesBaseURL = s.adoption.Endpoint
+		if s.profile == setup.PersonalAlpha || s.profile == setup.Hardened {
+			cfg.HermesProfile = hermes.ProfileHardened
+		}
+		cfg.HermesBearerPath = s.adoption.CredentialFile
+		cfg.HermesCAPath = s.adoption.CAFile
+		cfg.HermesClientCertPath = s.adoption.ClientCertFile
+		cfg.HermesClientKeyPath = s.adoption.ClientKeyFile
+		cfg.HermesServerPin = s.adoption.ServerCertPin
+	}
+	return cfg, nil
 }
 
 func (s *setupState) runStage(ctx context.Context, stage setup.Stage) error {
@@ -246,9 +301,11 @@ func (s *setupState) runStage(ctx context.Context, stage setup.Stage) error {
 	case setup.ArtifactsReady:
 		return s.checkArtifacts()
 	case setup.DirectoriesReady:
+		return s.makeDirectories()
+	case setup.CredentialsReady:
+		return s.ensureCredentials()
+	case setup.ConfigurationReady:
 		return s.writeConfig()
-	case setup.CredentialsReady, setup.ConfigurationReady:
-		return nil
 	case setup.ServicesInstalled:
 		return s.installServices(ctx)
 	case setup.ServicesStarted:
@@ -257,7 +314,7 @@ func (s *setupState) runStage(ctx context.Context, stage setup.Stage) error {
 			return errors.New("supervisor unavailable")
 		}
 		s.manager = manager
-		if _, err := (setup.CommandSupervisor{Manager: manager}).Control(ctx, setup.Action{Code: "start"}, []setup.ServiceName{setup.ServiceHermes, setup.ServiceHost}); err != nil {
+		if _, err := (setup.CommandSupervisor{Manager: manager}).Control(ctx, setup.Action{Code: "start"}, ownedServices(s.topology)); err != nil {
 			return err
 		}
 		s.started = true
@@ -278,16 +335,25 @@ func (s *setupState) verifyStage(_ context.Context, stage setup.Stage) error {
 	case setup.ArtifactsReady:
 		return s.checkArtifacts()
 	case setup.DirectoriesReady:
-		if !fileExists(filepath.Join(s.dataDir, "hermes")) {
+		if !fileExists(s.dataDir) || (s.topology == setup.TopologyCombined && !fileExists(filepath.Join(s.dataDir, "hermes"))) {
 			return errors.New("directories unavailable")
 		}
 	case setup.CredentialsReady:
-		if !fileExists(filepath.Join(s.dataDir, "hermes", "hermes.token")) {
+		if s.topology == setup.TopologyCombined && !privateFile(filepath.Join(s.dataDir, "hermes", "hermes.token")) {
+			return errors.New("credentials unavailable")
+		}
+		if s.topology == setup.TopologyExternal && (s.adoption == nil || !privateFile(s.adoption.CredentialFile)) {
 			return errors.New("credentials unavailable")
 		}
 	case setup.ConfigurationReady:
 		if _, err := host.ConfigFromFile(filepath.Join(s.dataDir, "lumen.json")); err != nil {
 			return err
+		}
+		if s.topology == setup.TopologyCombined && !fileExists(filepath.Join(s.dataDir, "hermes", "hermes.json")) {
+			return errors.New("Hermes configuration unavailable")
+		}
+		if s.topology == setup.TopologyExternal && fileExists(filepath.Join(s.dataDir, "hermes")) {
+			return errors.New("external topology has local Hermes configuration")
 		}
 	case setup.HostInitialized:
 		cfg, err := s.hostConfig()
@@ -319,15 +385,144 @@ func (s *setupState) writeConfig() error {
 	if fileExists(filepath.Join(s.dataDir, "lumen.json")) {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Join(s.dataDir, "hermes"), 0700); err != nil {
-		return err
+	r := setup.ConfigRequest{DataDir: s.dataDir, HermesDir: filepath.Join(s.dataDir, "hermes"), Profile: s.profile, Topology: s.topology, HermesBaseURL: hermesEndpoint(), HermesServerPin: os.Getenv("LUMEN_HERMES_SERVER_CERT_PIN")}
+	if s.profile == setup.Hardened && s.topology == setup.TopologyCombined {
+		var err error
+		if r.HermesCA, err = readSetupTLSFile("LUMEN_HERMES_CA_FILE"); err != nil {
+			return err
+		}
+		if r.HermesClientCert, err = readSetupTLSFile("LUMEN_HERMES_CLIENT_CERT_FILE"); err != nil {
+			return err
+		}
+		if r.HermesClientKey, err = readSetupTLSFile("LUMEN_HERMES_CLIENT_KEY_FILE"); err != nil {
+			return err
+		}
 	}
-	token, err := setupSecret(filepath.Join(s.dataDir, "hermes", "hermes.token"))
-	if err != nil {
-		return err
+	if s.adoption != nil {
+		r.HermesBaseURL = s.adoption.Endpoint
+		r.HermesServerPin = s.adoption.ServerCertPin
+		r.HermesCredentialFile = s.adoption.CredentialFile
+		r.HermesCAFile = s.adoption.CAFile
+		r.HermesClientCertFile = s.adoption.ClientCertFile
+		r.HermesClientKeyFile = s.adoption.ClientKeyFile
 	}
-	_, err = setup.WriteConfig(setup.ConfigRequest{DataDir: s.dataDir, HermesDir: filepath.Join(s.dataDir, "hermes"), Profile: s.profile, HermesBaseURL: hermesEndpoint(), HermesBearer: token, HermesCA: os.Getenv("LUMEN_HERMES_CA_FILE"), HermesClientCert: os.Getenv("LUMEN_HERMES_CLIENT_CERT_FILE"), HermesClientKey: os.Getenv("LUMEN_HERMES_CLIENT_KEY_FILE"), HermesServerPin: os.Getenv("LUMEN_HERMES_SERVER_CERT_PIN")})
+	_, err := setup.WriteConfig(r)
 	return err
+}
+
+func readSetupTLSFile(env string) (string, error) {
+	path := os.Getenv(env)
+	if path == "" {
+		return "", errors.New(env + " is required")
+	}
+	b, err := readPrivateSecret(path)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func (s *setupState) makeDirectories() error {
+	if err := ensurePrivateDir(s.dataDir); err != nil {
+		return err
+	}
+	if s.topology == setup.TopologyCombined {
+		return ensurePrivateDir(filepath.Join(s.dataDir, "hermes"))
+	}
+	return nil
+}
+
+func (s *setupState) ensureCredentials() error {
+	if s.topology == setup.TopologyExternal {
+		if s.adoption == nil || !privateFile(s.adoption.CredentialFile) {
+			return errors.New("external credential reference unavailable")
+		}
+		return nil
+	}
+	_, err := setupSecret(filepath.Join(s.dataDir, "hermes", "hermes.token"))
+	return err
+}
+
+func (s *setupState) artifactDigests() map[string]string {
+	digests := map[string]string{}
+	path := os.Getenv("LUMEN_MANIFEST")
+	if path == "" {
+		path = filepath.Join("deploy", "manifest-v1.json")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return digests
+	}
+	defer f.Close()
+	manifest, err := setup.LoadManifest(f)
+	if err != nil || manifest.Topology != s.topology {
+		return digests
+	}
+	osName := "linux"
+	if s.plan.Platform == setup.PlatformMacOS {
+		osName = "darwin"
+	} else if s.plan.Platform == setup.PlatformTermux {
+		osName = "android"
+	}
+	for _, name := range []string{"lumen", "hermes"} {
+		if s.topology == setup.TopologyExternal && name == "hermes" {
+			continue
+		}
+		if artifact, err := manifest.Select(name, osName, s.plan.Architecture, s.profile); err == nil {
+			digests[name] = artifact.SHA256
+		}
+	}
+	return digests
+}
+
+func adoptExternalHermes(ctx context.Context, plan setup.PlanResult, profile setup.Profile) (setup.ExternalAdoption, error) {
+	credential := os.Getenv("LUMEN_HERMES_CREDENTIAL_FILE")
+	endpoint := hermesEndpoint()
+	token, err := readPrivateSecret(credential)
+	if err != nil {
+		return setup.ExternalAdoption{}, err
+	}
+	cfg := hermes.Config{BaseURL: endpoint, ProfileMode: externalHermesProfile(profile), BearerToken: strings.TrimSpace(string(token)), MaxResponseBytes: 8 << 20, MaxEventBytes: 8 << 20, MaxEventStreamBytes: 8 << 20, RequestTimeout: time.Second, EventTimeout: time.Second}
+	if profile != setup.Development {
+		u, parseErr := url.Parse(endpoint)
+		if parseErr != nil {
+			return setup.ExternalAdoption{}, parseErr
+		}
+		caPEM, readErr := readPrivateSecret(os.Getenv("LUMEN_HERMES_CA_FILE"))
+		if readErr != nil {
+			return setup.ExternalAdoption{}, readErr
+		}
+		roots := x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(caPEM) {
+			return setup.ExternalAdoption{}, errors.New("invalid Hermes CA file")
+		}
+		certPEM, readErr := readPrivateSecret(os.Getenv("LUMEN_HERMES_CLIENT_CERT_FILE"))
+		if readErr != nil {
+			return setup.ExternalAdoption{}, readErr
+		}
+		keyPEM, readErr := readPrivateSecret(os.Getenv("LUMEN_HERMES_CLIENT_KEY_FILE"))
+		if readErr != nil {
+			return setup.ExternalAdoption{}, readErr
+		}
+		clientCert, pairErr := tls.X509KeyPair(certPEM, keyPEM)
+		if pairErr != nil {
+			return setup.ExternalAdoption{}, pairErr
+		}
+		cfg.TLS = hermes.TLSConfig{RootCAs: roots, ClientCertificate: clientCert, ServerCertPin: os.Getenv("LUMEN_HERMES_SERVER_CERT_PIN"), ServerName: u.Hostname()}
+	}
+	client, err := hermes.New(cfg)
+	if err != nil {
+		return setup.ExternalAdoption{}, err
+	}
+	bounded, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return setup.AdoptExternalHermes(bounded, setup.HermesCandidate{
+		Endpoint: endpoint, CredentialFile: credential,
+		CAFile: os.Getenv("LUMEN_HERMES_CA_FILE"), ClientCertFile: os.Getenv("LUMEN_HERMES_CLIENT_CERT_FILE"), ClientKeyFile: os.Getenv("LUMEN_HERMES_CLIENT_KEY_FILE"),
+		ServerCertPin: cfg.TLS.ServerCertPin,
+		Profile:       profile, Platform: plan.Platform, OwnerKnown: true, OwnerUID: uint32(os.Getuid()),
+		Adapter: client,
+	})
 }
 
 func (s *setupState) checkArtifacts() error {
@@ -390,10 +585,8 @@ func (s *setupState) installServices(ctx context.Context) error {
 	}
 	s.manager = manager
 	root := filepath.Join(s.dataDir, "setup", "services")
-	servicePath := func(name string) string { return filepath.Join(root, name+".service") }
 	plan := setup.ServicePlan{
-		Hermes: setup.ServiceDefinition{Name: setup.ServiceHermes, Source: filepath.Join("deploy", "systemd", "lumen-hermes.service"), Destination: servicePath("hermes")},
-		Host:   setup.ServiceDefinition{Name: setup.ServiceHost, Source: filepath.Join("deploy", "systemd", "lumen-host.service"), Destination: servicePath("host")},
+		Services: serviceDefinitions(manager, s.topology, root),
 		Initializer: setup.HostInitializerFuncs{InitializeFunc: func(context.Context) error {
 			cfg, err := s.hostConfig()
 			if err != nil {
@@ -418,6 +611,35 @@ func (s *setupState) installServices(ctx context.Context) error {
 	}
 	s.installed = true
 	return nil
+}
+
+func serviceDefinitions(manager setup.Supervisor, topology setup.Topology, root string) []setup.ServiceDefinition {
+	names := ownedServices(topology)
+	defs := make([]setup.ServiceDefinition, 0, len(names))
+	for _, name := range names {
+		d := setup.ServiceDefinition{Name: name}
+		switch manager {
+		case setup.SupervisorSystemd:
+			d.Source = filepath.Join("deploy", "systemd", "lumen-"+string(name)+".service")
+			d.Destination = filepath.Join(root, string(name)+".service")
+		case setup.SupervisorLaunchd:
+			d.Source = filepath.Join("deploy", "launchd", "dev.lumen."+string(name)+".plist")
+			d.Destination = filepath.Join(root, "dev.lumen."+string(name)+".plist")
+		case setup.SupervisorRunit:
+			source := "run"
+			if name == setup.ServiceHermes {
+				source = "hermes-run"
+			}
+			d.Source = filepath.Join("deploy", "termux", source)
+			d.Destination = filepath.Join(root, string(name), "run")
+		case setup.SupervisorDocker:
+			// Compose owns the service definitions; there is no unit to copy.
+		default:
+			return nil
+		}
+		defs = append(defs, d)
+	}
+	return defs
 }
 
 func (s *setupState) observe(ctx context.Context) setup.DoctorEvidence {
@@ -548,8 +770,18 @@ func hermesProfile(p setup.Profile) string {
 	}
 	return hermes.ProfileDevelopment
 }
+
+func externalHermesProfile(p setup.Profile) string {
+	if p == setup.PersonalAlpha || p == setup.Hardened {
+		return hermes.ProfileHardened
+	}
+	return hermes.ProfileDevelopment
+}
 func setupSecret(path string) (string, error) {
 	if b, err := os.ReadFile(path); err == nil {
+		if !privateFile(path) {
+			return "", errors.New("unsafe credential file")
+		}
 		return string(b), nil
 	} else if !os.IsNotExist(err) {
 		return "", err
@@ -558,7 +790,57 @@ func setupSecret(path string) (string, error) {
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(b), nil
+	token := hex.EncodeToString(b)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return "", err
+	}
+	if _, err := f.WriteString(token); err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func readPrivateSecret(path string) ([]byte, error) {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return nil, errors.New("private Hermes file is required")
+	}
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	f := os.NewFile(uintptr(fd), path)
+	if f == nil {
+		_ = syscall.Close(fd)
+		return nil, errors.New("invalid private Hermes file")
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+		return nil, errors.New("private Hermes file must be owner-only")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || uint32(stat.Uid) != uint32(os.Getuid()) {
+		return nil, errors.New("private Hermes file has wrong owner")
+	}
+	return io.ReadAll(f)
+}
+
+func ensurePrivateDir(path string) error {
+	if err := os.MkdirAll(path, 0700); err != nil {
+		return err
+	}
+	st, err := os.Lstat(path)
+	if err != nil || !st.IsDir() || st.Mode()&os.ModeSymlink != 0 {
+		return errors.New("unsafe setup directory")
+	}
+	return os.Chmod(path, 0700)
 }
 func privateFile(path string) bool {
 	st, err := os.Lstat(path)
