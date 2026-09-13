@@ -212,9 +212,17 @@ wait_for_host || fail 'Host did not recover after forced interruption'
 wait_for_hermes || fail 'Hermes did not remain ready after Host interruption'
 
 printf '%s\n' '=> doctor'
-doctor_report=$($cli doctor)
+doctor_i=0
+while [ "$doctor_i" -lt 60 ]; do
+	doctor_report=$($cli doctor)
+	if printf '%s\n' "$doctor_report" | grep -q '"outcome":"ready"'; then
+		break
+	fi
+	doctor_i=$((doctor_i + 1))
+	sleep 1
+done
 printf '%s\n' "$doctor_report" | redact
-printf '%s\n' "$doctor_report" | grep -q '"outcome":"ready"' || fail 'doctor did not report ready'
+[ "$doctor_i" -lt 60 ] || fail 'doctor did not report ready'
 
 printf '%s\n' '=> service restart'
 service_report=$($cli service restart)

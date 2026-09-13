@@ -43,6 +43,7 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 		"--status running", "compose kill", "compose logs", "grep -v",
 		"COMPOSE_FILE", "$cli service restart", "lumen-registry", "docker image push",
 		".NetworkSettings.Ports", "compose ps -q lumen-registry",
+		"doctor_i", "doctor did not report ready",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("missing required journey operation %q", required)
