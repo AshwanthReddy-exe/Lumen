@@ -19,6 +19,7 @@ api_key=
 hermes_registry_tag=
 container_data_dir=/var/lib/lumen
 hermes_host_port=${LUMEN_HERMES_HOST_PORT:-28642}
+registry_host_port=${LUMEN_REGISTRY_HOST_PORT:-28742}
 
 cd "$repo_root"
 
@@ -94,6 +95,7 @@ export LUMEN_DATA_DIR="$data_dir"
 export LUMEN_DATA_CONTAINER_DIR="$container_data_dir"
 export LUMEN_HERMES_API_SERVER_KEY="$api_key"
 export LUMEN_HERMES_HOST_PORT="$hermes_host_port"
+export LUMEN_REGISTRY_HOST_PORT="$registry_host_port"
 export LUMEN_HERMES_BASE_URL="http://127.0.0.1:$hermes_host_port"
 export LUMEN_HERMES_CONTAINER_BASE_URL=http://lumen-hermes:8642
 export LUMEN_HERMES_PROFILE=development
@@ -145,7 +147,7 @@ registry_container_id=$(compose ps -q lumen-registry)
 [ -n "$registry_container_id" ] || fail 'isolated registry container was not created'
 registry_address=$(docker inspect --format '{{with (index .NetworkSettings.Ports "5000/tcp")}}{{(index . 0).HostIp}}:{{(index . 0).HostPort}}{{end}}' "$registry_container_id")
 case "$registry_address" in
-	127.0.0.1:*) ;;
+	"127.0.0.1:$registry_host_port") ;;
 	*) fail 'isolated registry was not published on loopback' ;;
 esac
 hermes_registry_tag="$registry_address/lumen/hermes:milestone1"

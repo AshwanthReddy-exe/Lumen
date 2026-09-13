@@ -5,7 +5,7 @@ services:
     read_only: true
     restart: "no"
     ports:
-      - "127.0.0.1::5000"
+      - "127.0.0.1:${LUMEN_REGISTRY_HOST_PORT:-28742}:5000"
     networks: [lumen-private]
   lumen-provider:
     build:
