@@ -36,7 +36,7 @@ services:
                 if self.path != "/v1/chat/completions":
                     self.send_error(404)
                     return
-                if self.headers.get("Authorization") != "Bearer synthetic-provider-key":
+                if self.headers.get("Authorization") != "Bearer lumen-test-key":
                     self.send_error(401)
                     return
                 length = int(self.headers.get("Content-Length", "0"))
@@ -70,7 +70,7 @@ services:
       API_SERVER_MODEL_NAME: synthetic-model
       HERMES_INFERENCE_PROVIDER: custom
       HERMES_INFERENCE_MODEL: synthetic-model
-      OPENAI_API_KEY: synthetic-provider-key
+      OPENAI_API_KEY: lumen-test-key
       OPENAI_BASE_URL: http://lumen-provider:8080/v1
   lumen-host:
     environment:

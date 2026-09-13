@@ -73,12 +73,12 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	override := string(overrideBytes)
-	for _, required := range []string{"lumen-provider", "synthetic-provider-key", "/v1/chat/completions", "stream", "LUMEN_HERMES_CONTAINER_BASE_URL"} {
+	for _, required := range []string{"lumen-provider", "lumen-test-key", "/v1/chat/completions", "stream", "LUMEN_HERMES_CONTAINER_BASE_URL"} {
 		if !strings.Contains(override, required) {
 			t.Errorf("milestone journey override is missing %q", required)
 		}
 	}
-	if strings.Contains(compose, "synthetic-provider-key") || strings.Contains(compose, "lumen-provider") {
+	if strings.Contains(compose, "lumen-test-key") || strings.Contains(compose, "lumen-provider") {
 		t.Fatal("deterministic provider must remain test-override-only")
 	}
 

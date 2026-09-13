@@ -30,7 +30,7 @@ redact() {
 	sed -E \
 		-e 's/[Bb]earer[[:space:]]+[A-Za-z0-9._-]+/[Bearer REDACTED]/g' \
 		-e 's/API_SERVER_KEY[=:][^[:space:]]+/API_SERVER_KEY=REDACTED/g' \
-		-e 's/synthetic-provider-key/REDACTED/g' \
+		-e 's/lumen-test-key/REDACTED/g' \
 		-e "s/${api_key:-__unset__}/REDACTED/g" |
 		grep -v 'hermes\.token'
 }
