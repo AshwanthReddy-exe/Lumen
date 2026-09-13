@@ -172,6 +172,20 @@ func TestCLIUsagePrecedesConfigurationFailure(t *testing.T) {
 	}
 }
 
+func TestCLIServeReportsActionableStartupCause(t *testing.T) {
+	bin := buildHostBinary(t)
+	dataDir := t.TempDir()
+	out, code := runHost(t, bin, []string{
+		"LUMEN_DATA_DIR=" + dataDir,
+		"LUMEN_HERMES_BASE_URL=http://127.0.0.1:8642",
+		"LUMEN_HERMES_PROFILE=development",
+		"LUMEN_HERMES_BEARER_FILE=" + filepath.Join(dataDir, "missing.token"),
+	}, "serve")
+	if code != 3 || !strings.Contains(out, "startup unavailable: Hermes configuration unavailable") {
+		t.Fatalf("serve: code=%d output=%q", code, out)
+	}
+}
+
 func TestCLIDoctorReportsDeploymentProfileWithoutRunningHost(t *testing.T) {
 	bin := buildHostBinary(t)
 	dataDir := t.TempDir()
