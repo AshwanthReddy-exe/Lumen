@@ -289,12 +289,20 @@ func TestDefinitionInstallCopiesExactBytes(t *testing.T) {
 	}
 }
 
-func TestDefinitionInstallAcceptsTrackedPublicSystemdUnits(t *testing.T) {
+func TestDefinitionInstallAcceptsTrackedPublicSystemdUnitContents(t *testing.T) {
 	for _, name := range []string{"lumen-hermes.service", "lumen-host.service"} {
-		src := filepath.Join("..", "..", "deploy", "systemd", name)
+		tracked := filepath.Join("..", "..", "deploy", "systemd", name)
+		body, err := os.ReadFile(tracked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(src, body, 0600); err != nil {
+			t.Fatal(err)
+		}
 		dst := filepath.Join(t.TempDir(), name)
 		if err := copyDefinition(src, dst); err != nil {
-			t.Fatalf("copy tracked %s: %v", name, err)
+			t.Fatalf("copy tracked %s contents: %v", name, err)
 		}
 	}
 }

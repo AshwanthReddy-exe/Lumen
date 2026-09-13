@@ -108,7 +108,7 @@ func TestSupervisorDefinitionsAreStructuredAndBounded(t *testing.T) {
 		t.Fatalf("termux finish did not stop exact service: %s %v", out, err)
 	}
 	compose := readDefinition(t, "../../deploy/docker/compose.yaml")
-	for _, want := range []string{"restart: on-failure:3", "lumen-host", "read_only: true", "SIGTERM", "LUMEN_HERMES_PROFILE", "LUMEN_HERMES_BASE_URL", "LUMEN_HERMES_CA_FILE", "LUMEN_HERMES_CLIENT_CERT_FILE", "LUMEN_HERMES_CLIENT_KEY_FILE", "LUMEN_HERMES_SERVER_CERT_PIN", "hermes_ca.pem:ro", "hermes_client.crt:ro", "hermes_client.key:ro"} {
+	for _, want := range []string{"restart: unless-stopped", "lumen-host", "read_only: true", "SIGTERM", "LUMEN_HERMES_PROFILE", "LUMEN_HERMES_BASE_URL", "LUMEN_HERMES_CA_FILE", "LUMEN_HERMES_CLIENT_CERT_FILE", "LUMEN_HERMES_CLIENT_KEY_FILE", "LUMEN_HERMES_SERVER_CERT_PIN", "hermes_ca.pem:ro", "hermes_client.crt:ro", "hermes_client.key:ro"} {
 		if !strings.Contains(compose, want) {
 			t.Errorf("Docker compose missing %q", want)
 		}

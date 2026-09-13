@@ -323,6 +323,9 @@ func realTempDir(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(d, 0700); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = os.RemoveAll(d) })
 	return d
 }
