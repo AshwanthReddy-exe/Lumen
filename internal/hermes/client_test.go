@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -106,6 +107,45 @@ func TestCreateRunUsesIdempotencyKeyAndDecodesRun(t *testing.T) {
 	}
 	if run.RunID != "run_1" || gotKey != "idem-1" {
 		t.Fatalf("run=%#v key=%q", run, gotKey)
+	}
+}
+
+func TestCreateRunDecodesReplayMetadata(t *testing.T) {
+	for _, replayed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replayed=%t", replayed), func(t *testing.T) {
+			srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusAccepted)
+				_, _ = fmt.Fprintf(w, `{"run_id":"run_1","status":"started","replayed":%t}`, replayed)
+			}))
+
+			c, err := New(testConfig(srv.URL))
+			if err != nil {
+				t.Fatal(err)
+			}
+			run, err := c.CreateRun(context.Background(), CreateRunRequest{Input: "hello"}, "idem-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if run.Replayed != replayed {
+				t.Fatalf("replayed = %t, want %t", run.Replayed, replayed)
+			}
+		})
+	}
+}
+
+func TestCreateRunRejectsUnknownResponseFields(t *testing.T) {
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"run_id":"run_1","status":"started","unexpected":true}`))
+	}))
+
+	c, err := New(testConfig(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.CreateRun(context.Background(), CreateRunRequest{Input: "hello"}, "idem-1"); !errors.Is(err, ErrCreateAmbiguous) {
+		t.Fatalf("error = %v, want ErrCreateAmbiguous", err)
 	}
 }
 

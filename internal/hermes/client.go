@@ -155,6 +155,7 @@ type Run struct {
 	Object    string  `json:"object,omitempty"`
 	RunID     string  `json:"run_id"`
 	Status    string  `json:"status"`
+	Replayed  bool    `json:"replayed,omitempty"`
 	SessionID string  `json:"session_id,omitempty"`
 	Model     string  `json:"model,omitempty"`
 	Output    string  `json:"output,omitempty"`
