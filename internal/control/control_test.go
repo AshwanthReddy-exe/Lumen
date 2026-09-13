@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -234,17 +235,45 @@ func TestStaleSocketIsReclaimedAfterOwnershipLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(d, "host.sock")
-	first, err := NewServer(path, credential, func(_ context.Context, _ Request) Response { return Response{OK: true} })
+	stale, err := net.Listen("unix", path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Listen(); err != nil {
+	if unixListener, ok := stale.(*net.UnixListener); ok {
+		unixListener.SetUnlinkOnClose(false)
+	}
+	socketInfo, err := os.Lstat(path)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.ln.Close(); err != nil {
+	lock, err := os.OpenFile(path+".lock", os.O_RDWR|os.O_CREATE|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0600)
+	if err != nil {
+		stale.Close()
 		t.Fatal(err)
 	}
-	first.releaseOwnership()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		lock.Close()
+		stale.Close()
+		t.Fatal(err)
+	}
+	if err := writeLockIdentity(lock, socketInfo); err != nil {
+		syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+		lock.Close()
+		stale.Close()
+		t.Fatal(err)
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
+		lock.Close()
+		stale.Close()
+		t.Fatal(err)
+	}
+	if err := lock.Close(); err != nil {
+		stale.Close()
+		t.Fatal(err)
+	}
+	if err := stale.Close(); err != nil {
+		t.Fatal(err)
+	}
 	s, err := NewServer(path, credential, func(_ context.Context, _ Request) Response { return Response{OK: true} })
 	if err != nil {
 		t.Fatal(err)
