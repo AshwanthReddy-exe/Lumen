@@ -87,7 +87,7 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	override := string(overrideBytes)
-	for _, required := range []string{"lumen-provider", "lumen-test-key", "/v1/chat/completions", "stream", "LUMEN_HERMES_CONTAINER_BASE_URL", "OPENROUTER_BASE_URL"} {
+	for _, required := range []string{"lumen-provider", "lumen-test-key", "/v1/chat/completions", "stream", "LUMEN_HERMES_CONTAINER_BASE_URL", "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL"} {
 		if !strings.Contains(override, required) {
 			t.Errorf("milestone journey override is missing %q", required)
 		}
