@@ -35,7 +35,8 @@ services:
                 if self.path != "/v1/chat/completions":
                     self.send_error(404)
                     return
-                if self.headers.get("Authorization") != "Bearer lumen-test-key":
+                authorization = self.headers.get("Authorization", "")
+                if not authorization.startswith("Bearer ") or not authorization[7:]:
                     self.send_error(401)
                     return
                 length = int(self.headers.get("Content-Length", "0"))

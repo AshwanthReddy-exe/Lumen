@@ -253,15 +253,24 @@ approval=$(compose exec -T lumen-host lumen-host approval resolve \
 printf '%s\n' "$approval" | redact
 i=0
 while [ "$i" -lt 60 ]; do
-	if task_status=$(compose exec -T lumen-host lumen-host task show --task_id linux-journey-task 2>/dev/null) && printf '%s\n' "$task_status" | grep -q '"status":"completed"' && printf '%s\n' "$task_status" | grep -q '"output":"synthetic marker"'; then
-		printf '%s\n' "$task_status" | redact
-		break
+	if task_status=$(compose exec -T lumen-host lumen-host task show --task_id linux-journey-task 2>/dev/null); then
+		if printf '%s\n' "$task_status" | grep -q '"status":"completed"' && printf '%s\n' "$task_status" | grep -q '"output":"synthetic marker"'; then
+			printf '%s\n' "$task_status" | redact
+			break
+		fi
+		if printf '%s\n' "$task_status" | grep -Eq '"status":"(failed|cancelled|unknown_outcome)"'; then
+			i=60
+			break
+		fi
 	fi
 	i=$((i + 1))
 	sleep 1
 done
 if [ "$i" -ge 60 ]; then
 	printf '%s\n' "${task_status:-{\"error\":\"task status unavailable\"}}" | redact >&2
+	compose logs --no-color lumen-hermes lumen-provider 2>&1 |
+		grep -E 'ERROR|Traceback|Provider:|Endpoint:|HTTP [45][0-9][0-9]' |
+		tail -n 80 | redact >&2 || :
 	fail 'configured synthetic task did not reach a proven terminal result with synthetic output'
 fi
 
