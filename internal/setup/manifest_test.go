@@ -18,6 +18,9 @@ func TestLoadManifestAndSelect(t *testing.T) {
 	if err != nil || a.Name != "hermes" {
 		t.Fatalf("select %#v, %v", a, err)
 	}
+	if a.Kind != ArtifactExecutable {
+		t.Fatalf("legacy executable kind = %q", a.Kind)
+	}
 }
 
 func TestCheckedInManifestRejectsUnreleasedFixture(t *testing.T) {
@@ -86,5 +89,43 @@ func TestManifestRequiresTopologyArtifactSet(t *testing.T) {
 		if _, err := LoadManifest(strings.NewReader(raw)); err == nil {
 			t.Fatalf("accepted invalid topology manifest: %s", raw)
 		}
+	}
+}
+
+func TestManifestAcceptsPinnedDockerImageAlongsideExecutable(t *testing.T) {
+	image := "ghcr.io/nousresearch/hermes-agent@sha256:" + strings.Repeat("c", 64)
+	raw := `{"schemaVersion":1,"topology":"combined","artifacts":[{"name":"lumen","version":"1.0.0","os":"linux","architecture":"amd64","profile":"development","url":"https://downloads.lumen.dev/lumen/1.0.0/linux-amd64","size":1,"sha256":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","contractVersion":1,"executableMode":493,"ownership":"lumen"},{"name":"hermes","version":"1.0.0","os":"linux","architecture":"amd64","profile":"development","kind":"docker-image","imageRef":"` + image + `","contractVersion":1,"ownership":"hermes"}]}`
+	m, err := LoadManifest(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := m.Select("hermes", "linux", "amd64", Development)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Kind != ArtifactDockerImage || a.ImageRef != image {
+		t.Fatalf("docker artifact = %#v", a)
+	}
+}
+
+func TestManifestRejectsMutableDockerImageReference(t *testing.T) {
+	for _, image := range []string{
+		"ghcr.io/nousresearch/hermes-agent:latest",
+		"ghcr.io/nousresearch/hermes-agent:v1.0.0",
+		"ghcr.io/nousresearch/hermes-agent@sha256:short",
+		"https://ghcr.io/nousresearch/hermes-agent@sha256:" + strings.Repeat("c", 64),
+	} {
+		raw := `{"schemaVersion":1,"topology":"combined","artifacts":[{"name":"lumen","version":"1.0.0","os":"linux","architecture":"amd64","profile":"development","url":"https://downloads.lumen.dev/lumen/1.0.0/linux-amd64","size":1,"sha256":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","contractVersion":1,"executableMode":493,"ownership":"lumen"},{"name":"hermes","version":"1.0.0","os":"linux","architecture":"amd64","profile":"development","kind":"docker-image","imageRef":"` + image + `","contractVersion":1,"ownership":"hermes"}]}`
+		if _, err := LoadManifest(strings.NewReader(raw)); err == nil {
+			t.Fatalf("accepted mutable image reference %q", image)
+		}
+	}
+}
+
+func TestManifestRejectsDockerImageExecutableFields(t *testing.T) {
+	image := "ghcr.io/nousresearch/hermes-agent@sha256:" + strings.Repeat("c", 64)
+	raw := `{"schemaVersion":1,"topology":"combined","artifacts":[{"name":"lumen","version":"1.0.0","os":"linux","architecture":"amd64","profile":"development","url":"https://downloads.lumen.dev/lumen/1.0.0/linux-amd64","size":1,"sha256":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","contractVersion":1,"executableMode":493,"ownership":"lumen"},{"name":"hermes","version":"1.0.0","os":"linux","architecture":"amd64","profile":"development","kind":"docker-image","imageRef":"` + image + `","url":"https://downloads.lumen.dev/hermes/1.0.0/linux-amd64","size":1,"sha256":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","contractVersion":1,"executableMode":493,"ownership":"hermes"}]}`
+	if _, err := LoadManifest(strings.NewReader(raw)); err == nil {
+		t.Fatal("accepted executable fields on docker image")
 	}
 }

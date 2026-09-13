@@ -29,7 +29,6 @@ services:
       API_SERVER_KEY: ${LUMEN_HERMES_API_SERVER_KEY:?set synthetic API server key}
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: "8642"
-      OPENAI_API_KEY: ${LUMEN_HERMES_PROVIDER_API_KEY:-}
       HERMES_HOME: /var/lib/hermes
     volumes:
       - lumen-hermes-state:/var/lib/hermes
@@ -38,6 +37,8 @@ services:
     stop_grace_period: 30s
     user: "65532:65532"
     networks: [lumen-private]
+    ports:
+      - "127.0.0.1:${LUMEN_HERMES_HOST_PORT:-28642}:8642"
   lumen-host:
     build:
       context: ../..
@@ -45,17 +46,17 @@ services:
     command: ["serve"]
     read_only: true
     environment:
-      LUMEN_DATA_DIR: ${LUMEN_DATA_CONTAINER_DIR:-/var/lib/lumen}
-      LUMEN_OPERATOR_CREDENTIAL_FILE: ${LUMEN_DATA_CONTAINER_DIR:-/var/lib/lumen}/operator.credential
+      LUMEN_DATA_DIR: /var/lib/lumen
+      LUMEN_OPERATOR_CREDENTIAL_FILE: /var/lib/lumen/operator.credential
       LUMEN_HERMES_BEARER_FILE: /run/secrets/hermes_token
       LUMEN_HERMES_PROFILE: ${LUMEN_HERMES_PROFILE:-hardened}
-      LUMEN_HERMES_BASE_URL: ${LUMEN_HERMES_BASE_URL:?set Hermes API server URL}
+      LUMEN_HERMES_BASE_URL: ${LUMEN_HERMES_CONTAINER_BASE_URL:-${LUMEN_HERMES_BASE_URL:?set Hermes API server URL}}
       LUMEN_HERMES_CA_FILE: /run/secrets/hermes_ca.pem
       LUMEN_HERMES_CLIENT_CERT_FILE: /run/secrets/hermes_client.crt
       LUMEN_HERMES_CLIENT_KEY_FILE: /run/secrets/hermes_client.key
       LUMEN_HERMES_SERVER_CERT_PIN: ${LUMEN_HERMES_SERVER_CERT_PIN:-REPLACE_WITH_PIN}
     volumes:
-      - ${LUMEN_DATA_DIR:?set isolated Lumen data directory}:${LUMEN_DATA_CONTAINER_DIR:-/var/lib/lumen}
+      - ${LUMEN_DATA_DIR:?set isolated Lumen data directory}:/var/lib/lumen
       - ${LUMEN_HERMES_TOKEN_SOURCE:?set Hermes bearer secret source}:/run/secrets/hermes_token:ro
       - ${LUMEN_HERMES_CA_SOURCE:?set Hermes CA source}:/run/secrets/hermes_ca.pem:ro
       - ${LUMEN_HERMES_CLIENT_CERT_SOURCE:?set Hermes client certificate source}:/run/secrets/hermes_client.crt:ro

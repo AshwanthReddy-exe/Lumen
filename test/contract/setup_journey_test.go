@@ -36,6 +36,7 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 	for _, required := range []string{
 		"COMPOSE_PROJECT_NAME", "docker compose", "--volumes", "trap cleanup EXIT",
 		"gateway", "8642",
+		"compose.milestone1.yaml", "LUMEN_HERMES_CONTAINER_BASE_URL",
 		"v2026.9.7.tar.gz",
 		"907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688",
 		"sha256sum -c", "compose images -q", "imageRef", "docker-image",
@@ -65,6 +66,19 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 	}
 	if hermesEnd := strings.Index(compose, "  lumen-host:"); hermesEnd >= 0 && strings.Contains(compose[:hermesEnd], `command: ["serve"]`) {
 		t.Fatal("Hermes Compose service must use api_server gateway, not desktop serve")
+	}
+	overrideBytes, err := os.ReadFile(filepath.Join(root, "deploy", "docker", "compose.milestone1.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	override := string(overrideBytes)
+	for _, required := range []string{"lumen-provider", "synthetic-provider-key", "/v1/chat/completions", "stream", "LUMEN_HERMES_CONTAINER_BASE_URL"} {
+		if !strings.Contains(override, required) {
+			t.Errorf("milestone journey override is missing %q", required)
+		}
+	}
+	if strings.Contains(compose, "synthetic-provider-key") || strings.Contains(compose, "lumen-provider") {
+		t.Fatal("deterministic provider must remain test-override-only")
 	}
 
 	mise, err := os.ReadFile(filepath.Join(root, "mise.toml"))

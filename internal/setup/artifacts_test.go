@@ -49,6 +49,18 @@ func TestStageRejectsSizeAndDigest(t *testing.T) {
 		t.Fatal("digest")
 	}
 }
+
+func TestInstallerRejectsDockerImageAsFile(t *testing.T) {
+	d := t.TempDir()
+	i := Installer{StageDir: filepath.Join(d, "stage"), InstallDir: filepath.Join(d, "bin")}
+	a := Artifact{Name: "hermes", Version: "1.0.0", OS: "linux", Architecture: "amd64", Profile: Development, Kind: ArtifactDockerImage, ImageRef: "ghcr.io/nousresearch/hermes-agent@sha256:" + strings.Repeat("c", 64), ContractVersion: 1, Ownership: "hermes"}
+	if err := i.Install(context.Background(), a, strings.NewReader("not-an-image")); !errors.Is(err, ErrInvalidArtifact) {
+		t.Fatalf("docker image install error = %v", err)
+	}
+	if _, err := os.Stat(i.InstallDir); !os.IsNotExist(err) {
+		t.Fatalf("installer touched file path: %v", err)
+	}
+}
 func mustStage(i Installer, a Artifact, s string) error {
 	_, e := i.Stage(context.Background(), a, strings.NewReader(s))
 	return e
