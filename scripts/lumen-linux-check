@@ -209,6 +209,7 @@ compose kill -s SIGKILL lumen-host >/dev/null
 [ -z "$(compose ps --status running -q lumen-host)" ] || fail 'Host remained running after SIGKILL'
 compose up -d lumen-host >/dev/null
 wait_for_host || fail 'Host did not recover after forced interruption'
+wait_for_hermes || fail 'Hermes did not remain ready after Host interruption'
 
 printf '%s\n' '=> doctor'
 doctor_report=$($cli doctor)
