@@ -66,6 +66,11 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 			t.Errorf("Compose is missing Hermes api_server setting %q", required)
 		}
 	}
+	for _, required := range []string{"network_mode: service:lumen-hermes", "condition: service_started"} {
+		if !strings.Contains(compose, required) {
+			t.Errorf("Compose is missing loopback Host-to-Hermes isolation %q", required)
+		}
+	}
 	if hermesEnd := strings.Index(compose, "  lumen-host:"); hermesEnd >= 0 && strings.Contains(compose[:hermesEnd], `command: ["serve"]`) {
 		t.Fatal("Hermes Compose service must use api_server gateway, not desktop serve")
 	}

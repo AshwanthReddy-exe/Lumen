@@ -40,6 +40,10 @@ services:
     ports:
       - "127.0.0.1:${LUMEN_HERMES_HOST_PORT:-28642}:8642"
   lumen-host:
+    depends_on:
+      lumen-hermes:
+        condition: service_started
+    network_mode: service:lumen-hermes
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
@@ -65,7 +69,6 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 30s
     user: "${LUMEN_HOST_USER:-65532:65532}"
-    networks: [lumen-private]
 networks:
   lumen-private:
     internal: true
