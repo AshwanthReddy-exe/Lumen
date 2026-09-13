@@ -12,7 +12,7 @@ RUN test "$HERMES_COMMIT" = "$HERMES_EXPECTED_COMMIT" \
     && echo "$HERMES_EXPECTED_ARCHIVE_SHA256  /tmp/hermes-source.tar.gz" | sha256sum -c - \
     && test "$(tar -tzf /tmp/hermes-source.tar.gz | sed -n '1p')" = "hermes-agent-2026.9.7/" \
     && tar -xzf /tmp/hermes-source.tar.gz --strip-components=1 -C /src
-RUN uv sync --frozen
+RUN uv sync --frozen --extra messaging
 
 FROM python:3.11-slim
 WORKDIR /src

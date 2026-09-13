@@ -69,6 +69,13 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 	if hermesEnd := strings.Index(compose, "  lumen-host:"); hermesEnd >= 0 && strings.Contains(compose[:hermesEnd], `command: ["serve"]`) {
 		t.Fatal("Hermes Compose service must use api_server gateway, not desktop serve")
 	}
+	dockerfileBytes, err := os.ReadFile(filepath.Join(root, "deploy", "docker", "Dockerfile.hermes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(dockerfileBytes), "uv sync --frozen --extra messaging") {
+		t.Fatal("Hermes image must install the upstream messaging extra required by api_server")
+	}
 	overrideBytes, err := os.ReadFile(filepath.Join(root, "deploy", "docker", "compose.milestone1.yaml"))
 	if err != nil {
 		t.Fatal(err)
