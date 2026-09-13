@@ -40,7 +40,8 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 		"v2026.9.7.tar.gz",
 		"907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688",
 		"sha256sum -c", "compose images -q", "imageRef", "docker-image",
-		"compose wait", "compose kill", "compose logs", "grep -v",
+		"--status running", "compose kill", "compose logs", "grep -v",
+		"COMPOSE_FILE", "$cli service restart", "lumen-registry", "docker image push",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("missing required journey operation %q", required)

@@ -18,11 +18,22 @@ import (
 	"github.com/AshwanthReddy-exe/Lumen/internal/setup"
 )
 
-func TestHardenedCombinedWriteConfigReceivesTLSEnvironment(t *testing.T) {
-	root, err := filepath.EvalSymlinks(t.TempDir())
+func secureTestDir(t *testing.T) string {
+	t.Helper()
+	root, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
+	d, err := os.MkdirTemp(root, ".lumen-cli-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(d) })
+	return d
+}
+
+func TestHardenedCombinedWriteConfigReceivesTLSEnvironment(t *testing.T) {
+	root := secureTestDir(t)
 	d := filepath.Join(root, "state")
 	ca, cert, key := filepath.Join(root, "ca.pem"), filepath.Join(root, "client.crt"), filepath.Join(root, "client.key")
 	for path, body := range map[string]string{ca: "ca", cert: "cert", key: "key"} {
@@ -48,7 +59,7 @@ func TestHardenedCombinedWriteConfigReceivesTLSEnvironment(t *testing.T) {
 }
 
 func TestServiceDefinitionsMatchSupervisorFormat(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "services")
+	root := filepath.Join(secureTestDir(t), "services")
 	for _, tc := range []struct {
 		manager setup.Supervisor
 		source  string
@@ -114,7 +125,7 @@ func TestJSONOutputDoesNotLeakEnvironment(t *testing.T) {
 }
 
 func TestConnectDoesNotMutateStateRoot(t *testing.T) {
-	root := t.TempDir()
+	root := secureTestDir(t)
 	t.Setenv("HOME", root)
 	t.Setenv("LUMEN_DATA_DIR", root)
 	if report := runForTest([]string{"connect"}); report.Outcome != actionRequired {
@@ -137,7 +148,7 @@ func TestConnectIsReservedWithoutPairing(t *testing.T) {
 }
 
 func TestSetupComposesPlannerAndJournal(t *testing.T) {
-	d := t.TempDir()
+	d := secureTestDir(t)
 	t.Setenv("LUMEN_DATA_DIR", d)
 	t.Setenv("LUMEN_SETUP_PROFILE", "development")
 	t.Setenv("LUMEN_SETUP_TOPOLOGY", "combined")
@@ -227,7 +238,7 @@ func TestAggregateSupervisorStatesRequiresAllServicesRunning(t *testing.T) {
 }
 
 func TestPublicCommandsDoNotExposeUntrustedMetadata(t *testing.T) {
-	d := t.TempDir()
+	d := secureTestDir(t)
 	t.Setenv("LUMEN_DATA_DIR", d)
 	t.Setenv("LUMEN_SETUP_PROFILE", "development")
 	t.Setenv("LUMEN_LUMEN_VERSION", "/Users/alice/secret-token")
@@ -271,7 +282,7 @@ func TestExternalServiceControlsHostOnly(t *testing.T) {
 
 func fakeSystemd(t *testing.T) (string, string) {
 	t.Helper()
-	d := t.TempDir()
+	d := secureTestDir(t)
 	calls := filepath.Join(d, "calls")
 	tool := filepath.Join(d, "systemctl")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"" + calls + "\"\nif [ \"$1\" = status ]; then printf '%s\\n' 'active (running)'; fi\n"
@@ -407,7 +418,7 @@ func TestSetupRerunPreservesIdentityAndCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	secondCredential := filepath.Join(t.TempDir(), "remote.token")
+	secondCredential := filepath.Join(secureTestDir(t), "remote.token")
 	if err := os.WriteFile(secondCredential, []byte("different-remote-secret"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +449,7 @@ func TestSetupRerunPreservesIdentityAndCredentials(t *testing.T) {
 }
 
 func TestSetupExternalAdoptionFailureDoesNotMutateState(t *testing.T) {
-	root := t.TempDir()
+	root := secureTestDir(t)
 	dataDir := filepath.Join(root, "state")
 	credential := filepath.Join(root, "credential")
 	if err := os.WriteFile(credential, []byte("remote-secret"), 0600); err != nil {
@@ -461,7 +472,7 @@ func TestSetupExternalAdoptionFailureDoesNotMutateState(t *testing.T) {
 }
 
 func TestSetupRequiresExplicitTopologyWithoutMutation(t *testing.T) {
-	dataDir := filepath.Join(t.TempDir(), "state")
+	dataDir := filepath.Join(secureTestDir(t), "state")
 	t.Setenv("LUMEN_DATA_DIR", dataDir)
 	t.Setenv("LUMEN_SETUP_PROFILE", "development")
 	t.Setenv("LUMEN_SETUP_TOPOLOGY", "")
@@ -486,10 +497,7 @@ type setupJourneyFixture struct {
 
 func newSetupJourneyFixture(t *testing.T, topology setup.Topology) setupJourneyFixture {
 	t.Helper()
-	root, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := secureTestDir(t)
 	dataDir := filepath.Join(root, "state")
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		t.Fatal(err)

@@ -21,6 +21,20 @@ import (
 	"github.com/AshwanthReddy-exe/Lumen/internal/store"
 )
 
+func resolvedContractTempDir(t *testing.T, pattern string) string {
+	t.Helper()
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := os.MkdirTemp(root, pattern)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(d) })
+	return d
+}
+
 func TestSetupCreatedDeploymentCompletesBoundedRun(t *testing.T) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -48,11 +62,7 @@ func TestSetupCreatedDeploymentCompletesBoundedRun(t *testing.T) {
 	defer runtime.Close()
 	runtimeURL := "http://" + listener.Addr().String()
 
-	d, err := os.MkdirTemp("/private/tmp", "lumen-setup-contract-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(d)
+	d := resolvedContractTempDir(t, "lumen-setup-contract-")
 	paths, err := setup.WriteConfig(setup.ConfigRequest{
 		DataDir: d, HermesDir: filepath.Join(d, "hermes"), Profile: setup.Development,
 		HermesBaseURL: runtimeURL, HermesBearer: "setup-test-token",
@@ -226,11 +236,7 @@ func mustJSON(v any) string {
 
 func configuredFixture(t *testing.T, runtime *configuredRunServer) (*host.Service, space.State, host.Config) {
 	t.Helper()
-	d, err := os.MkdirTemp("/private/tmp", "lumen-hermes-contract-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(d) })
+	d := resolvedContractTempDir(t, "lumen-hermes-contract-")
 	paths, err := setup.WriteConfig(setup.ConfigRequest{DataDir: d, HermesDir: filepath.Join(d, "hermes"), Profile: setup.Development, HermesBaseURL: "http://" + runtime.listener.Addr().String(), HermesBearer: "setup-test-token"})
 	if err != nil {
 		t.Fatal(err)

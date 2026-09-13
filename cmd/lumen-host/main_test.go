@@ -38,7 +38,7 @@ func TestCLIProcessLifecycleAndBoundary(t *testing.T) {
 	}
 	bin := buildHostBinary(t)
 	dataDir := t.TempDir()
-	runtimeDir, err := os.MkdirTemp("/private/tmp", "lh-")
+	runtimeDir, err := os.MkdirTemp("", "lh-")
 	if err != nil {
 		t.Fatal(err)
 	}

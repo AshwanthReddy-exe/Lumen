@@ -78,7 +78,7 @@ func TestHostHermesDurableAllowRun(t *testing.T) {
 
 func TestFreshInitServeStatusAndSubmitDefaultsIdentity(t *testing.T) {
 	d := t.TempDir()
-	runtimeDir, err := os.MkdirTemp("/private/tmp", "lumen-contract-")
+	runtimeDir, err := os.MkdirTemp("", "lumen-contract-")
 	if err != nil {
 		t.Fatal(err)
 	}

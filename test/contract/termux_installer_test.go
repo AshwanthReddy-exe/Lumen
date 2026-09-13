@@ -9,7 +9,7 @@ import (
 )
 
 func TestTermuxInstallerCreatesPrivateHostAndService(t *testing.T) {
-	root, err := os.MkdirTemp("/private/tmp", "lumen-termux-installer-")
+	root, err := os.MkdirTemp("", "lumen-termux-installer-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestTermuxInstallerCreatesPrivateHostAndService(t *testing.T) {
 }
 
 func TestTermuxRunitServiceExportsHostConfiguration(t *testing.T) {
-	root, err := os.MkdirTemp("/private/tmp", "lumen-termux-runit-")
+	root, err := os.MkdirTemp("", "lumen-termux-runit-")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,8 +16,11 @@ archive_target=$repo_root/hermes-source.tar.gz
 archive_copied=0
 compose_ready=0
 api_key=
+hermes_registry_tag=
 container_data_dir=/var/lib/lumen
 hermes_host_port=${LUMEN_HERMES_HOST_PORT:-28642}
+
+cd "$repo_root"
 
 compose() {
 	docker compose -p "$project" -f "$compose_file" -f "$compose_override" "$@"
@@ -50,6 +53,9 @@ cleanup() {
 		if ! rm -f -- "$archive_target"; then
 			:
 		fi
+	fi
+	if [ -n "$hermes_registry_tag" ]; then
+		docker image rm "$hermes_registry_tag" >/dev/null 2>&1 || :
 	fi
 	if ! rm -rf -- "$work_dir"; then
 		:
@@ -101,6 +107,7 @@ export LUMEN_SUPERVISOR=docker
 export LUMEN_HOST_USER="$(id -u):$(id -g)"
 export HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
 export COMPOSE_PROJECT_NAME="$project"
+export COMPOSE_FILE=deploy/docker/compose.yaml:deploy/docker/compose.milestone1.yaml
 
 if [ -n "${LUMEN_HERMES_SOURCE_ARCHIVE:-}" ]; then
 	cp -- "$LUMEN_HERMES_SOURCE_ARCHIVE" "$archive"
@@ -131,7 +138,20 @@ case "$hermes_image_id" in
 	sha256:*) ;;
 	*) fail 'Docker Compose did not return an immutable Hermes image identity' ;;
 esac
-hermes_image_ref="lumen-linux-check/hermes@${hermes_image_id}"
+compose up -d lumen-registry >/dev/null
+registry_address=$(compose port lumen-registry 5000 | tail -1)
+case "$registry_address" in
+	127.0.0.1:*) ;;
+	*) fail 'isolated registry was not published on loopback' ;;
+esac
+hermes_registry_tag="$registry_address/lumen/hermes:milestone1"
+docker image tag "$hermes_image_id" "$hermes_registry_tag"
+docker image push "$hermes_registry_tag" >/dev/null
+hermes_image_ref=$(docker image inspect --format '{{index .RepoDigests 0}}' "$hermes_registry_tag")
+case "$hermes_image_ref" in
+	"$registry_address/lumen/hermes@sha256:"*) ;;
+	*) fail 'local registry did not return an immutable Hermes manifest digest' ;;
+esac
 
 lumen_size=$(stat -c '%s' "$host_artifact")
 lumen_sha=$(sha256sum "$host_artifact" | cut -d' ' -f1)
@@ -178,12 +198,9 @@ printf '%s\n' "$rerun_report" | redact
 printf '%s\n' "$rerun_report" | grep -q '"outcome":"ready"' || fail 'setup rerun did not report ready'
 
 printf '%s\n' '=> forced interruption'
+[ -n "$(compose ps --status running -q lumen-host)" ] || fail 'Host was not running before forced interruption'
 compose kill -s SIGKILL lumen-host >/dev/null
-if compose wait lumen-host >/dev/null 2>&1; then
-	:
-else
-	:
-fi
+[ -z "$(compose ps --status running -q lumen-host)" ] || fail 'Host remained running after SIGKILL'
 compose up -d lumen-host >/dev/null
 wait_for_host || fail 'Host did not recover after forced interruption'
 
@@ -193,7 +210,8 @@ printf '%s\n' "$doctor_report" | redact
 printf '%s\n' "$doctor_report" | grep -q '"outcome":"ready"' || fail 'doctor did not report ready'
 
 printf '%s\n' '=> service restart'
-compose restart lumen-hermes lumen-host >/dev/null
+service_report=$($cli service restart)
+printf '%s\n' "$service_report" | redact
 wait_for_hermes || fail 'Hermes did not recover after service restart'
 wait_for_host || fail 'Host did not recover after service restart'
 

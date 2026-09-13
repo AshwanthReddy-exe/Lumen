@@ -315,10 +315,15 @@ func goodExternalCandidate(t *testing.T) (HermesCandidate, string) {
 
 func realTempDir(t *testing.T) string {
 	t.Helper()
-	d, err := filepath.EvalSymlinks(t.TempDir())
+	root, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
+	d, err := os.MkdirTemp(root, ".lumen-adoption-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(d) })
 	return d
 }
 

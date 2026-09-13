@@ -302,7 +302,7 @@ func TestAcceptReportsPermanentErrorInsteadOfSpinning(t *testing.T) {
 
 func shortPrivateDir(t *testing.T) string {
 	t.Helper()
-	d, err := os.MkdirTemp("/private/tmp", "lh-")
+	d, err := os.MkdirTemp("", "lh-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func (l *failingListener) Close() error   { return nil }
 func (l *failingListener) Addr() net.Addr { return &net.UnixAddr{Name: "test", Net: "unix"} }
 
 func TestCloseDoesNotRemoveReplacedSocket(t *testing.T) {
-	private, err := os.MkdirTemp("/private/tmp", "lh-")
+	private, err := os.MkdirTemp("", "lh-")
 	if err != nil {
 		t.Fatal(err)
 	}

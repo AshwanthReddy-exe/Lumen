@@ -148,13 +148,13 @@ func TestDoctorRejectsMissingArtifactEvidence(t *testing.T) {
 	// A running service must not make an unbound artifact set ready.
 	report := runForTest([]string{"doctor"})
 	if report.Outcome != setup.ActionRequired || !hasAction(report, "setup_identity_mismatch") {
-		 t.Fatalf("missing artifact evidence report = %#v", report)
+		t.Fatalf("missing artifact evidence report = %#v", report)
 	}
 }
 
 func TestDoctorRejectsMissingOrReplacedDurableArtifact(t *testing.T) {
 	for _, tt := range []struct {
-		name string
+		name   string
 		mutate func(t *testing.T, path string)
 	}{
 		{name: "missing", mutate: func(t *testing.T, path string) {
@@ -285,7 +285,7 @@ func TestExternalServiceUsesDurableHostOnly(t *testing.T) {
 	}
 
 	t.Run("missing binding makes no calls", func(t *testing.T) {
-		d := t.TempDir()
+		d := secureTestDir(t)
 		t.Setenv("LUMEN_DATA_DIR", d)
 		clearFile(t, f.calls)
 		report := runForTest([]string{"service", "status"})
@@ -303,7 +303,7 @@ func TestDefaultHermesProbeTreatsLocalConfigurationFailureAsActionRequired(t *te
 	obs := defaultHermesProbe(context.Background(), host.Config{
 		HermesBaseURL:    "http://127.0.0.1:8642",
 		HermesProfile:    "development",
-		HermesBearerPath: filepath.Join(t.TempDir(), "missing-token"),
+		HermesBearerPath: filepath.Join(secureTestDir(t), "missing-token"),
 	}, nil)
 	if obs.Unavailable {
 		t.Fatalf("local client configuration was classified as outage: %#v", obs)
@@ -336,10 +336,7 @@ type durableDoctorFixture struct {
 
 func newDurableDoctorFixture(t *testing.T, topology setup.Topology) durableDoctorFixture {
 	t.Helper()
-	root, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := secureTestDir(t)
 	dataDir := filepath.Join(root, "state")
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		t.Fatal(err)
