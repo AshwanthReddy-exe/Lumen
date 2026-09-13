@@ -83,7 +83,7 @@ func TestDockerSupervisorUsesComposeServiceNamesAndOptions(t *testing.T) {
 	if _, err := (CommandSupervisor{Manager: SupervisorDocker}).Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHermes}); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"docker", "compose", "-f", "deploy/docker/compose.yaml", "ps", "lumen-hermes"}; !reflect.DeepEqual(r.calls[0], want) {
+	if want := []string{"docker", "compose", "-f", "deploy/docker/compose.yaml", "ps", "--status", "running", "-q", "lumen-hermes"}; !reflect.DeepEqual(r.calls[0], want) {
 		t.Fatalf("status call=%#v, want %#v", r.calls[0], want)
 	}
 	r.calls = nil
@@ -107,7 +107,7 @@ func TestDockerSupervisorUsesConfiguredComposeProjectAndFiles(t *testing.T) {
 	if _, err := s.Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHermes}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"docker", "compose", "-p", "lumen-check", "-f", "deploy/docker/compose.yaml", "-f", "deploy/docker/compose.milestone1.yaml", "ps", "lumen-hermes"}
+	want := []string{"docker", "compose", "-p", "lumen-check", "-f", "deploy/docker/compose.yaml", "-f", "deploy/docker/compose.milestone1.yaml", "ps", "--status", "running", "-q", "lumen-hermes"}
 	if !reflect.DeepEqual(r.calls[0], want) {
 		t.Fatalf("status call=%#v, want %#v", r.calls[0], want)
 	}
@@ -123,7 +123,7 @@ func TestDockerSupervisorReadsComposeContextFromEnvironment(t *testing.T) {
 	if _, err := (CommandSupervisor{Manager: SupervisorDocker}).Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHermes}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"docker", "compose", "-p", "lumen-env-check", "-f", "deploy/docker/compose.yaml", "-f", "deploy/docker/compose.milestone1.yaml", "ps", "lumen-hermes"}
+	want := []string{"docker", "compose", "-p", "lumen-env-check", "-f", "deploy/docker/compose.yaml", "-f", "deploy/docker/compose.milestone1.yaml", "ps", "--status", "running", "-q", "lumen-hermes"}
 	if !reflect.DeepEqual(r.calls[0], want) {
 		t.Fatalf("status call=%#v, want %#v", r.calls[0], want)
 	}

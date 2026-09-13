@@ -530,19 +530,16 @@ func observeDeployment(ctx context.Context, d deployment, deps doctorDeps) setup
 		e.HermesVersion = d.adoption.Version
 	}
 
-	if _, err := host.VerifyInitialized(d.config); err != nil {
+	state, liveErr := deps.hostStatus(ctx, d.config)
+	if liveErr == nil && (state == setup.StateRunning || state == "ready") {
+		e.CredentialsReady = privateFile(d.config.CredentialPath) && privateFile(d.config.HermesBearerPath)
+		e.HostReady, e.HostState = true, setup.StateRunning
+	} else if _, err := host.VerifyInitialized(d.config); err != nil {
 		e.HostError = err
 	} else {
 		e.CredentialsReady = privateFile(d.config.CredentialPath) && privateFile(d.config.HermesBearerPath)
-		state, err := deps.hostStatus(ctx, d.config)
-		if err != nil {
-			e.HostError = err
-			e.HostState = setup.StateFailed
-		} else if state == setup.StateRunning || state == "ready" {
-			e.HostReady, e.HostState = true, setup.StateRunning
-		} else {
-			e.HostState = state
-		}
+		e.HostState = setup.StateStopped
+		e.HostError = liveErr
 	}
 
 	states, statusErr := deps.supervisorStatus(ctx, d.supervisor, d.services)

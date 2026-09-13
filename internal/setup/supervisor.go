@@ -402,6 +402,15 @@ func launchdBootstrap(ctx context.Context, d ServiceDefinition) error {
 }
 func (s CommandSupervisor) observe(ctx context.Context, n ServiceName) (ServiceState, error) {
 	out, errout, err := s.runOutput(ctx, "status", ServiceDefinition{Name: n})
+	if s.Manager == SupervisorDocker {
+		if err != nil {
+			return ServiceState{}, fmt.Errorf("manager=%s service=%s operation=status: %w", s.Manager, n, err)
+		}
+		if strings.TrimSpace(string(out)) != "" {
+			return ServiceState{Name: n, State: StateRunning}, nil
+		}
+		return ServiceState{Name: n, State: StateStopped}, nil
+	}
 	text := strings.ToLower(string(out) + " " + string(errout))
 	st := StateUnknown
 	if strings.Contains(text, "running") || strings.Contains(text, "active (running)") {
@@ -483,7 +492,7 @@ func (s CommandSupervisor) runOutput(ctx context.Context, op string, d ServiceDe
 	case SupervisorDocker:
 		name = "docker"
 		var err error
-		args, err = s.composeArgs("ps", "lumen-"+string(d.Name))
+		args, err = s.composeArgs("ps", "--status", "running", "-q", "lumen-"+string(d.Name))
 		if err != nil {
 			return nil, nil, err
 		}
