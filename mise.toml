@@ -34,3 +34,16 @@ run = [
   "test -n \"${ANDROID_HOME:-}\" && test -d \"$ANDROID_HOME\" || { echo 'Android companion checks require ANDROID_HOME'; exit 1; }",
   "gradle :apps:android-host:testDebugUnitTest :apps:android-host:assembleDebug --no-daemon",
 ]
+
+[tasks.milestone1-linux-check]
+description = "Run the combined Linux setup, recovery, and secret scan journey"
+run = [
+  "go test ./... -count=1",
+  "mkdir -p build/lumen-host",
+  "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host-linux-amd64 ./cmd/lumen-host",
+  "sh -n scripts/lumen-linux-check",
+  "test -x scripts/lumen-linux-check",
+  "if git grep -n -I -E '(sk-[A-Za-z0-9]{20,}|Bearer[[:space:]][A-Za-z0-9._-]{20,})' -- . ':!docs'; then echo 'potential credential found' >&2; exit 1; else :; fi",
+  "test -f deploy/docker/compose.yaml && docker compose version",
+  "scripts/lumen-linux-check",
+]

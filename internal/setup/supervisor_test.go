@@ -75,6 +75,26 @@ func TestSupervisorRestartUsesBoundedContext(t *testing.T) {
 	}
 }
 
+func TestDockerSupervisorUsesComposeServiceNamesAndOptions(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &recordingRunner{}
+	commandRunner = r
+	if _, err := (CommandSupervisor{Manager: SupervisorDocker}).Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHermes}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"docker", "compose", "-f", "deploy/docker/compose.yaml", "ps", "lumen-hermes"}; !reflect.DeepEqual(r.calls[0], want) {
+		t.Fatalf("status call=%#v, want %#v", r.calls[0], want)
+	}
+	r.calls = nil
+	if _, err := (CommandSupervisor{Manager: SupervisorDocker}).Control(context.Background(), Action{Code: "restart"}, []ServiceName{ServiceHost}); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"docker", "compose", "-f", "deploy/docker/compose.yaml", "restart", "lumen-host"}; !reflect.DeepEqual(r.calls[0], want) {
+		t.Fatalf("restart call=%#v, want %#v", r.calls[0], want)
+	}
+}
+
 func TestSupervisorBootStatusUsesLiveEnableObservation(t *testing.T) {
 	old := commandRunner
 	t.Cleanup(func() { commandRunner = old })

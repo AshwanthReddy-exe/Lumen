@@ -349,10 +349,10 @@ func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDe
 		case SupervisorDocker:
 			name = "docker"
 			actual := op
+			args = []string{"compose", "-f", "deploy/docker/compose.yaml", actual, "lumen-" + string(d.Name)}
 			if op == "enable" {
-				actual = "up"
+				args = []string{"compose", "-f", "deploy/docker/compose.yaml", "up", "-d", "lumen-" + string(d.Name)}
 			}
-			args = []string{"compose", "-f", "deploy/docker/compose.yaml", actual, "-d", "lumen-" + string(d.Name)}
 		case SupervisorRunit:
 			name = "sv"
 			if op == "enable" {
@@ -389,7 +389,7 @@ func (s CommandSupervisor) runOutput(ctx context.Context, op string, d ServiceDe
 		args = []string{"print", "system/" + "dev.lumen." + string(d.Name)}
 	case SupervisorDocker:
 		name = "docker"
-		args = []string{"compose", "-f", "deploy/docker/compose.yaml", "ps", string(d.Name)}
+		args = []string{"compose", "-f", "deploy/docker/compose.yaml", "ps", "lumen-" + string(d.Name)}
 	case SupervisorRunit:
 		name = "sv"
 		args = []string{"status", "lumen-" + string(d.Name)}

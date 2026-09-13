@@ -1,10 +1,38 @@
 services:
-  lumen-hermes:
+  lumen-hermes-init:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile.hermes
-    command: ["serve"]
+      args:
+        HERMES_COMMIT: ${HERMES_COMMIT:?set pinned Hermes commit}
+        HERMES_SOURCE_ARCHIVE_SHA256: ${HERMES_SOURCE_ARCHIVE_SHA256:?set verified Hermes archive SHA-256}
+    entrypoint: ["/bin/chown"]
+    command: ["65532:65532", "/var/lib/hermes"]
+    user: "0:0"
+    volumes:
+      - lumen-hermes-state:/var/lib/hermes
+    restart: "no"
+  lumen-hermes:
+    depends_on:
+      lumen-hermes-init:
+        condition: service_completed_successfully
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.hermes
+      args:
+        HERMES_COMMIT: ${HERMES_COMMIT:?set pinned Hermes commit}
+        HERMES_SOURCE_ARCHIVE_SHA256: ${HERMES_SOURCE_ARCHIVE_SHA256:?set verified Hermes archive SHA-256}
+    command: ["gateway", "run", "--no-supervise"]
     read_only: true
+    environment:
+      API_SERVER_ENABLED: "true"
+      API_SERVER_KEY: ${LUMEN_HERMES_API_SERVER_KEY:?set synthetic API server key}
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_PORT: "8642"
+      OPENAI_API_KEY: ${LUMEN_HERMES_PROVIDER_API_KEY:-}
+      HERMES_HOME: /var/lib/hermes
+    volumes:
+      - lumen-hermes-state:/var/lib/hermes
     restart: on-failure:3
     stop_signal: SIGTERM
     stop_grace_period: 30s
@@ -17,28 +45,28 @@ services:
     command: ["serve"]
     read_only: true
     environment:
-      LUMEN_DATA_DIR: /var/lib/lumen
-      LUMEN_OPERATOR_CREDENTIAL_FILE: /var/lib/lumen/operator.credential
+      LUMEN_DATA_DIR: ${LUMEN_DATA_CONTAINER_DIR:-/var/lib/lumen}
+      LUMEN_OPERATOR_CREDENTIAL_FILE: ${LUMEN_DATA_CONTAINER_DIR:-/var/lib/lumen}/operator.credential
       LUMEN_HERMES_BEARER_FILE: /run/secrets/hermes_token
-      LUMEN_HERMES_PROFILE: hardened
-      LUMEN_HERMES_BASE_URL: https://hermes.internal.example
+      LUMEN_HERMES_PROFILE: ${LUMEN_HERMES_PROFILE:-hardened}
+      LUMEN_HERMES_BASE_URL: ${LUMEN_HERMES_BASE_URL:?set Hermes API server URL}
       LUMEN_HERMES_CA_FILE: /run/secrets/hermes_ca.pem
       LUMEN_HERMES_CLIENT_CERT_FILE: /run/secrets/hermes_client.crt
       LUMEN_HERMES_CLIENT_KEY_FILE: /run/secrets/hermes_client.key
-      LUMEN_HERMES_SERVER_CERT_PIN: REPLACE_WITH_PIN
+      LUMEN_HERMES_SERVER_CERT_PIN: ${LUMEN_HERMES_SERVER_CERT_PIN:-REPLACE_WITH_PIN}
     volumes:
-      - lumen-state:/var/lib/lumen
-      - ./secrets/hermes.token:/run/secrets/hermes_token:ro
-      - ./secrets/hermes_ca.pem:/run/secrets/hermes_ca.pem:ro
-      - ./secrets/hermes_client.crt:/run/secrets/hermes_client.crt:ro
-      - ./secrets/hermes_client.key:/run/secrets/hermes_client.key:ro
+      - ${LUMEN_DATA_DIR:?set isolated Lumen data directory}:${LUMEN_DATA_CONTAINER_DIR:-/var/lib/lumen}
+      - ${LUMEN_HERMES_TOKEN_SOURCE:?set Hermes bearer secret source}:/run/secrets/hermes_token:ro
+      - ${LUMEN_HERMES_CA_SOURCE:?set Hermes CA source}:/run/secrets/hermes_ca.pem:ro
+      - ${LUMEN_HERMES_CLIENT_CERT_SOURCE:?set Hermes client certificate source}:/run/secrets/hermes_client.crt:ro
+      - ${LUMEN_HERMES_CLIENT_KEY_SOURCE:?set Hermes client key source}:/run/secrets/hermes_client.key:ro
     restart: on-failure:3
     stop_signal: SIGTERM
     stop_grace_period: 30s
-    user: "65532:65532"
+    user: "${LUMEN_HOST_USER:-65532:65532}"
     networks: [lumen-private]
 networks:
   lumen-private:
     internal: true
 volumes:
-  lumen-state:
+  lumen-hermes-state:
