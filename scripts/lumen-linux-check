@@ -5,7 +5,17 @@ repo_root=${LUMEN_REPO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
 compose_file=$repo_root/deploy/docker/compose.yaml
 compose_override=$repo_root/deploy/docker/compose.milestone1.yaml
 project=${COMPOSE_PROJECT_NAME:-lumen-linux-check-$$}
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/lumen-linux-check.XXXXXX")
+preserve=${LUMEN_LINUX_CHECK_PRESERVE:-0}
+case "$preserve" in
+	0) work_root=${TMPDIR:-/tmp} ;;
+	1)
+		work_root=${LUMEN_LINUX_CHECK_PRESERVE_ROOT:-${HOME:?HOME is required}/.local/state/lumen-owner-proof}
+		mkdir -p -- "$work_root"
+		chmod 700 -- "$work_root"
+		;;
+	*) printf '%s\n' 'lumen-linux-check: LUMEN_LINUX_CHECK_PRESERVE must be 0 or 1' >&2; exit 1 ;;
+esac
+work_dir=$(mktemp -d "$work_root/lumen-linux-check.XXXXXX")
 data_dir=$work_dir/lumen-data
 secret_dir=$work_dir/secrets
 manifest=$work_dir/manifest.json
@@ -20,12 +30,6 @@ hermes_registry_tag=
 container_data_dir=/var/lib/lumen
 hermes_host_port=${LUMEN_HERMES_HOST_PORT:-28642}
 registry_host_port=${LUMEN_REGISTRY_HOST_PORT:-28742}
-preserve=${LUMEN_LINUX_CHECK_PRESERVE:-0}
-
-case "$preserve" in
-	0|1) ;;
-	*) printf '%s\n' 'lumen-linux-check: LUMEN_LINUX_CHECK_PRESERVE must be 0 or 1' >&2; exit 1 ;;
-esac
 
 cd "$repo_root"
 
