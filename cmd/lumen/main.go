@@ -760,7 +760,7 @@ func newHermesClient(cfg host.Config) (*hermes.Client, error) {
 	if profile == "personal-alpha" {
 		profile = hermes.ProfileHardened
 	}
-	hcfg := hermes.Config{BaseURL: cfg.HermesBaseURL, ProfileMode: profile, BearerToken: strings.TrimSpace(string(token)), MaxResponseBytes: 8 << 20, MaxEventBytes: 1 << 20, MaxEventStreamBytes: 8 << 20, RequestTimeout: time.Second, EventTimeout: time.Second}
+	hcfg := hermes.Config{BaseURL: cfg.HermesBaseURL, ProfileMode: profile, BearerToken: strings.TrimSpace(string(token)), MaxResponseBytes: 8 << 20, MaxEventBytes: 1 << 20, MaxEventStreamBytes: 8 << 20, RequestTimeout: 10 * time.Second, EventTimeout: 30 * time.Second}
 	if profile == hermes.ProfileHardened {
 		caPEM, err := readPrivateSecret(cfg.HermesCAPath)
 		if err != nil {
