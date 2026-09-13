@@ -39,7 +39,7 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 		"compose.milestone1.yaml", "LUMEN_HERMES_CONTAINER_BASE_URL",
 		"v2026.9.7.tar.gz",
 		"907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688",
-		"sha256sum -c", "compose images -q", "imageRef", "docker-image",
+		"sha256sum -c", "compose images -q", "docker image inspect --format '{{.Id}}'", "imageRef", "docker-image",
 		"--status running", "compose kill", "compose logs", "grep -v",
 		"COMPOSE_FILE", "$cli service restart", "lumen-registry", "docker image push",
 	} {

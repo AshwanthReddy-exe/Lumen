@@ -43,6 +43,7 @@ run = [
   "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host-linux-amd64 ./cmd/lumen-host",
   "sh -n scripts/lumen-linux-check",
   "test -x scripts/lumen-linux-check",
+  "git rev-parse --is-inside-work-tree >/dev/null || { echo 'secret scan requires a Git worktree' >&2; exit 1; }",
   "if git grep -n -I -E '(sk-[A-Za-z0-9]{20,}|Bearer[[:space:]][A-Za-z0-9._-]{20,})' -- . ':!docs'; then echo 'potential credential found' >&2; exit 1; else :; fi",
   "test -f deploy/docker/compose.yaml && docker compose version",
   "scripts/lumen-linux-check",
