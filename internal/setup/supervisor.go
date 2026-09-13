@@ -357,7 +357,7 @@ func (s CommandSupervisor) BootStatus(ctx context.Context, names []ServiceName) 
 				return false, err
 			}
 			policy := strings.TrimSpace(string(out))
-			if policy == "" || policy == "no" {
+			if policy != "always" && policy != "unless-stopped" {
 				return false, nil
 			}
 		}

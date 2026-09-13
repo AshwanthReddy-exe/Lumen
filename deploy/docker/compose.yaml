@@ -32,7 +32,7 @@ services:
       HERMES_HOME: /var/lib/hermes
     volumes:
       - lumen-hermes-state:/var/lib/hermes
-    restart: on-failure:3
+    restart: unless-stopped
     stop_signal: SIGTERM
     stop_grace_period: 30s
     user: "65532:65532"
@@ -65,7 +65,7 @@ services:
       - ${LUMEN_HERMES_CA_SOURCE:?set Hermes CA source}:/run/secrets/hermes_ca.pem:ro
       - ${LUMEN_HERMES_CLIENT_CERT_SOURCE:?set Hermes client certificate source}:/run/secrets/hermes_client.crt:ro
       - ${LUMEN_HERMES_CLIENT_KEY_SOURCE:?set Hermes client key source}:/run/secrets/hermes_client.key:ro
-    restart: on-failure:3
+    restart: unless-stopped
     stop_signal: SIGTERM
     stop_grace_period: 30s
     user: "${LUMEN_HOST_USER:-65532:65532}"

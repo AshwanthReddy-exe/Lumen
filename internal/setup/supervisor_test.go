@@ -173,6 +173,21 @@ func TestDockerSupervisorBootStatusResolvesContainerThroughCompose(t *testing.T)
 	}
 }
 
+func TestDockerSupervisorBootStatusRejectsOnFailurePolicy(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &queuedOutputRunner{outputs: [][]byte{[]byte("container-id\n"), []byte("on-failure\n")}}
+	commandRunner = r
+
+	ready, err := (CommandSupervisor{Manager: SupervisorDocker}).BootStatus(context.Background(), []ServiceName{ServiceHost})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ready {
+		t.Fatal("on-failure does not restart a container after the Docker daemon restarts")
+	}
+}
+
 func TestSupervisorBootStatusUsesLiveEnableObservation(t *testing.T) {
 	old := commandRunner
 	t.Cleanup(func() { commandRunner = old })

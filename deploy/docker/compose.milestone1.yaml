@@ -60,7 +60,7 @@ services:
         ThreadingHTTPServer(("0.0.0.0", 8080), Provider).serve_forever()
     read_only: true
     user: "65532:65532"
-    restart: on-failure:3
+    restart: unless-stopped
     networks: [lumen-private]
   lumen-hermes:
     image: ${LUMEN_HERMES_BUILD_IMAGE:?set isolated Hermes build image}
