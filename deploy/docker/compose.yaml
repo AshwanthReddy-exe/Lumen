@@ -36,7 +36,7 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 30s
     user: "65532:65532"
-    networks: [lumen-private]
+    networks: [lumen-private, lumen-egress]
     ports:
       - "127.0.0.1:${LUMEN_HERMES_HOST_PORT:-28642}:8642"
   lumen-host:
@@ -72,5 +72,6 @@ services:
 networks:
   lumen-private:
     internal: true
+  lumen-egress: {}
 volumes:
   lumen-hermes-state:

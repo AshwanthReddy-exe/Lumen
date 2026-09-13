@@ -67,7 +67,7 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 			t.Errorf("Compose is missing Hermes api_server setting %q", required)
 		}
 	}
-	for _, required := range []string{"network_mode: service:lumen-hermes", "condition: service_started"} {
+	for _, required := range []string{"network_mode: service:lumen-hermes", "condition: service_started", "lumen-egress"} {
 		if !strings.Contains(compose, required) {
 			t.Errorf("Compose is missing loopback Host-to-Hermes isolation %q", required)
 		}
