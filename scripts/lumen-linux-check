@@ -141,7 +141,9 @@ case "$hermes_image_id" in
 	*) fail 'Docker Compose did not return an immutable Hermes image identity' ;;
 esac
 compose up -d lumen-registry >/dev/null
-registry_address=$(compose port lumen-registry 5000 | tail -1)
+registry_container_id=$(compose ps -q lumen-registry)
+[ -n "$registry_container_id" ] || fail 'isolated registry container was not created'
+registry_address=$(docker inspect --format '{{with (index .NetworkSettings.Ports "5000/tcp")}}{{(index . 0).HostIp}}:{{(index . 0).HostPort}}{{end}}' "$registry_container_id")
 case "$registry_address" in
 	127.0.0.1:*) ;;
 	*) fail 'isolated registry was not published on loopback' ;;

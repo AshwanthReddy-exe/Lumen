@@ -42,6 +42,7 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 		"sha256sum -c", "LUMEN_HERMES_BUILD_IMAGE", "docker image inspect --format '{{.Id}}'", "imageRef", "docker-image",
 		"--status running", "compose kill", "compose logs", "grep -v",
 		"COMPOSE_FILE", "$cli service restart", "lumen-registry", "docker image push",
+		".NetworkSettings.Ports", "compose ps -q lumen-registry",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("missing required journey operation %q", required)
