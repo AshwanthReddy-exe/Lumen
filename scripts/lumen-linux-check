@@ -133,8 +133,8 @@ printf '%s\n' '=> Docker Compose build and pinned Hermes gateway'
 compose config >/dev/null
 compose_ready=1
 compose build lumen-hermes-init lumen-provider lumen-hermes lumen-host
-hermes_image_candidate=$(compose images -q lumen-hermes | tail -1)
-[ -n "$hermes_image_candidate" ] || fail 'Docker Compose did not return a Hermes image'
+hermes_image_candidate=$(compose build --quiet lumen-hermes | tail -1)
+[ -n "$hermes_image_candidate" ] || fail 'Docker Compose did not return the built Hermes image'
 hermes_image_id=$(docker image inspect --format '{{.Id}}' "$hermes_image_candidate" 2>/dev/null) || \
 	fail 'Docker could not resolve the Hermes image identity'
 case "$hermes_image_id" in
