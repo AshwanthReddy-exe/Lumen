@@ -129,7 +129,81 @@ func (p ServicePlan) serviceDefinitions() []ServiceDefinition {
 	return []ServiceDefinition{p.Hermes, p.Host}
 }
 
-type CommandSupervisor struct{ Manager Supervisor }
+// ComposeConfig identifies the project and file set used by a Docker
+// supervisor. An empty value uses the repository's base Compose file and the
+// default Compose project selected by Docker.
+type ComposeConfig struct {
+	Project string
+	Files   []string
+}
+
+type CommandSupervisor struct {
+	Manager Supervisor
+	Compose ComposeConfig
+}
+
+const defaultComposeFile = "deploy/docker/compose.yaml"
+
+func (s CommandSupervisor) composeArgs(operation string, services ...string) ([]string, error) {
+	c := s.Compose
+	if c.Project == "" {
+		c.Project = os.Getenv("COMPOSE_PROJECT_NAME")
+	}
+	if len(c.Files) == 0 {
+		if raw := os.Getenv("COMPOSE_FILE"); raw != "" {
+			c.Files = strings.Split(raw, string(os.PathListSeparator))
+		} else {
+			c.Files = []string{defaultComposeFile}
+		}
+	}
+	if err := validateComposeProject(c.Project); err != nil {
+		return nil, err
+	}
+	args := []string{"compose"}
+	if c.Project != "" {
+		args = append(args, "-p", c.Project)
+	}
+	for _, file := range c.Files {
+		if err := validateComposeFile(file); err != nil {
+			return nil, err
+		}
+		args = append(args, "-f", file)
+	}
+	args = append(args, operation)
+	args = append(args, services...)
+	return args, nil
+}
+
+func validateComposeProject(project string) error {
+	if project == "" {
+		return nil
+	}
+	if len(project) > 63 {
+		return &ValidationError{"compose project", project}
+	}
+	for i, r := range project {
+		lowerOrDigit := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if i == 0 && !lowerOrDigit {
+			return &ValidationError{"compose project", project}
+		}
+		if !lowerOrDigit && r != '_' && r != '-' {
+			return &ValidationError{"compose project", project}
+		}
+	}
+	return nil
+}
+
+func validateComposeFile(file string) error {
+	if file == "" || filepath.IsAbs(file) || filepath.Clean(file) != file || file == "." {
+		return &ValidationError{"compose file", file}
+	}
+	for _, part := range strings.Split(file, string(filepath.Separator)) {
+		if part == ".." {
+			return &ValidationError{"compose file", file}
+		}
+	}
+	return nil
+}
 
 type CommandRunner interface {
 	Run(context.Context, string, ...string) (stdout, stderr []byte, err error)
@@ -266,7 +340,19 @@ func (s CommandSupervisor) BootStatus(ctx context.Context, names []ServiceName) 
 	}
 	if s.Manager == SupervisorDocker {
 		for _, name := range names {
-			out, _, err := s.call(ctx, name, "boot-status", "docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", "lumen-"+string(name))
+			compose, err := s.composeArgs("ps", "-q", "lumen-"+string(name))
+			if err != nil {
+				return false, err
+			}
+			out, _, err := s.call(ctx, name, "boot-status", "docker", compose...)
+			if err != nil {
+				return false, err
+			}
+			ids := strings.Fields(string(out))
+			if len(ids) != 1 {
+				return false, nil
+			}
+			out, _, err = s.call(ctx, name, "boot-status", "docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", ids[0])
 			if err != nil {
 				return false, err
 			}
@@ -336,6 +422,7 @@ func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDe
 	for _, d := range defs {
 		var name string
 		var args []string
+		var err error
 		switch s.Manager {
 		case SupervisorSystemd:
 			name = "systemctl"
@@ -349,9 +436,15 @@ func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDe
 		case SupervisorDocker:
 			name = "docker"
 			actual := op
-			args = []string{"compose", "-f", "deploy/docker/compose.yaml", actual, "lumen-" + string(d.Name)}
+			args, err = s.composeArgs(actual, "lumen-"+string(d.Name))
+			if err != nil {
+				return err
+			}
 			if op == "enable" {
-				args = []string{"compose", "-f", "deploy/docker/compose.yaml", "up", "-d", "lumen-" + string(d.Name)}
+				args, err = s.composeArgs("up", "-d", "lumen-"+string(d.Name))
+				if err != nil {
+					return err
+				}
 			}
 		case SupervisorRunit:
 			name = "sv"
@@ -389,7 +482,11 @@ func (s CommandSupervisor) runOutput(ctx context.Context, op string, d ServiceDe
 		args = []string{"print", "system/" + "dev.lumen." + string(d.Name)}
 	case SupervisorDocker:
 		name = "docker"
-		args = []string{"compose", "-f", "deploy/docker/compose.yaml", "ps", "lumen-" + string(d.Name)}
+		var err error
+		args, err = s.composeArgs("ps", "lumen-"+string(d.Name))
+		if err != nil {
+			return nil, nil, err
+		}
 	case SupervisorRunit:
 		name = "sv"
 		args = []string{"status", "lumen-" + string(d.Name)}

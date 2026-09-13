@@ -95,6 +95,84 @@ func TestDockerSupervisorUsesComposeServiceNamesAndOptions(t *testing.T) {
 	}
 }
 
+func TestDockerSupervisorUsesConfiguredComposeProjectAndFiles(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &recordingRunner{}
+	commandRunner = r
+	s := CommandSupervisor{Manager: SupervisorDocker, Compose: ComposeConfig{
+		Project: "lumen-check",
+		Files:   []string{"deploy/docker/compose.yaml", "deploy/docker/compose.milestone1.yaml"},
+	}}
+	if _, err := s.Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHermes}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"docker", "compose", "-p", "lumen-check", "-f", "deploy/docker/compose.yaml", "-f", "deploy/docker/compose.milestone1.yaml", "ps", "lumen-hermes"}
+	if !reflect.DeepEqual(r.calls[0], want) {
+		t.Fatalf("status call=%#v, want %#v", r.calls[0], want)
+	}
+}
+
+func TestDockerSupervisorReadsComposeContextFromEnvironment(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &recordingRunner{}
+	commandRunner = r
+	t.Setenv("COMPOSE_PROJECT_NAME", "lumen-env-check")
+	t.Setenv("COMPOSE_FILE", "deploy/docker/compose.yaml:deploy/docker/compose.milestone1.yaml")
+	if _, err := (CommandSupervisor{Manager: SupervisorDocker}).Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHermes}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"docker", "compose", "-p", "lumen-env-check", "-f", "deploy/docker/compose.yaml", "-f", "deploy/docker/compose.milestone1.yaml", "ps", "lumen-hermes"}
+	if !reflect.DeepEqual(r.calls[0], want) {
+		t.Fatalf("status call=%#v, want %#v", r.calls[0], want)
+	}
+}
+
+func TestDockerSupervisorRejectsUnsafeComposeContext(t *testing.T) {
+	for name, cfg := range map[string]ComposeConfig{
+		"project separator": {Project: "lumen/check"},
+		"project prefix":    {Project: "-lumen-check"},
+		"path":              {Files: []string{"../outside.yaml"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			old := commandRunner
+			t.Cleanup(func() { commandRunner = old })
+			r := &recordingRunner{}
+			commandRunner = r
+			_, err := (CommandSupervisor{Manager: SupervisorDocker, Compose: cfg}).Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHost})
+			if err == nil {
+				t.Fatal("accepted unsafe Compose context")
+			}
+			if len(r.calls) != 0 {
+				t.Fatalf("ran Docker command after rejecting context: %#v", r.calls)
+			}
+		})
+	}
+}
+
+func TestDockerSupervisorBootStatusResolvesContainerThroughCompose(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &queuedOutputRunner{outputs: [][]byte{[]byte("container-id\n"), []byte("unless-stopped\n")}}
+	commandRunner = r
+	s := CommandSupervisor{Manager: SupervisorDocker, Compose: ComposeConfig{
+		Project: "lumen-check",
+		Files:   []string{"deploy/docker/compose.yaml", "deploy/docker/compose.milestone1.yaml"},
+	}}
+	ready, err := s.BootStatus(context.Background(), []ServiceName{ServiceHost})
+	if err != nil || !ready {
+		t.Fatalf("ready=%v err=%v calls=%#v", ready, err, r.calls)
+	}
+	want := [][]string{
+		{"docker", "compose", "-p", "lumen-check", "-f", "deploy/docker/compose.yaml", "-f", "deploy/docker/compose.milestone1.yaml", "ps", "-q", "lumen-host"},
+		{"docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", "container-id"},
+	}
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Fatalf("calls=%#v, want %#v", r.calls, want)
+	}
+}
+
 func TestSupervisorBootStatusUsesLiveEnableObservation(t *testing.T) {
 	old := commandRunner
 	t.Cleanup(func() { commandRunner = old })
@@ -109,10 +187,11 @@ func TestSupervisorBootStatusUsesLiveEnableObservation(t *testing.T) {
 func TestSupervisorBootStatusUsesDockerRestartPolicy(t *testing.T) {
 	old := commandRunner
 	t.Cleanup(func() { commandRunner = old })
-	r := &bootStatusOutputRunner{stdout: []byte("unless-stopped\n")}
+	r := &queuedOutputRunner{outputs: [][]byte{[]byte("container-id\n"), []byte("unless-stopped\n")}}
 	commandRunner = r
 	ready, err := (CommandSupervisor{Manager: SupervisorDocker}).BootStatus(context.Background(), []ServiceName{ServiceHost})
-	if err != nil || !ready || !reflect.DeepEqual(r.calls, [][]string{{"docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", "lumen-host"}}) {
+	want := [][]string{{"docker", "compose", "-f", "deploy/docker/compose.yaml", "ps", "-q", "lumen-host"}, {"docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", "container-id"}}
+	if err != nil || !ready || !reflect.DeepEqual(r.calls, want) {
 		t.Fatalf("ready=%v err=%v calls=%#v", ready, err, r.calls)
 	}
 }
@@ -154,6 +233,21 @@ type bootStatusOutputRunner struct {
 func (r *bootStatusOutputRunner) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
 	r.calls = append(r.calls, append([]string{name}, args...))
 	return r.stdout, nil, nil
+}
+
+type queuedOutputRunner struct {
+	calls   [][]string
+	outputs [][]byte
+}
+
+func (r *queuedOutputRunner) Run(ctx context.Context, name string, args ...string) ([]byte, []byte, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	if len(r.outputs) == 0 {
+		return nil, nil, nil
+	}
+	out := r.outputs[0]
+	r.outputs = r.outputs[1:]
+	return out, nil, nil
 }
 
 type fakeSupervisor struct{ calls []string }
