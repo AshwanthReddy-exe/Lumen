@@ -59,6 +59,8 @@ type doctorDeps struct {
 
 var doctorDepsOverride *doctorDeps
 
+var dockerImageInspect = inspectDockerImage
+
 var (
 	errDeploymentUnavailable = errors.New("deployment unavailable")
 	errDeploymentBinding     = errors.New("deployment binding mismatch")
@@ -92,6 +94,26 @@ func run(args []string) setup.Report {
 		}
 	}
 	return placeholder("invalid_command")
+}
+
+func inspectDockerImage(imageRef string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "docker", "image", "inspect", "--format", "{{json .RepoDigests}}", imageRef).Output()
+	if err == nil {
+		var repoDigests []string
+		if json.Unmarshal([]byte(strings.TrimSpace(string(output))), &repoDigests) == nil {
+			for _, repoDigest := range repoDigests {
+				if repoDigest == imageRef {
+					return nil
+				}
+			}
+		}
+	}
+	if err != nil {
+		return errors.New("docker image unavailable")
+	}
+	return errors.New("docker image identity mismatch")
 }
 
 func setupCommand(ctx context.Context) setup.Report {
@@ -129,6 +151,13 @@ func setupCommand(ctx context.Context) setup.Report {
 		return r
 	}
 	state := &setupState{plan: plan, dataDir: dataDir, profile: profile, topology: topology}
+	if topology == setup.TopologyCombined {
+		if _, selectErr := state.selectedArtifacts(); selectErr == nil {
+			if err := state.checkArtifacts(ctx); err != nil {
+				return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "artifacts_unavailable"}}}
+			}
+		}
+	}
 	if topology == setup.TopologyExternal {
 		adoption, err := adoptExternalHermes(ctx, plan, profile)
 		if err != nil {
@@ -157,7 +186,7 @@ func setupCommand(ctx context.Context) setup.Report {
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "journal_unavailable"}}}
 	}
-	request := setup.Request{Topology: topology, Profile: profile, Supervisor: plan.Supervisor, ArtifactPaths: state.artifactPaths(), ArtifactDigests: state.artifactDigests()}
+	request := setup.Request{Topology: topology, Profile: profile, Supervisor: plan.Supervisor, ArtifactPaths: state.artifactPaths(), ArtifactDigests: state.artifactDigests(), ArtifactRefs: state.artifactRefs()}
 	if topology == setup.TopologyCombined {
 		endpoint := hermesEndpoint()
 		if os.Getenv("LUMEN_HERMES_BASE_URL") == "" {
@@ -339,10 +368,16 @@ func validDurableDigest(value string) bool {
 
 func verifyDurableArtifacts(binding setup.JournalBinding) bool {
 	names := artifactNames(binding.Topology)
-	if len(names) == 0 || len(binding.ArtifactPaths) != len(names) || len(binding.ArtifactDigests) != len(names) {
+	if len(names) == 0 || len(binding.ArtifactPaths)+len(binding.ArtifactRefs) != len(names) || len(binding.ArtifactDigests) != len(names) {
 		return false
 	}
 	for _, name := range names {
+		if ref, ok := binding.ArtifactRefs[name]; ok {
+			if _, pathOK := binding.ArtifactPaths[name]; pathOK || !validDurableImageRef(ref) || binding.ArtifactDigests[name] != durableImageDigest(ref) || dockerImageInspect(ref) != nil {
+				return false
+			}
+			continue
+		}
 		path, ok := binding.ArtifactPaths[name]
 		want, digestOK := binding.ArtifactDigests[name]
 		if !ok || !digestOK || path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || !validDurableDigest(want) {
@@ -363,7 +398,38 @@ func verifyDurableArtifacts(binding setup.JournalBinding) bool {
 			return false
 		}
 	}
+	for name := range binding.ArtifactPaths {
+		if !containsArtifactName(names, name) {
+			return false
+		}
+	}
+	for name := range binding.ArtifactRefs {
+		if !containsArtifactName(names, name) {
+			return false
+		}
+	}
 	return true
+}
+
+func containsArtifactName(names []string, want string) bool {
+	for _, name := range names {
+		if name == want {
+			return true
+		}
+	}
+	return false
+}
+
+func durableImageDigest(imageRef string) string {
+	if i := strings.LastIndex(imageRef, "@"); i >= 0 {
+		return imageRef[i+1:]
+	}
+	return ""
+}
+
+func validDurableImageRef(imageRef string) bool {
+	digest := durableImageDigest(imageRef)
+	return digest != "" && validDurableDigest(digest) && !strings.ContainsAny(imageRef, "?# \t\r\n")
 }
 
 func deploymentReport(err error, profile setup.Profile, topology setup.Topology) setup.Report {
@@ -835,7 +901,7 @@ func (s *setupState) runStage(ctx context.Context, stage setup.Stage) error {
 	case setup.Detected:
 		return nil
 	case setup.ArtifactsReady:
-		return s.checkArtifacts()
+		return s.checkArtifacts(ctx)
 	case setup.DirectoriesReady:
 		return s.makeDirectories()
 	case setup.CredentialsReady:
@@ -865,14 +931,14 @@ func (s *setupState) runStage(ctx context.Context, stage setup.Stage) error {
 	}
 }
 
-func (s *setupState) verifyStage(_ context.Context, stage setup.Stage) error {
+func (s *setupState) verifyStage(ctx context.Context, stage setup.Stage) error {
 	switch stage {
 	case setup.Detected:
 		if s.plan.Platform == "" {
 			return errors.New("platform unavailable")
 		}
 	case setup.ArtifactsReady:
-		return s.checkArtifacts()
+		return s.checkArtifacts(ctx)
 	case setup.DirectoriesReady:
 		if !fileExists(s.dataDir) || (s.topology == setup.TopologyCombined && !fileExists(filepath.Join(s.dataDir, "hermes"))) {
 			return errors.New("directories unavailable")
@@ -984,18 +1050,69 @@ func (s *setupState) ensureCredentials() error {
 
 func (s *setupState) artifactDigests() map[string]string {
 	digests := map[string]string{}
+	artifacts, err := s.selectedArtifacts()
+	if err != nil {
+		return digests
+	}
+	for name, artifact := range artifacts {
+		if artifact.Kind == setup.ArtifactDockerImage {
+			if digest := durableImageDigest(artifact.ImageRef); digest != "" {
+				digests[name] = digest
+			}
+			continue
+		}
+		digests[name] = artifact.SHA256
+	}
+	return digests
+}
+
+func (s *setupState) artifactPaths() map[string]string {
+	paths := make(map[string]string)
+	artifacts, err := s.selectedArtifacts()
+	if err != nil {
+		return paths
+	}
+	for _, name := range artifactNames(s.topology) {
+		if artifacts[name].Kind == setup.ArtifactDockerImage {
+			continue
+		}
+		if path := os.Getenv("LUMEN_" + strings.ToUpper(name) + "_ARTIFACT"); path != "" {
+			paths[name] = path
+		}
+	}
+	return paths
+}
+
+func (s *setupState) artifactRefs() map[string]string {
+	refs := make(map[string]string)
+	artifacts, err := s.selectedArtifacts()
+	if err != nil {
+		return refs
+	}
+	for name, artifact := range artifacts {
+		if artifact.Kind == setup.ArtifactDockerImage && artifact.ImageRef != "" {
+			refs[name] = artifact.ImageRef
+		}
+	}
+	return refs
+}
+
+func (s *setupState) selectedArtifacts() (map[string]setup.Artifact, error) {
 	path := os.Getenv("LUMEN_MANIFEST")
 	if path == "" {
 		path = filepath.Join("deploy", "manifest-v1.json")
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return digests
+		return nil, err
 	}
 	defer f.Close()
 	manifest, err := setup.LoadManifest(f)
-	if err != nil || manifest.Topology != s.topology {
-		return digests
+	if err != nil || manifest.Topology != s.topology || manifest.Topology != s.plan.Topology {
+		if err == nil {
+			err = errors.New("manifest topology mismatch")
+		}
+		return nil, err
 	}
 	osName := "linux"
 	if s.plan.Platform == setup.PlatformMacOS {
@@ -1003,25 +1120,15 @@ func (s *setupState) artifactDigests() map[string]string {
 	} else if s.plan.Platform == setup.PlatformTermux {
 		osName = "android"
 	}
-	for _, name := range []string{"lumen", "hermes"} {
-		if s.topology == setup.TopologyExternal && name == "hermes" {
-			continue
-		}
-		if artifact, err := manifest.Select(name, osName, s.plan.Architecture, s.profile); err == nil {
-			digests[name] = artifact.SHA256
-		}
-	}
-	return digests
-}
-
-func (s *setupState) artifactPaths() map[string]string {
-	paths := make(map[string]string)
+	selected := make(map[string]setup.Artifact, len(artifactNames(s.topology)))
 	for _, name := range artifactNames(s.topology) {
-		if path := os.Getenv("LUMEN_" + strings.ToUpper(name) + "_ARTIFACT"); path != "" {
-			paths[name] = path
+		artifact, selectErr := manifest.Select(name, osName, s.plan.Architecture, s.profile)
+		if selectErr != nil {
+			return nil, selectErr
 		}
+		selected[name] = artifact
 	}
-	return paths
+	return selected, nil
 }
 
 func artifactNames(topology setup.Topology) []string {
@@ -1084,38 +1191,18 @@ func adoptExternalHermes(ctx context.Context, plan setup.PlanResult, profile set
 	})
 }
 
-func (s *setupState) checkArtifacts() error {
-	path := os.Getenv("LUMEN_MANIFEST")
-	if path == "" {
-		path = filepath.Join("deploy", "manifest-v1.json")
-	}
-	f, err := os.Open(path)
+func (s *setupState) checkArtifacts(_ context.Context) error {
+	artifacts, err := s.selectedArtifacts()
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	manifest, err := setup.LoadManifest(f)
-	if err != nil {
-		return err
-	}
-	if manifest.Topology != s.plan.Topology {
-		return errors.New("manifest topology mismatch")
-	}
-	osName := "linux"
-	switch s.plan.Platform {
-	case setup.PlatformMacOS:
-		osName = "darwin"
-	case setup.PlatformTermux:
-		osName = "android"
-	}
-	names := []string{"lumen"}
-	if s.plan.Topology == setup.TopologyCombined {
-		names = append(names, "hermes")
-	}
-	for _, name := range names {
-		a, err := manifest.Select(name, osName, s.plan.Architecture, s.profile)
-		if err != nil {
-			return err
+	for _, name := range artifactNames(s.topology) {
+		a := artifacts[name]
+		if a.Kind == setup.ArtifactDockerImage {
+			if dockerImageInspect(a.ImageRef) != nil {
+				return errors.New("docker image unavailable")
+			}
+			continue
 		}
 		if a.SHA256 == "sha256:"+strings.Repeat("0", 64) {
 			return errors.New("artifact digest unavailable")

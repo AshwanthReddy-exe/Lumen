@@ -249,6 +249,7 @@ func TestJournalBindingReturnsDeepCopy(t *testing.T) {
 		Topology:        TopologyExternal,
 		PlanDigest:      "sha256:" + strings.Repeat("a", 64),
 		ArtifactDigests: map[string]string{"lumen": "sha256:" + strings.Repeat("b", 64)},
+		ArtifactRefs:    map[string]string{"lumen": "ghcr.io/lumen/lumen@sha256:" + strings.Repeat("c", 64)},
 	}
 	if err := j.Bind(binding); err != nil {
 		t.Fatal(err)
@@ -259,8 +260,10 @@ func TestJournalBindingReturnsDeepCopy(t *testing.T) {
 	}
 	got.ArtifactDigests["lumen"] = "sha256:" + strings.Repeat("c", 64)
 	got.ArtifactDigests["new"] = "sha256:" + strings.Repeat("d", 64)
+	got.ArtifactRefs["lumen"] = "ghcr.io/lumen/lumen@sha256:" + strings.Repeat("d", 64)
+	got.ArtifactRefs["new"] = "ghcr.io/lumen/new@sha256:" + strings.Repeat("e", 64)
 	again, ok := j.Binding()
-	if !ok || again.ArtifactDigests["lumen"] != binding.ArtifactDigests["lumen"] || len(again.ArtifactDigests) != 1 {
+	if !ok || again.ArtifactDigests["lumen"] != binding.ArtifactDigests["lumen"] || len(again.ArtifactDigests) != 1 || again.ArtifactRefs["lumen"] != binding.ArtifactRefs["lumen"] || len(again.ArtifactRefs) != 1 {
 		t.Fatalf("binding was not copied: %#v", again)
 	}
 }

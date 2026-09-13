@@ -38,6 +38,7 @@ type JournalBinding struct {
 	ReferenceDigests       map[string]string `json:"referenceDigests,omitempty"`
 	ArtifactPaths          map[string]string `json:"artifactPaths,omitempty"`
 	ArtifactDigests        map[string]string `json:"artifactDigests,omitempty"`
+	ArtifactRefs           map[string]string `json:"artifactRefs,omitempty"`
 	PlanDigest             string            `json:"planDigest"`
 }
 
@@ -55,14 +56,17 @@ func NewJournal(d string) (*Journal, error) {
 				return nil, ErrInvalidJournal
 			}
 		}
-			for _, digest := range binding.ReferenceDigests {
-				if !validDigest(digest) {
-					return nil, ErrInvalidJournal
-				}
-			}
-			if !validArtifactPaths(binding.ArtifactPaths) {
+		for _, digest := range binding.ReferenceDigests {
+			if !validDigest(digest) {
 				return nil, ErrInvalidJournal
 			}
+		}
+		if !validArtifactPaths(binding.ArtifactPaths) {
+			return nil, ErrInvalidJournal
+		}
+		if !validArtifactRefs(binding.ArtifactRefs) || !disjointArtifactBindings(binding.ArtifactPaths, binding.ArtifactRefs) {
+			return nil, ErrInvalidJournal
+		}
 		var extra any
 		if dec.Decode(&extra) != io.EOF {
 			return nil, ErrInvalidJournal
@@ -106,6 +110,9 @@ func (j *Journal) Bind(b JournalBinding) error {
 	if !validArtifactPaths(b.ArtifactPaths) {
 		return ErrInvalidJournal
 	}
+	if !validArtifactRefs(b.ArtifactRefs) || !disjointArtifactBindings(b.ArtifactPaths, b.ArtifactRefs) {
+		return ErrInvalidJournal
+	}
 	if j.binding != nil {
 		if j.binding.Supervisor == "" && b.Supervisor != "" && legacyBindingCanUpgrade(*j.binding, b) {
 			return j.writeBinding(b)
@@ -142,6 +149,9 @@ func legacyBindingCanUpgrade(old, next JournalBinding) bool {
 	if old.ArtifactPaths != nil && !ReferenceDigestsMatch(old.ArtifactPaths, next.ArtifactPaths) {
 		return false
 	}
+	if old.ArtifactRefs != nil && !ReferenceDigestsMatch(old.ArtifactRefs, next.ArtifactRefs) {
+		return false
+	}
 	return true
 }
 
@@ -163,6 +173,12 @@ func (j *Journal) writeBinding(b JournalBinding) error {
 		stored.ArtifactPaths = make(map[string]string, len(b.ArtifactPaths))
 		for k, v := range b.ArtifactPaths {
 			stored.ArtifactPaths[k] = v
+		}
+	}
+	if b.ArtifactRefs != nil {
+		stored.ArtifactRefs = make(map[string]string, len(b.ArtifactRefs))
+		for k, v := range b.ArtifactRefs {
+			stored.ArtifactRefs[k] = v
 		}
 	}
 	data, _ := json.Marshal(stored)
@@ -219,11 +235,17 @@ func (j *Journal) Binding() (JournalBinding, bool) {
 			b.ArtifactPaths[k] = v
 		}
 	}
+	if j.binding.ArtifactRefs != nil {
+		b.ArtifactRefs = make(map[string]string, len(j.binding.ArtifactRefs))
+		for k, v := range j.binding.ArtifactRefs {
+			b.ArtifactRefs[k] = v
+		}
+	}
 	return b, true
 }
 
 func bindingsEqual(a, b JournalBinding) bool {
-	if a.Profile != b.Profile || a.Topology != b.Topology || a.Supervisor != b.Supervisor || a.EndpointOriginDigest != b.EndpointOriginDigest || a.EndpointIdentityDigest != b.EndpointIdentityDigest || a.PlanDigest != b.PlanDigest || !ReferenceDigestsMatch(a.ReferenceDigests, b.ReferenceDigests) || !ReferenceDigestsMatch(a.ArtifactPaths, b.ArtifactPaths) {
+	if a.Profile != b.Profile || a.Topology != b.Topology || a.Supervisor != b.Supervisor || a.EndpointOriginDigest != b.EndpointOriginDigest || a.EndpointIdentityDigest != b.EndpointIdentityDigest || a.PlanDigest != b.PlanDigest || !ReferenceDigestsMatch(a.ReferenceDigests, b.ReferenceDigests) || !ReferenceDigestsMatch(a.ArtifactPaths, b.ArtifactPaths) || !ReferenceDigestsMatch(a.ArtifactRefs, b.ArtifactRefs) {
 		return false
 	}
 	if len(a.ArtifactDigests) != len(b.ArtifactDigests) {
@@ -340,6 +362,24 @@ func validDigest(s string) bool {
 func validArtifactPaths(paths map[string]string) bool {
 	for name, path := range paths {
 		if name == "" || path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+			return false
+		}
+	}
+	return true
+}
+
+func validArtifactRefs(refs map[string]string) bool {
+	for name, ref := range refs {
+		if name == "" || !validPinnedImageRef(ref) {
+			return false
+		}
+	}
+	return true
+}
+
+func disjointArtifactBindings(paths, refs map[string]string) bool {
+	for name := range refs {
+		if _, ok := paths[name]; ok {
 			return false
 		}
 	}

@@ -64,6 +64,7 @@ type Request struct {
 	ReferenceDigests       map[string]string `json:"-"`
 	ArtifactPaths          map[string]string `json:"-"`
 	ArtifactDigests        map[string]string `json:"-"`
+	ArtifactRefs           map[string]string `json:"-"`
 }
 
 type Platform string

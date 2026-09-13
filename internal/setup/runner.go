@@ -155,11 +155,17 @@ func (r SetupRunner) validateJournalBinding(req Request) error {
 			paths[k] = v
 		}
 	}
+	refs := make(map[string]string, len(req.ArtifactRefs))
+	for k, v := range req.ArtifactRefs {
+		if v != "" {
+			refs[k] = v
+		}
+	}
 	supervisor := req.Supervisor
 	if supervisor == "" && r.Plan != nil {
 		supervisor = r.Plan.Supervisor
 	}
-	b := JournalBinding{Profile: req.Profile, Topology: req.Topology, Supervisor: supervisor, EndpointOriginDigest: req.EndpointOriginDigest, EndpointIdentityDigest: req.EndpointIdentityDigest, ReferenceDigests: req.ReferenceDigests, ArtifactPaths: paths, ArtifactDigests: artifacts, PlanDigest: planDigest(r.Plan)}
+	b := JournalBinding{Profile: req.Profile, Topology: req.Topology, Supervisor: supervisor, EndpointOriginDigest: req.EndpointOriginDigest, EndpointIdentityDigest: req.EndpointIdentityDigest, ReferenceDigests: req.ReferenceDigests, ArtifactPaths: paths, ArtifactDigests: artifacts, ArtifactRefs: refs, PlanDigest: planDigest(r.Plan)}
 	if err := r.Journal.Bind(b); err != nil {
 		return err
 	}
@@ -272,6 +278,14 @@ func requestDigest(req Request, stage Stage, p *PlanResult) string {
 	sort.Strings(keys)
 	for _, key := range keys {
 		material += "\x00ref:" + key + "=" + req.ReferenceDigests[key]
+	}
+	keys = keys[:0]
+	for key := range req.ArtifactRefs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		material += "\x00artifact-ref:" + key + "=" + req.ArtifactRefs[key]
 	}
 	h := sha256.Sum256([]byte(material))
 	return "sha256:" + hex.EncodeToString(h[:])
