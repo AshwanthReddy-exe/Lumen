@@ -433,12 +433,15 @@ func TestInitialApprovalDenyRequiresExactPendingBinding(t *testing.T) {
 }
 
 func TestCancellationPersistsBeforeStopAndTerminalRaceWins(t *testing.T) {
-	r := &fakeRuntime{create: hermes.Run{RunID: "run-cancel", Status: "started"}, events: []hermes.Event{{ID: "done", Data: []byte(`{"status":"completed"}`)}}, stop: hermes.Run{RunID: "run-cancel", Status: "cancelled"}}
+	eventsGate := make(chan struct{})
+	r := &fakeRuntime{create: hermes.Run{RunID: "run-cancel", Status: "started"}, events: []hermes.Event{{ID: "done", Data: []byte(`{"status":"completed"}`)}}, stop: hermes.Run{RunID: "run-cancel", Status: "cancelled"}, eventsBlock: eventsGate}
 	s := executionService(t, r)
 	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-cancel", "task-cancel")); err != nil {
+		close(eventsGate)
 		t.Fatal(err)
 	}
 	tr, err := s.CancelTask(context.Background(), CancelRequest{Command: space.Command{Type: space.CommandRequestHostRunCancellation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "cancel", TaskID: "task-cancel", RuntimeRunID: "run-cancel", RuntimeProfileDigest: "sha256:profile", ObservedAt: 100}})
+	close(eventsGate)
 	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeCancelling {
 		t.Fatalf("cancel: %#v %v", tr, err)
 	}
