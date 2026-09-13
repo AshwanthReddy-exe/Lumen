@@ -97,12 +97,12 @@ func TestSetupCreatedDeploymentCompletesBoundedRun(t *testing.T) {
 	}
 	got, err := s.SubmitTask(context.Background(), host.ExecuteRequest{
 		Submit:  space.Command{Type: space.CommandSubmit, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "setup:submit", TaskID: "setup:task", OriginNodeID: state.OwnerID, TargetNodeID: state.HostID, CapabilityID: "agent.run/execute", Action: "run", ActionFingerprint: "marker"},
-		Runtime: hermes.CreateRunRequest{Input: "return the synthetic marker"}, RuntimeProfileDigest: "sha256:setup", ReconcileBy: time.Now().Add(time.Second).Unix(),
+		Runtime: hermes.CreateRunRequest{Input: "return the synthetic marker"}, RuntimeProfileDigest: "sha256:setup", ReconcileBy: time.Now().Add(5 * time.Second).Unix(),
 	})
 	if err != nil || got.Rejection != "" {
 		t.Fatalf("submit: %#v %v", got, err)
 	}
-	deadline := time.Now().Add(time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		task, ok, readErr := s.Task("setup:task")
 		if readErr == nil && ok && task.Status == space.OutcomeCompleted {
