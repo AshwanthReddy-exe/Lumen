@@ -197,6 +197,9 @@ wait_for_hermes() {
 
 wait_for_hermes || fail 'Hermes api_server did not become ready'
 wait_for_host || fail 'Host did not become ready'
+host_status=$(cat "$work_dir/host-status.json")
+host_node_id=$(printf '%s\n' "$host_status" | sed -n 's/.*"host_id":"\([^"]*\)".*/\1/p')
+[ -n "$host_node_id" ] || fail 'live Host status did not expose a node ID'
 
 printf '%s\n' '=> rerun'
 rerun_report=$($cli setup)
@@ -231,33 +234,33 @@ wait_for_hermes || fail 'Hermes did not recover after service restart'
 wait_for_host || fail 'Host did not recover after service restart'
 
 printf '%s\n' '=> configured synthetic task'
-	approved_at=$(date +%s)
-	expires_at=$((approved_at + 300))
-	reconcile_by=$((approved_at + 240))
-	task_submit=$(compose exec -T lumen-host lumen-host task submit \
-		--request_id linux-journey-submit --task_id linux-journey-task \
-		--capability_id agent.run/execute --action run \
-		--action_fingerprint linux-journey-input --input 'return the synthetic marker' \
-		--runtime_profile_digest sha256:linux-journey --reconcile_by "$reconcile_by" 2>&1) || fail 'configured synthetic task submission was rejected'
-	printf '%s\n' "$task_submit" | redact
-	approval=$(compose exec -T lumen-host lumen-host approval resolve \
-		--request_id linux-journey-approval --task_id linux-journey-task \
-		--target_node_id host --action_fingerprint linux-journey-input \
-		--approval_id linux-journey-approval --approved_at "$approved_at" \
-		--expires_at "$expires_at" --reconcile_by "$reconcile_by" \
-		--runtime_profile_digest sha256:linux-journey --input 'return the synthetic marker' \
-		--decision once 2>&1) || fail 'configured synthetic task approval failed'
-	printf '%s\n' "$approval" | redact
-	i=0
-	while [ "$i" -lt 60 ]; do
-		if task_status=$(compose exec -T lumen-host lumen-host task show --task_id linux-journey-task 2>/dev/null) && printf '%s\n' "$task_status" | grep -q '"status":"completed"'; then
-			printf '%s\n' "$task_status" | redact
-			break
-		fi
-		i=$((i + 1))
-		sleep 1
-	done
-	[ "$i" -lt 60 ] || fail 'configured synthetic task did not reach a proven terminal result'
+approved_at=$(date +%s)
+expires_at=$((approved_at + 300))
+reconcile_by=$((approved_at + 240))
+task_submit=$(compose exec -T lumen-host lumen-host task submit \
+	--request_id linux-journey-submit --task_id linux-journey-task \
+	--capability_id agent.run/execute --action run \
+	--action_fingerprint linux-journey-input --input 'return the synthetic marker' \
+	--runtime_profile_digest sha256:linux-journey --reconcile_by "$reconcile_by" 2>&1) || fail 'configured synthetic task submission was rejected'
+printf '%s\n' "$task_submit" | redact
+approval=$(compose exec -T lumen-host lumen-host approval resolve \
+	--request_id linux-journey-approval --task_id linux-journey-task \
+	--target_node_id "$host_node_id" --action_fingerprint linux-journey-input \
+	--approval_id linux-journey-approval --approved_at "$approved_at" \
+	--expires_at "$expires_at" --reconcile_by "$reconcile_by" \
+	--runtime_profile_digest sha256:linux-journey --input 'return the synthetic marker' \
+	--decision once 2>&1) || fail 'configured synthetic task approval failed'
+printf '%s\n' "$approval" | redact
+i=0
+while [ "$i" -lt 60 ]; do
+	if task_status=$(compose exec -T lumen-host lumen-host task show --task_id linux-journey-task 2>/dev/null) && printf '%s\n' "$task_status" | grep -q '"status":"completed"' && printf '%s\n' "$task_status" | grep -q '"output":"synthetic marker"'; then
+		printf '%s\n' "$task_status" | redact
+		break
+	fi
+	i=$((i + 1))
+	sleep 1
+done
+[ "$i" -lt 60 ] || fail 'configured synthetic task did not reach a proven terminal result with synthetic output'
 
 
 printf '%s\n' '=> failed update'

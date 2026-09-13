@@ -121,3 +121,29 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 		}
 	}
 }
+
+func TestLinuxSetupJourneyUsesLiveHostNodeForApproval(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scriptBytes, err := os.ReadFile(filepath.Join(root, "scripts", "lumen-linux-check"))
+	if err != nil {
+		t.Fatalf("read Linux journey script: %v", err)
+	}
+	script := string(scriptBytes)
+	for _, required := range []string{
+		`host_status=$(cat "$work_dir/host-status.json")`,
+		`host_node_id=$(printf '%s\n' "$host_status" | sed -n 's/.*"host_id":"\([^"]*\)".*/\1/p')`,
+		`[ -n "$host_node_id" ] || fail 'live Host status did not expose a node ID'`,
+		`--target_node_id "$host_node_id"`,
+		`"output":"synthetic marker"`,
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("Linux journey must %s", required)
+		}
+	}
+	if strings.Contains(script, "--target_node_id host") {
+		t.Fatal("Linux journey approval must not hardcode the Host node ID")
+	}
+}
