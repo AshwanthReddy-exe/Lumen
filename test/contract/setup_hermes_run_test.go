@@ -23,7 +23,7 @@ import (
 
 func resolvedContractTempDir(t *testing.T, pattern string) string {
 	t.Helper()
-	root, err := os.Getwd()
+	root, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
 	}

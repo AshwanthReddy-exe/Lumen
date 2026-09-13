@@ -20,7 +20,7 @@ import (
 
 func secureTestDir(t *testing.T) string {
 	t.Helper()
-	root, err := os.Getwd()
+	root, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
 	}
