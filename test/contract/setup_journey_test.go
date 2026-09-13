@@ -45,6 +45,7 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 		"COMPOSE_FILE", "$cli service restart", "lumen-registry", "docker image push",
 		".NetworkSettings.Ports", "compose ps -q lumen-registry",
 		"doctor_i", "doctor did not report ready",
+		"LUMEN_LINUX_CHECK_PRESERVE", "preserved work directory",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("missing required journey operation %q", required)
