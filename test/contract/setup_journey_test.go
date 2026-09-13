@@ -35,6 +35,7 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 	}
 	for _, required := range []string{
 		"COMPOSE_PROJECT_NAME", "docker compose", "--volumes", "trap cleanup EXIT",
+		"(umask 077",
 		"gateway", "8642",
 		"compose.milestone1.yaml", "LUMEN_HERMES_CONTAINER_BASE_URL",
 		"v2026.9.7.tar.gz",
@@ -48,6 +49,9 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 		if !strings.Contains(script, required) {
 			t.Errorf("missing required journey operation %q", required)
 		}
+	}
+	if strings.Contains(script, "\numask 077\n") {
+		t.Fatal("Linux journey must not leak its secret-writing umask into later checks")
 	}
 	for _, forbidden := range []string{
 		"LUMEN_LINUX_CHECK_TEST_MODE", "dummy-hermes", "dummy hermes", "|| true",

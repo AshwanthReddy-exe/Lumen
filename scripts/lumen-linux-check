@@ -87,9 +87,9 @@ mkdir -m 700 "$data_dir" "$secret_dir"
 mkdir -m 700 "$data_dir/hermes"
 api_key=${LUMEN_HERMES_API_SERVER_KEY:-lumen-linux-check-api-key-20260913}
 test "${#api_key}" -ge 16 || fail 'synthetic API server key must be at least 16 characters'
-umask 077
-printf '%s\n' "$api_key" >"$data_dir/hermes/hermes.token"
-cp -- "$data_dir/hermes/hermes.token" "$secret_dir/hermes.token"
+(umask 077
+	printf '%s\n' "$api_key" >"$data_dir/hermes/hermes.token"
+	cp -- "$data_dir/hermes/hermes.token" "$secret_dir/hermes.token")
 chmod 600 "$data_dir/hermes/hermes.token" "$secret_dir/hermes.token"
 export LUMEN_DATA_DIR="$data_dir"
 export LUMEN_DATA_CONTAINER_DIR="$container_data_dir"
