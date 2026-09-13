@@ -260,7 +260,10 @@ while [ "$i" -lt 60 ]; do
 	i=$((i + 1))
 	sleep 1
 done
-[ "$i" -lt 60 ] || fail 'configured synthetic task did not reach a proven terminal result with synthetic output'
+if [ "$i" -ge 60 ]; then
+	printf '%s\n' "${task_status:-{\"error\":\"task status unavailable\"}}" | redact >&2
+	fail 'configured synthetic task did not reach a proven terminal result with synthetic output'
+fi
 
 
 printf '%s\n' '=> failed update'
