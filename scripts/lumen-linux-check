@@ -276,7 +276,7 @@ fi
 
 
 printf '%s\n' '=> failed update'
-GOCACHE="$work_dir/go-cache" go test ./internal/setup -run 'TestFailedReplacementPreservesInstalledArtifact|TestInstallRenameFailureRestoresPrior' -count=1
+go test ./internal/setup -run 'TestFailedReplacementPreservesInstalledArtifact|TestInstallRenameFailureRestoresPrior' -count=1
 printf '%s\n' '=> rollback'
 printf '%s\n' 'rollback evidence: failed replacement tests passed; prior artifact restoration was asserted by the setup contract'
 
