@@ -151,6 +151,21 @@ func setupCommand(ctx context.Context) setup.Report {
 		return r
 	}
 	state := &setupState{plan: plan, dataDir: dataDir, profile: profile, topology: topology}
+	journal, err := setup.NewJournal(plan.SetupDir)
+	if err != nil {
+		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "journal_unavailable"}}}
+	}
+	if existingBinding, ok := journal.Binding(); ok {
+		if existingBinding.Profile != profile || existingBinding.Topology != topology || (existingBinding.Supervisor != "" && existingBinding.Supervisor != plan.Supervisor) {
+			return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "setup_identity_mismatch"}}}
+		}
+		if topology == setup.TopologyExternal {
+			endpointDigest, digestErr := setup.EndpointOriginDigest(hermesEndpoint())
+			if digestErr != nil || endpointDigest != existingBinding.EndpointOriginDigest {
+				return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "setup_identity_mismatch"}}}
+			}
+		}
+	}
 	if topology == setup.TopologyCombined {
 		if _, selectErr := state.selectedArtifacts(); selectErr == nil {
 			if err := state.checkArtifacts(ctx); err != nil {
@@ -181,10 +196,6 @@ func setupCommand(ctx context.Context) setup.Report {
 		} else {
 			return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "external_adoption_failed"}}}
 		}
-	}
-	journal, err := setup.NewJournal(plan.SetupDir)
-	if err != nil {
-		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "journal_unavailable"}}}
 	}
 	request := setup.Request{Topology: topology, Profile: profile, Supervisor: plan.Supervisor, ArtifactPaths: state.artifactPaths(), ArtifactDigests: state.artifactDigests(), ArtifactRefs: state.artifactRefs()}
 	if topology == setup.TopologyCombined {

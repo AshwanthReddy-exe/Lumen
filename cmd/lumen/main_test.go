@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -430,7 +431,7 @@ func TestSetupRerunPreservesIdentityAndCredentials(t *testing.T) {
 	t.Setenv("LUMEN_HERMES_IDENTITY", "untrusted-second-identity")
 	t.Setenv("LUMEN_HERMES_CREDENTIAL_FILE", secondCredential)
 	report := runForTest([]string{"setup"})
-	if report.Outcome != setup.ActionRequired || len(report.Actions) != 1 || report.Actions[0].Code != "external_adoption_failed" {
+	if report.Outcome != setup.ActionRequired || len(report.Actions) != 1 || report.Actions[0].Code != "setup_identity_mismatch" {
 		t.Fatalf("changed external setup report = %#v", report)
 	}
 
@@ -449,6 +450,58 @@ func TestSetupRerunPreservesIdentityAndCredentials(t *testing.T) {
 			t.Fatalf("rejected rerun mutated %s", path)
 		}
 	}
+}
+
+func TestSetupExternalBindingRejectsBeforeRecreatingMissingAdoption(t *testing.T) {
+	h := newSetupJourneyFixture(t, setup.TopologyExternal)
+	firstEndpoint := newExternalHermesServer(t)
+	t.Setenv("LUMEN_HERMES_BASE_URL", firstEndpoint)
+	t.Setenv("LUMEN_HERMES_IDENTITY", "missing-adoption-first")
+	if report := runForTest([]string{"setup"}); report.Outcome != setup.Ready {
+		t.Fatalf("initial external setup report = %#v", report)
+	}
+	adoptionPath := filepath.Join(h.dataDir, "setup", "external-adoption.json")
+	if err := os.Remove(adoptionPath); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshotRegularFiles(t, h.dataDir)
+
+	secondEndpoint := newExternalHermesServer(t)
+	t.Setenv("LUMEN_HERMES_BASE_URL", secondEndpoint)
+	t.Setenv("LUMEN_HERMES_IDENTITY", "missing-adoption-second")
+	report := runForTest([]string{"setup"})
+	if report.Outcome != setup.ActionRequired {
+		t.Fatalf("changed external setup report = %#v", report)
+	}
+	if after := snapshotRegularFiles(t, h.dataDir); !reflect.DeepEqual(after, before) {
+		t.Fatalf("rejected setup mutated data directory: before=%v after=%v", before, after)
+	}
+}
+
+func snapshotRegularFiles(t *testing.T, root string) map[string][]byte {
+	t.Helper()
+	files := make(map[string][]byte)
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.Mode().IsRegular() {
+			contents, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return readErr
+			}
+			rel, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				return relErr
+			}
+			files[rel] = contents
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }
 
 func TestSetupExternalAdoptionFailureDoesNotMutateState(t *testing.T) {
