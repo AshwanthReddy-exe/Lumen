@@ -25,6 +25,8 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 30s
     user: "${LUMEN_HOST_USER:-65532:65532}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks: [lumen-egress]
 
 networks:

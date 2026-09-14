@@ -129,7 +129,7 @@ func TestSupervisorDefinitionsAreStructuredAndBounded(t *testing.T) {
 	if !strings.Contains(external, "  lumen-host:") {
 		t.Error("external Docker Compose must define the Host service")
 	}
-	for _, want := range []string{"LUMEN_DATA_DIR: /var/lib/lumen", "LUMEN_HERMES_BASE_URL", "/run/secrets/hermes_token", "hermes_ca.pem:ro", "hermes_client.crt:ro", "hermes_client.key:ro", "restart: unless-stopped"} {
+	for _, want := range []string{"LUMEN_DATA_DIR: /var/lib/lumen", "LUMEN_HERMES_BASE_URL", "/run/secrets/hermes_token", "hermes_ca.pem:ro", "hermes_client.crt:ro", "hermes_client.key:ro", "host.docker.internal:host-gateway", "restart: unless-stopped"} {
 		if !strings.Contains(external, want) {
 			t.Errorf("external Docker Compose missing %q", want)
 		}
