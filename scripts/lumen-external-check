@@ -175,8 +175,11 @@ printf '%s\n' '=> lumen doctor'
 
 state_before=$(sha256sum "$data_dir/state.json" | cut -d' ' -f1)
 hermes_before=$(docker inspect --format '{{.Id}} {{.State.Status}}' "$hermes_container")
+printf '%s\n' '=> durable Compose project binding'
+export COMPOSE_PROJECT_NAME="${project}-substituted"
 printf '%s\n' '=> Host-only service restart'
 "$cli" service restart | grep -q '"outcome":"ready"' || fail 'Host-only restart failed'
+[ -z "$(docker ps -aq --filter label=com.docker.compose.project="${project}-substituted")" ] || fail 'service command used substituted Compose project'
 hermes_after_restart=$(docker inspect --format '{{.Id}} {{.State.Status}}' "$hermes_container")
 [ "$hermes_before" = "$hermes_after_restart" ] || fail 'Host-only restart changed external Hermes'
 printf '%s\n' '=> Host-only service stop/start'

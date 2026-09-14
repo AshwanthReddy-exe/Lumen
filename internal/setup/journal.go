@@ -33,6 +33,7 @@ type JournalBinding struct {
 	Profile                Profile           `json:"profile"`
 	Topology               Topology          `json:"topology"`
 	Supervisor             Supervisor        `json:"supervisor,omitempty"`
+	ComposeProject         string            `json:"composeProject,omitempty"`
 	EndpointOriginDigest   string            `json:"endpointOriginDigest,omitempty"`
 	EndpointIdentityDigest string            `json:"endpointIdentityDigest,omitempty"`
 	ReferenceDigests       map[string]string `json:"referenceDigests,omitempty"`
@@ -48,7 +49,7 @@ func NewJournal(d string) (*Journal, error) {
 		var binding JournalBinding
 		dec := json.NewDecoder(bytes.NewReader(b))
 		dec.DisallowUnknownFields()
-		if dec.Decode(&binding) != nil || binding.Topology.Validate() != nil || !validProfile(binding.Profile) || (binding.Supervisor != "" && binding.Supervisor.Validate() != nil) || !validDigest(binding.PlanDigest) || (binding.EndpointOriginDigest != "" && !validDigest(binding.EndpointOriginDigest)) || (binding.EndpointIdentityDigest != "" && !validDigest(binding.EndpointIdentityDigest)) {
+		if dec.Decode(&binding) != nil || binding.Topology.Validate() != nil || !validProfile(binding.Profile) || (binding.Supervisor != "" && binding.Supervisor.Validate() != nil) || validateComposeBinding(binding.Supervisor, binding.ComposeProject) != nil || !validDigest(binding.PlanDigest) || (binding.EndpointOriginDigest != "" && !validDigest(binding.EndpointOriginDigest)) || (binding.EndpointIdentityDigest != "" && !validDigest(binding.EndpointIdentityDigest)) {
 			return nil, ErrInvalidJournal
 		}
 		for _, digest := range binding.ArtifactDigests {
@@ -94,7 +95,7 @@ func NewJournal(d string) (*Journal, error) {
 	return j, validateEvidence(j.evidence)
 }
 func (j *Journal) Bind(b JournalBinding) error {
-	if !validProfile(b.Profile) || b.Topology.Validate() != nil || (b.Supervisor != "" && b.Supervisor.Validate() != nil) || !validDigest(b.PlanDigest) || (b.EndpointOriginDigest != "" && !validDigest(b.EndpointOriginDigest)) || (b.EndpointIdentityDigest != "" && !validDigest(b.EndpointIdentityDigest)) {
+	if !validProfile(b.Profile) || b.Topology.Validate() != nil || (b.Supervisor != "" && b.Supervisor.Validate() != nil) || validateComposeBinding(b.Supervisor, b.ComposeProject) != nil || (b.Supervisor == SupervisorDocker && b.ComposeProject == "") || !validDigest(b.PlanDigest) || (b.EndpointOriginDigest != "" && !validDigest(b.EndpointOriginDigest)) || (b.EndpointIdentityDigest != "" && !validDigest(b.EndpointIdentityDigest)) {
 		return ErrInvalidJournal
 	}
 	for _, d := range b.ArtifactDigests {
@@ -114,7 +115,7 @@ func (j *Journal) Bind(b JournalBinding) error {
 		return ErrInvalidJournal
 	}
 	if j.binding != nil {
-		if j.binding.Supervisor == "" && b.Supervisor != "" && legacyBindingCanUpgrade(*j.binding, b) {
+		if ((j.binding.Supervisor == "" && b.Supervisor != "") || (j.binding.Supervisor == SupervisorDocker && j.binding.ComposeProject == "" && b.ComposeProject != "")) && legacyBindingCanUpgrade(*j.binding, b) {
 			return j.writeBinding(b)
 		}
 		if !bindingsEqual(*j.binding, b) {
@@ -132,6 +133,9 @@ func (j *Journal) Bind(b JournalBinding) error {
 // new evidence. Any value the old binding did record remains immutable.
 func legacyBindingCanUpgrade(old, next JournalBinding) bool {
 	if old.Profile != next.Profile || old.Topology != next.Topology || old.PlanDigest != next.PlanDigest {
+		return false
+	}
+	if old.ComposeProject != "" && old.ComposeProject != next.ComposeProject {
 		return false
 	}
 	if old.EndpointOriginDigest != "" && old.EndpointOriginDigest != next.EndpointOriginDigest {
@@ -245,7 +249,7 @@ func (j *Journal) Binding() (JournalBinding, bool) {
 }
 
 func bindingsEqual(a, b JournalBinding) bool {
-	if a.Profile != b.Profile || a.Topology != b.Topology || a.Supervisor != b.Supervisor || a.EndpointOriginDigest != b.EndpointOriginDigest || a.EndpointIdentityDigest != b.EndpointIdentityDigest || a.PlanDigest != b.PlanDigest || !ReferenceDigestsMatch(a.ReferenceDigests, b.ReferenceDigests) || !ReferenceDigestsMatch(a.ArtifactPaths, b.ArtifactPaths) || !ReferenceDigestsMatch(a.ArtifactRefs, b.ArtifactRefs) {
+	if a.Profile != b.Profile || a.Topology != b.Topology || a.Supervisor != b.Supervisor || a.ComposeProject != b.ComposeProject || a.EndpointOriginDigest != b.EndpointOriginDigest || a.EndpointIdentityDigest != b.EndpointIdentityDigest || a.PlanDigest != b.PlanDigest || !ReferenceDigestsMatch(a.ReferenceDigests, b.ReferenceDigests) || !ReferenceDigestsMatch(a.ArtifactPaths, b.ArtifactPaths) || !ReferenceDigestsMatch(a.ArtifactRefs, b.ArtifactRefs) {
 		return false
 	}
 	if len(a.ArtifactDigests) != len(b.ArtifactDigests) {

@@ -137,6 +137,16 @@ type ComposeConfig struct {
 	Files   []string
 }
 
+func validateComposeBinding(supervisor Supervisor, project string) error {
+	if project == "" {
+		return nil
+	}
+	if supervisor != SupervisorDocker {
+		return &ValidationError{"compose project", project}
+	}
+	return validateComposeProject(project)
+}
+
 type CommandSupervisor struct {
 	Manager  Supervisor
 	Topology Topology

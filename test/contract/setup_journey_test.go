@@ -147,7 +147,7 @@ func TestExternalSetupJourneyScriptContract(t *testing.T) {
 	for _, checkpoint := range []string{
 		"external Hermes endpoint", "docker run", "lumen setup", "rerun", "lumen doctor",
 		"Host-only service restart", "Host-only service stop/start", "state preservation",
-		"independent Hermes", "never controls Hermes", "cleanup",
+		"independent Hermes", "never controls Hermes", "cleanup", "durable Compose project binding",
 	} {
 		if !strings.Contains(script, checkpoint) {
 			t.Errorf("missing external journey checkpoint %q", checkpoint)
@@ -163,6 +163,7 @@ func TestExternalSetupJourneyScriptContract(t *testing.T) {
 		"openssl req", "ssl.CERT_REQUIRED", "LUMEN_HERMES_SERVER_CERT_PIN", "--cacert", "--cert", "--key",
 		"LUMEN_EXTERNAL_CHECK_ROOT", "chmod 700",
 		"prepare Host container artifact", "compose build lumen-host",
+		"service command used substituted Compose project",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("missing external journey operation %q", required)

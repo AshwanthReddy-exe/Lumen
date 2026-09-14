@@ -59,6 +59,7 @@ type Request struct {
 	Profile                Profile           `json:"profile"`
 	Topology               Topology          `json:"topology"`
 	Supervisor             Supervisor        `json:"-"`
+	ComposeProject         string            `json:"-"`
 	EndpointOriginDigest   string            `json:"-"`
 	EndpointIdentityDigest string            `json:"-"`
 	ReferenceDigests       map[string]string `json:"-"`

@@ -58,6 +58,21 @@ func TestRunnerUsesNonZeroRequestBoundDigest(t *testing.T) {
 	}
 }
 
+func TestRunnerBindsDockerComposeProject(t *testing.T) {
+	j, err := NewJournal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := Runner{Journal: j, RunStage: func(context.Context, Stage) error { return nil }, Verify: func(context.Context, Stage) error { return nil }}
+	if report, err := r.Run(context.Background(), Request{Topology: TopologyCombined, Profile: Development, Supervisor: SupervisorDocker, ComposeProject: "lumen-fixed"}); err != nil {
+		t.Fatalf("report=%#v err=%v", report, err)
+	}
+	binding, ok := j.Binding()
+	if !ok || binding.ComposeProject != "lumen-fixed" {
+		t.Fatalf("binding = %#v", binding)
+	}
+}
+
 func TestRunnerInitializesHostBeforeRecordingHostStageAndRerunSkipsIt(t *testing.T) {
 	j, err := NewJournal(t.TempDir())
 	if err != nil {

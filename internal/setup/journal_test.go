@@ -293,6 +293,61 @@ func TestJournalBindingPersistsSelectedSupervisor(t *testing.T) {
 	}
 }
 
+func TestJournalBindingPersistsDockerComposeProject(t *testing.T) {
+	d := t.TempDir()
+	j, err := NewJournal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := JournalBinding{
+		Profile:        Development,
+		Topology:       TopologyCombined,
+		Supervisor:     SupervisorDocker,
+		ComposeProject: "lumen-fixed",
+		PlanDigest:     "sha256:" + strings.Repeat("a", 64),
+	}
+	if err := j.Bind(want); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewJournal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := reopened.Binding()
+	if !ok || got.ComposeProject != want.ComposeProject {
+		t.Fatalf("binding Compose project = %#v, want %q", got, want.ComposeProject)
+	}
+}
+
+func TestJournalBindingRequiresDockerComposeProject(t *testing.T) {
+	j := newTestJournal(t)
+	err := j.Bind(JournalBinding{Profile: Development, Topology: TopologyCombined, Supervisor: SupervisorDocker, PlanDigest: "sha256:" + strings.Repeat("a", 64)})
+	if !errors.Is(err, ErrInvalidJournal) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestJournalBindingUpgradesLegacyDockerComposeProjectOnce(t *testing.T) {
+	d := t.TempDir()
+	legacy := `{"profile":"development","topology":"combined","supervisor":"docker","planDigest":"sha256:` + strings.Repeat("a", 64) + `"}`
+	if err := os.WriteFile(filepath.Join(d, "setup-binding.json"), []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	j, err := NewJournal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := JournalBinding{Profile: Development, Topology: TopologyCombined, Supervisor: SupervisorDocker, ComposeProject: "lumen-adopted", PlanDigest: "sha256:" + strings.Repeat("a", 64)}
+	if err := j.Bind(next); err != nil {
+		t.Fatalf("upgrade legacy binding: %v", err)
+	}
+	changed := next
+	changed.ComposeProject = "lumen-substituted"
+	if err := j.Bind(changed); !errors.Is(err, ErrInputChanged) {
+		t.Fatalf("changed upgraded project: %v", err)
+	}
+}
+
 func TestJournalBindingRejectsUnsupportedSupervisor(t *testing.T) {
 	j := newTestJournal(t)
 	err := j.Bind(JournalBinding{Profile: Development, Topology: TopologyExternal, Supervisor: Supervisor("other"), PlanDigest: "sha256:" + strings.Repeat("a", 64)})

@@ -165,7 +165,7 @@ func (r SetupRunner) validateJournalBinding(req Request) error {
 	if supervisor == "" && r.Plan != nil {
 		supervisor = r.Plan.Supervisor
 	}
-	b := JournalBinding{Profile: req.Profile, Topology: req.Topology, Supervisor: supervisor, EndpointOriginDigest: req.EndpointOriginDigest, EndpointIdentityDigest: req.EndpointIdentityDigest, ReferenceDigests: req.ReferenceDigests, ArtifactPaths: paths, ArtifactDigests: artifacts, ArtifactRefs: refs, PlanDigest: planDigest(r.Plan)}
+	b := JournalBinding{Profile: req.Profile, Topology: req.Topology, Supervisor: supervisor, ComposeProject: req.ComposeProject, EndpointOriginDigest: req.EndpointOriginDigest, EndpointIdentityDigest: req.EndpointIdentityDigest, ReferenceDigests: req.ReferenceDigests, ArtifactPaths: paths, ArtifactDigests: artifacts, ArtifactRefs: refs, PlanDigest: planDigest(r.Plan)}
 	if err := r.Journal.Bind(b); err != nil {
 		return err
 	}

@@ -31,12 +31,13 @@ const actionRequired = setup.ActionRequired
 const lumenVersion = "0.0.0"
 
 type deployment struct {
-	binding    setup.JournalBinding
-	config     host.Config
-	adoption   *setup.ExternalAdoption
-	supervisor setup.Supervisor
-	services   []setup.ServiceName
-	journal    *setup.Journal
+	binding        setup.JournalBinding
+	config         host.Config
+	adoption       *setup.ExternalAdoption
+	supervisor     setup.Supervisor
+	composeProject string
+	services       []setup.ServiceName
+	journal        *setup.Journal
 }
 
 type hermesObservation struct {
@@ -51,10 +52,12 @@ type hermesObservation struct {
 }
 
 type doctorDeps struct {
-	hostStatus       func(context.Context, host.Config) (string, error)
-	supervisorStatus func(context.Context, setup.Supervisor, []setup.ServiceName) ([]setup.ServiceState, error)
-	hermesProbe      func(context.Context, host.Config, *setup.ExternalAdoption) hermesObservation
-	bootStatus       func(context.Context, setup.Supervisor, []setup.ServiceName) (bool, error)
+	hostStatus                  func(context.Context, host.Config) (string, error)
+	supervisorStatus            func(context.Context, setup.Supervisor, []setup.ServiceName) ([]setup.ServiceState, error)
+	supervisorStatusWithProject func(context.Context, setup.Supervisor, string, []setup.ServiceName) ([]setup.ServiceState, error)
+	hermesProbe                 func(context.Context, host.Config, *setup.ExternalAdoption) hermesObservation
+	bootStatus                  func(context.Context, setup.Supervisor, []setup.ServiceName) (bool, error)
+	bootStatusWithProject       func(context.Context, setup.Supervisor, string, []setup.ServiceName) (bool, error)
 }
 
 var doctorDepsOverride *doctorDeps
@@ -130,9 +133,14 @@ func setupCommand(ctx context.Context) setup.Report {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Actions: []setup.Action{{Code: "invalid_topology"}}}
 	}
 	preferredSupervisor := setup.Supervisor("")
+	var existingBinding setup.JournalBinding
+	existingBindingOK := false
 	if existingJournal, journalErr := setup.NewJournal(filepath.Join(dataDir, "setup")); journalErr == nil {
-		if existingBinding, ok := existingJournal.Binding(); ok && existingBinding.Supervisor != "" {
-			preferredSupervisor = existingBinding.Supervisor
+		if binding, ok := existingJournal.Binding(); ok {
+			existingBinding, existingBindingOK = binding, true
+			if binding.Supervisor != "" {
+				preferredSupervisor = binding.Supervisor
+			}
 		}
 	}
 	probe := cliProbe{dataDir: dataDir, preferredSupervisor: preferredSupervisor}
@@ -151,10 +159,23 @@ func setupCommand(ctx context.Context) setup.Report {
 		return r
 	}
 	state := &setupState{plan: plan, dataDir: dataDir, profile: profile, topology: topology}
+	if plan.Supervisor == setup.SupervisorDocker {
+		state.composeProject = composeProjectForSetup(dataDir, os.Getenv("COMPOSE_PROJECT_NAME"))
+	}
 	journal, err := setup.NewJournal(plan.SetupDir)
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "journal_unavailable"}}}
 	}
+	composeProject := state.composeProject
+	if existingBindingOK && existingBinding.Supervisor == setup.SupervisorDocker {
+		if existingBinding.ComposeProject != "" {
+			composeProject = existingBinding.ComposeProject
+		}
+	}
+	if plan.Supervisor == setup.SupervisorDocker && composeProject == "" {
+		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "setup_identity_mismatch"}}}
+	}
+	state.composeProject = composeProject
 	if existingBinding, ok := journal.Binding(); ok {
 		if existingBinding.Profile != profile || existingBinding.Topology != topology || (existingBinding.Supervisor != "" && existingBinding.Supervisor != plan.Supervisor) {
 			return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "setup_identity_mismatch"}}}
@@ -197,7 +218,7 @@ func setupCommand(ctx context.Context) setup.Report {
 			return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "external_adoption_failed"}}}
 		}
 	}
-	request := setup.Request{Topology: topology, Profile: profile, Supervisor: plan.Supervisor, ArtifactPaths: state.artifactPaths(), ArtifactDigests: state.artifactDigests(), ArtifactRefs: state.artifactRefs()}
+	request := setup.Request{Topology: topology, Profile: profile, Supervisor: plan.Supervisor, ComposeProject: composeProject, ArtifactPaths: state.artifactPaths(), ArtifactDigests: state.artifactDigests(), ArtifactRefs: state.artifactRefs()}
 	if topology == setup.TopologyCombined {
 		endpoint := hermesEndpoint()
 		if os.Getenv("LUMEN_HERMES_BASE_URL") == "" {
@@ -274,6 +295,14 @@ func setupCommand(ctx context.Context) setup.Report {
 	return report
 }
 
+func composeProjectForSetup(dataDir, configured string) string {
+	if configured != "" {
+		return configured
+	}
+	sum := sha256.Sum256([]byte(filepath.Clean(dataDir)))
+	return "lumen-" + hex.EncodeToString(sum[:6])
+}
+
 func loadDeployment(dataDir string) (deployment, error) {
 	if dataDir == "" || !filepath.IsAbs(dataDir) || filepath.Clean(dataDir) != dataDir {
 		return deployment{}, deploymentError{cause: errDeploymentUnavailable}
@@ -286,6 +315,9 @@ func loadDeployment(dataDir string) (deployment, error) {
 	if !ok || binding.Supervisor == "" || binding.Supervisor.Validate() != nil {
 		return deployment{}, deploymentError{cause: errDeploymentBinding}
 	}
+	if binding.Supervisor == setup.SupervisorDocker && binding.ComposeProject == "" {
+		return deployment{}, deploymentError{cause: errDeploymentBinding}
+	}
 	if !durableEndpointEvidence(binding) || !durableReferenceEvidence(binding) || !verifyDurableArtifacts(binding) {
 		return deployment{}, deploymentError{cause: errDeploymentBinding}
 	}
@@ -293,7 +325,7 @@ func loadDeployment(dataDir string) (deployment, error) {
 	if err != nil || cfg.DataDir != dataDir || cfg.SocketPath != filepath.Join(dataDir, "host.sock") || cfg.CredentialPath != filepath.Join(dataDir, "operator.credential") || !durableConfigProfileMatches(binding.Profile, binding.Topology, cfg.HermesProfile) {
 		return deployment{}, deploymentError{cause: errDeploymentBinding}
 	}
-	d := deployment{binding: binding, config: cfg, supervisor: binding.Supervisor, services: ownedServices(binding.Topology), journal: j}
+	d := deployment{binding: binding, config: cfg, supervisor: binding.Supervisor, composeProject: binding.ComposeProject, services: ownedServices(binding.Topology), journal: j}
 	if len(d.services) == 0 {
 		return deployment{}, deploymentError{cause: errDeploymentBinding}
 	}
@@ -478,7 +510,7 @@ func serviceCommand(ctx context.Context, action string) setup.Report {
 	if d.journal.Next() != setup.Validated {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: d.binding.Profile, Topology: d.binding.Topology, Stage: d.journal.Next(), Actions: []setup.Action{{Code: "setup_incomplete"}}}
 	}
-	states, err := (setup.CommandSupervisor{Manager: d.supervisor, Topology: d.binding.Topology}).Control(ctx, setup.Action{Code: action}, d.services)
+	states, err := (setup.CommandSupervisor{Manager: d.supervisor, Topology: d.binding.Topology, Compose: setup.ComposeConfig{Project: d.composeProject}}).Control(ctx, setup.Action{Code: action}, d.services)
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: d.binding.Profile, Topology: d.binding.Topology, Actions: []setup.Action{{Code: "service_unavailable"}}}
 	}
@@ -499,10 +531,12 @@ func serviceCommand(ctx context.Context, action string) setup.Report {
 
 func defaultDoctorDeps() doctorDeps {
 	d := doctorDeps{
-		hostStatus:       defaultHostStatus,
-		supervisorStatus: defaultSupervisorStatus,
-		hermesProbe:      defaultHermesProbe,
-		bootStatus:       defaultBootStatus,
+		hostStatus:                  defaultHostStatus,
+		supervisorStatus:            defaultSupervisorStatus,
+		supervisorStatusWithProject: defaultSupervisorStatusWithProject,
+		hermesProbe:                 defaultHermesProbe,
+		bootStatus:                  defaultBootStatus,
+		bootStatusWithProject:       defaultBootStatusWithProject,
 	}
 	if doctorDepsOverride != nil {
 		if doctorDepsOverride.hostStatus != nil {
@@ -510,12 +544,14 @@ func defaultDoctorDeps() doctorDeps {
 		}
 		if doctorDepsOverride.supervisorStatus != nil {
 			d.supervisorStatus = doctorDepsOverride.supervisorStatus
+			d.supervisorStatusWithProject = nil
 		}
 		if doctorDepsOverride.hermesProbe != nil {
 			d.hermesProbe = doctorDepsOverride.hermesProbe
 		}
 		if doctorDepsOverride.bootStatus != nil {
 			d.bootStatus = doctorDepsOverride.bootStatus
+			d.bootStatusWithProject = nil
 		}
 	}
 	return d
@@ -553,7 +589,13 @@ func observeDeployment(ctx context.Context, d deployment, deps doctorDeps) setup
 		e.HostError = liveErr
 	}
 
-	states, statusErr := deps.supervisorStatus(ctx, d.supervisor, d.services)
+	var states []setup.ServiceState
+	var statusErr error
+	if deps.supervisorStatusWithProject != nil {
+		states, statusErr = deps.supervisorStatusWithProject(ctx, d.supervisor, d.composeProject, d.services)
+	} else {
+		states, statusErr = deps.supervisorStatus(ctx, d.supervisor, d.services)
+	}
 	e.SupervisorReady, e.SupervisorState = aggregateOwnedSupervisorStates(states, d.services, statusErr)
 	// A live, complete local service set is the only artifact evidence available
 	// to doctor; setup history alone is not proof that artifacts remain usable.
@@ -563,7 +605,13 @@ func observeDeployment(ctx context.Context, d deployment, deps doctorDeps) setup
 	} else {
 		e.ArtifactState = setup.StateUnknown
 	}
-	bootReady, bootErr := deps.bootStatus(ctx, d.supervisor, d.services)
+	var bootReady bool
+	var bootErr error
+	if deps.bootStatusWithProject != nil {
+		bootReady, bootErr = deps.bootStatusWithProject(ctx, d.supervisor, d.composeProject, d.services)
+	} else {
+		bootReady, bootErr = deps.bootStatus(ctx, d.supervisor, d.services)
+	}
 	if bootErr != nil {
 		e.BootState = setup.StateUnknown
 	} else if bootReady {
@@ -664,8 +712,16 @@ func defaultSupervisorStatus(ctx context.Context, manager setup.Supervisor, serv
 	return (setup.CommandSupervisor{Manager: manager, Topology: topologyForOwnedServices(services)}).Control(ctx, setup.Action{Code: "status"}, services)
 }
 
+func defaultSupervisorStatusWithProject(ctx context.Context, manager setup.Supervisor, project string, services []setup.ServiceName) ([]setup.ServiceState, error) {
+	return (setup.CommandSupervisor{Manager: manager, Topology: topologyForOwnedServices(services), Compose: setup.ComposeConfig{Project: project}}).Control(ctx, setup.Action{Code: "status"}, services)
+}
+
 func defaultBootStatus(ctx context.Context, manager setup.Supervisor, services []setup.ServiceName) (bool, error) {
 	return (setup.CommandSupervisor{Manager: manager, Topology: topologyForOwnedServices(services)}).BootStatus(ctx, services)
+}
+
+func defaultBootStatusWithProject(ctx context.Context, manager setup.Supervisor, project string, services []setup.ServiceName) (bool, error) {
+	return (setup.CommandSupervisor{Manager: manager, Topology: topologyForOwnedServices(services), Compose: setup.ComposeConfig{Project: project}}).BootStatus(ctx, services)
 }
 
 func topologyForOwnedServices(services []setup.ServiceName) setup.Topology {
@@ -878,14 +934,15 @@ func (p cliProbe) Supervisor() (setup.Supervisor, bool) {
 }
 
 type setupState struct {
-	plan      setup.PlanResult
-	dataDir   string
-	profile   setup.Profile
-	topology  setup.Topology
-	adoption  *setup.ExternalAdoption
-	manager   setup.Supervisor
-	installed bool
-	started   bool
+	plan           setup.PlanResult
+	dataDir        string
+	profile        setup.Profile
+	topology       setup.Topology
+	composeProject string
+	adoption       *setup.ExternalAdoption
+	manager        setup.Supervisor
+	installed      bool
+	started        bool
 }
 
 func (s *setupState) hostConfig() (host.Config, error) {
@@ -934,7 +991,7 @@ func (s *setupState) runStage(ctx context.Context, stage setup.Stage) error {
 			return errors.New("supervisor unavailable")
 		}
 		s.manager = manager
-		if _, err := (setup.CommandSupervisor{Manager: manager, Topology: s.topology}).Control(ctx, setup.Action{Code: "start"}, ownedServices(s.topology)); err != nil {
+		if _, err := (setup.CommandSupervisor{Manager: manager, Topology: s.topology, Compose: setup.ComposeConfig{Project: s.composeProject}}).Control(ctx, setup.Action{Code: "start"}, ownedServices(s.topology)); err != nil {
 			return err
 		}
 		s.started = true
@@ -1270,7 +1327,7 @@ func (s *setupState) installServices(ctx context.Context) error {
 			return err
 		}},
 	}
-	if err := setup.InstallServices(ctx, setup.CommandSupervisor{Manager: manager, Topology: s.topology}, plan); err != nil {
+	if err := setup.InstallServices(ctx, setup.CommandSupervisor{Manager: manager, Topology: s.topology, Compose: setup.ComposeConfig{Project: s.composeProject}}, plan); err != nil {
 		return err
 	}
 	s.installed = true
