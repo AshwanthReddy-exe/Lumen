@@ -159,6 +159,7 @@ func TestExternalSetupJourneyScriptContract(t *testing.T) {
 		"docker inspect", "docker compose", "docker compose down --volumes",
 		"external Hermes container", "sha256:", "LUMEN_LUMEN_ARTIFACT",
 		"./cmd/lumen\n", "./cmd/lumen-host", `"$cli" setup`, "$data_dir/state.json",
+		"ready_i", "curl --silent --show-error --fail", "external Hermes endpoint did not become ready",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("missing external journey operation %q", required)
