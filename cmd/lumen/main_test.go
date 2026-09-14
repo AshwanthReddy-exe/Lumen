@@ -452,7 +452,7 @@ func TestSetupRerunPreservesIdentityAndCredentials(t *testing.T) {
 	}
 }
 
-func TestSetupExternalBindingRejectsBeforeRecreatingMissingAdoption(t *testing.T) {
+func TestSetupExternalBindingRejectsImmutableEvidenceBeforeRecreatingMissingAdoption(t *testing.T) {
 	h := newSetupJourneyFixture(t, setup.TopologyExternal)
 	firstEndpoint := newExternalHermesServer(t)
 	t.Setenv("LUMEN_HERMES_BASE_URL", firstEndpoint)
@@ -466,8 +466,11 @@ func TestSetupExternalBindingRejectsBeforeRecreatingMissingAdoption(t *testing.T
 	}
 	before := snapshotRegularFiles(t, h.dataDir)
 
-	secondEndpoint := newExternalHermesServer(t)
-	t.Setenv("LUMEN_HERMES_BASE_URL", secondEndpoint)
+	secondCredential := filepath.Join(secureTestDir(t), "remote.token")
+	if err := os.WriteFile(secondCredential, []byte("different-remote-secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LUMEN_HERMES_CREDENTIAL_FILE", secondCredential)
 	t.Setenv("LUMEN_HERMES_IDENTITY", "missing-adoption-second")
 	report := runForTest([]string{"setup"})
 	if report.Outcome != setup.ActionRequired {

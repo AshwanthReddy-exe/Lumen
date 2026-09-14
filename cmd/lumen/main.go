@@ -199,6 +199,9 @@ func setupCommand(ctx context.Context) setup.Report {
 		if err != nil {
 			return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "external_adoption_failed"}}}
 		}
+		if existingBindingOK && (adoption.EndpointOriginDigest != existingBinding.EndpointOriginDigest || adoption.EndpointIdentityDigest != existingBinding.EndpointIdentityDigest || !setup.ReferenceDigestsMatch(existingBinding.ReferenceDigests, adoptionReferenceDigests(adoption))) {
+			return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "setup_identity_mismatch"}}}
+		}
 		adoptionPath := filepath.Join(plan.SetupDir, "external-adoption.json")
 		if _, statErr := os.Lstat(adoptionPath); statErr == nil {
 			existing, loadErr := setup.LoadExternalAdoption(adoptionPath)
@@ -293,6 +296,16 @@ func setupCommand(ctx context.Context) setup.Report {
 	}
 	report, _ := runner.Run(ctx, request)
 	return report
+}
+
+func adoptionReferenceDigests(adoption setup.ExternalAdoption) map[string]string {
+	return setup.DigestReferences(map[string]string{
+		"credential":  adoption.CredentialFile,
+		"ca":          adoption.CAFile,
+		"client_cert": adoption.ClientCertFile,
+		"client_key":  adoption.ClientKeyFile,
+		"server_pin":  adoption.ServerCertPin,
+	})
 }
 
 func composeProjectForSetup(dataDir, configured string) string {
