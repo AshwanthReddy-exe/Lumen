@@ -154,12 +154,13 @@ func TestExternalSetupJourneyScriptContract(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		"LUMEN_SETUP_TOPOLOGY=external", "LUMEN_HERMES_PROFILE=development",
+		"LUMEN_SETUP_TOPOLOGY=external", "LUMEN_HERMES_PROFILE=hardened", "LUMEN_SETUP_PROFILE=personal-alpha",
 		"COMPOSE_PROJECT_NAME", "compose.external.yaml", "--status running -q lumen-host",
 		"docker inspect", "docker compose", "docker compose down --volumes",
 		"external Hermes container", "sha256:", "LUMEN_LUMEN_ARTIFACT",
 		"./cmd/lumen\n", "./cmd/lumen-host", `"$cli" setup`, "$data_dir/state.json",
 		"ready_i", "curl --silent --show-error --fail", "external Hermes endpoint did not become ready",
+		"openssl req", "ssl.CERT_REQUIRED", "LUMEN_HERMES_SERVER_CERT_PIN", "--cacert", "--cert", "--key",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("missing external journey operation %q", required)

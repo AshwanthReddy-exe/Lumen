@@ -45,14 +45,31 @@ docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
 docker compose version >/dev/null 2>&1 || fail 'Docker Compose is required'
 command -v go >/dev/null 2>&1 || fail 'Go is required'
 command -v curl >/dev/null 2>&1 || fail 'curl is required'
+command -v openssl >/dev/null 2>&1 || fail 'OpenSSL is required'
 
 printf '%s\n' '=> external Hermes endpoint (independent Hermes lifecycle)'
 mkdir -m 700 "$data_dir" "$secret_dir"
 (umask 077; printf '%s\n' 'lumen-external-check-token' >"$secret_dir/hermes.token")
 chmod 600 "$secret_dir/hermes.token"
+bridge_gateway=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')
+[ -n "$bridge_gateway" ] || fail 'Docker bridge gateway is unavailable'
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -sha256 \
+	-subj '/CN=Lumen external check CA' -keyout "$secret_dir/ca.key" -out "$secret_dir/ca.pem" >/dev/null 2>&1
+openssl req -newkey rsa:2048 -nodes -sha256 -subj "/CN=$bridge_gateway" \
+	-keyout "$secret_dir/server.key" -out "$secret_dir/server.csr" >/dev/null 2>&1
+printf 'subjectAltName=IP:%s\n' "$bridge_gateway" >"$secret_dir/server.ext"
+openssl x509 -req -days 1 -sha256 -in "$secret_dir/server.csr" \
+	-CA "$secret_dir/ca.pem" -CAkey "$secret_dir/ca.key" -CAcreateserial \
+	-extfile "$secret_dir/server.ext" -out "$secret_dir/server.crt" >/dev/null 2>&1
+openssl req -newkey rsa:2048 -nodes -sha256 -subj '/CN=Lumen Host check' \
+	-keyout "$secret_dir/client.key" -out "$secret_dir/client.csr" >/dev/null 2>&1
+openssl x509 -req -days 1 -sha256 -in "$secret_dir/client.csr" \
+	-CA "$secret_dir/ca.pem" -CAkey "$secret_dir/ca.key" -CAcreateserial \
+	-out "$secret_dir/client.crt" >/dev/null 2>&1
+chmod 600 "$secret_dir"/*
 
 cat >"$work_dir/hermes.py" <<'PY'
-import json
+import json, ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 class Hermes(BaseHTTPRequestHandler):
@@ -78,18 +95,26 @@ class Hermes(BaseHTTPRequestHandler):
         if self.path != "/v1/runs": self.send_json({"error":"not found"}, 404); return
         self.send_json({"id":"external-check-run","status":"completed"})
 
-ThreadingHTTPServer(("0.0.0.0", 8080), Hermes).serve_forever()
+server = ThreadingHTTPServer(("0.0.0.0", 8443), Hermes)
+tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+tls.minimum_version = ssl.TLSVersion.TLSv1_2
+tls.load_cert_chain("/tls/server.crt", "/tls/server.key")
+tls.load_verify_locations("/tls/ca.pem")
+tls.verify_mode = ssl.CERT_REQUIRED
+server.socket = tls.wrap_socket(server.socket, server_side=True)
+server.serve_forever()
 PY
 
-docker run -d --name "$hermes_container" --restart unless-stopped -p "0.0.0.0:$port:8080" -v "$work_dir/hermes.py:/hermes.py:ro" python:3.12-alpine python -u /hermes.py >/dev/null
+docker run -d --name "$hermes_container" --restart unless-stopped -p "0.0.0.0:$port:8443" \
+	-v "$work_dir/hermes.py:/hermes.py:ro" -v "$secret_dir:/tls:ro" \
+	python:3.12-alpine python -u /hermes.py >/dev/null
 # external Hermes container is independently supervised from the Host Compose project.
 hermes_id=$(docker inspect --format '{{.Id}}' "$hermes_container")
-bridge_gateway=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')
-[ -n "$bridge_gateway" ] || fail 'Docker bridge gateway is unavailable'
-endpoint="http://$bridge_gateway:$port"
+endpoint="https://$bridge_gateway:$port"
 ready_i=0
 while [ "$ready_i" -lt 30 ]; do
 	if curl --silent --show-error --fail --max-time 2 \
+		--cacert "$secret_dir/ca.pem" --cert "$secret_dir/client.crt" --key "$secret_dir/client.key" \
 		-H 'Authorization: Bearer lumen-external-check-token' "$endpoint/health" >/dev/null 2>&1; then
 		break
 	fi
@@ -100,13 +125,16 @@ done
 export LUMEN_DATA_DIR="$data_dir"
 export LUMEN_HERMES_CREDENTIAL_FILE="$secret_dir/hermes.token"
 export LUMEN_HERMES_TOKEN_SOURCE="$secret_dir/hermes.token"
-export LUMEN_HERMES_CA_SOURCE="$secret_dir/hermes.token"
-export LUMEN_HERMES_CLIENT_CERT_SOURCE="$secret_dir/hermes.token"
-export LUMEN_HERMES_CLIENT_KEY_SOURCE="$secret_dir/hermes.token"
+export LUMEN_HERMES_CA_FILE="$secret_dir/ca.pem"
+export LUMEN_HERMES_CA_SOURCE="$secret_dir/ca.pem"
+export LUMEN_HERMES_CLIENT_CERT_FILE="$secret_dir/client.crt"
+export LUMEN_HERMES_CLIENT_CERT_SOURCE="$secret_dir/client.crt"
+export LUMEN_HERMES_CLIENT_KEY_FILE="$secret_dir/client.key"
+export LUMEN_HERMES_CLIENT_KEY_SOURCE="$secret_dir/client.key"
 export LUMEN_HERMES_BASE_URL="$endpoint"
-export LUMEN_HERMES_PROFILE=development
-export LUMEN_HERMES_SERVER_CERT_PIN=$(sha256sum "$secret_dir/hermes.token" | cut -d' ' -f1)
-export LUMEN_SETUP_PROFILE=development
+export LUMEN_HERMES_PROFILE=hardened
+export LUMEN_HERMES_SERVER_CERT_PIN=$(openssl x509 -in "$secret_dir/server.crt" -outform der | sha256sum | cut -d' ' -f1)
+export LUMEN_SETUP_PROFILE=personal-alpha
 export LUMEN_SETUP_TOPOLOGY=external
 export LUMEN_SUPERVISOR=docker
 export LUMEN_HOST_USER="$(id -u):$(id -g)"
@@ -120,7 +148,7 @@ chmod 700 "$cli" "$host_artifact"
 artifact_sha=$(sha256sum "$host_artifact" | cut -d' ' -f1)
 artifact_size=$(wc -c <"$host_artifact" | tr -d ' ')
 cat >"$manifest" <<EOF
-{"schemaVersion":1,"topology":"external","artifacts":[{"name":"lumen","version":"0.0.0","os":"linux","architecture":"amd64","profile":"development","url":"https://github.com/AshwanthReddy-exe/Lumen","size":$artifact_size,"sha256":"sha256:$artifact_sha","contractVersion":1,"executableMode":448,"ownership":"lumen"}]}
+{"schemaVersion":1,"topology":"external","artifacts":[{"name":"lumen","version":"0.0.0","os":"linux","architecture":"amd64","profile":"personal-alpha","url":"https://github.com/AshwanthReddy-exe/Lumen","size":$artifact_size,"sha256":"sha256:$artifact_sha","contractVersion":1,"executableMode":448,"ownership":"lumen"}]}
 EOF
 export LUMEN_MANIFEST="$manifest"
 export LUMEN_LUMEN_ARTIFACT="$host_artifact"
