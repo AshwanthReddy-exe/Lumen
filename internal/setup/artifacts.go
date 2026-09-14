@@ -197,7 +197,7 @@ func (i Installer) InstallStaged(a Artifact, s StagedArtifact) error {
 	return nil
 }
 func validateArtifact(a Artifact) error {
-	if a.validate() != nil || filepath.Base(a.Name) != a.Name || strings.ContainsAny(a.Name, `/\\`) {
+	if a.validate() != nil || a.normalizedKind() != ArtifactExecutable || filepath.Base(a.Name) != a.Name || strings.ContainsAny(a.Name, `/\\`) {
 		return ErrInvalidArtifact
 	}
 	return nil

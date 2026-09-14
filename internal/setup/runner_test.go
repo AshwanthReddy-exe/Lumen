@@ -58,6 +58,21 @@ func TestRunnerUsesNonZeroRequestBoundDigest(t *testing.T) {
 	}
 }
 
+func TestRunnerBindsDockerComposeProject(t *testing.T) {
+	j, err := NewJournal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := Runner{Journal: j, RunStage: func(context.Context, Stage) error { return nil }, Verify: func(context.Context, Stage) error { return nil }}
+	if report, err := r.Run(context.Background(), Request{Topology: TopologyCombined, Profile: Development, Supervisor: SupervisorDocker, ComposeProject: "lumen-fixed"}); err != nil {
+		t.Fatalf("report=%#v err=%v", report, err)
+	}
+	binding, ok := j.Binding()
+	if !ok || binding.ComposeProject != "lumen-fixed" {
+		t.Fatalf("binding = %#v", binding)
+	}
+}
+
 func TestRunnerInitializesHostBeforeRecordingHostStageAndRerunSkipsIt(t *testing.T) {
 	j, err := NewJournal(t.TempDir())
 	if err != nil {
@@ -204,5 +219,48 @@ func TestRunnerRejectsChangedEndpointIdentityBeforeMutation(t *testing.T) {
 	report, err := r.Run(context.Background(), base)
 	if err == nil || report.Actions[0].Code != "setup_identity_mismatch" || calls != 0 {
 		t.Fatalf("report=%#v err=%v calls=%d", report, err, calls)
+	}
+}
+
+func TestRunnerBindsPlanSupervisor(t *testing.T) {
+	d := t.TempDir()
+	j, err := NewJournal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := PlanResult{Profile: Development, Topology: TopologyExternal, Supervisor: SupervisorSystemd, NextStage: Detected}
+	r := Runner{Journal: j, Plan: &plan, RunStage: func(context.Context, Stage) error { return nil }, Verify: func(context.Context, Stage) error { return nil }}
+	if _, err := r.Run(context.Background(), Request{Profile: Development, Topology: TopologyExternal}); err != nil {
+		t.Fatal(err)
+	}
+	binding, ok := j.Binding()
+	if !ok || binding.Supervisor != SupervisorSystemd {
+		t.Fatalf("binding = %#v", binding)
+	}
+}
+
+func TestRunnerMigratesLegacyBindingSupervisorWithoutStages(t *testing.T) {
+	d := t.TempDir()
+	j, err := NewJournal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := PlanResult{Profile: Development, Topology: TopologyExternal, Supervisor: SupervisorSystemd, NextStage: Detected}
+	if err := j.Bind(JournalBinding{Profile: Development, Topology: TopologyExternal, PlanDigest: planDigest(&plan)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range stageOrder {
+		if err := j.Record(StageEvidence{Stage: stage, InputDigest: "sha256:" + strings.Repeat("a", 64), Profile: Development, PlanDigest: planDigest(&plan)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := 0
+	r := Runner{Journal: j, Plan: &plan, RunStage: func(context.Context, Stage) error { calls++; return nil }, Verify: func(context.Context, Stage) error { calls++; return nil }}
+	if _, err := r.Run(context.Background(), Request{Profile: Development, Topology: TopologyExternal, Supervisor: SupervisorSystemd}); err != nil {
+		t.Fatal(err)
+	}
+	binding, ok := j.Binding()
+	if !ok || binding.Supervisor != SupervisorSystemd || calls != 0 {
+		t.Fatalf("binding=%#v calls=%d", binding, calls)
 	}
 }

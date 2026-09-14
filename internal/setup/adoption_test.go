@@ -13,6 +13,240 @@ import (
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 )
 
+func TestExternalAdoptionSaveLoadIsPrivateAndRedacted(t *testing.T) {
+	p := filepath.Join(realTempDir(t), "adoption.json")
+	if err := os.Chmod(filepath.Dir(p), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cred := filepath.Join(filepath.Dir(p), "credential")
+	if err := os.WriteFile(cred, []byte("opaque"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a := ExternalAdoption{Endpoint: "https://hermes.example", EndpointOriginDigest: "sha256:" + strings.Repeat("a", 64), EndpointIdentityDigest: "sha256:" + strings.Repeat("b", 64), Version: "1.0.0", CredentialFile: "/tmp/credential"}
+	a.CredentialFile = cred
+	if err := SaveExternalAdoption(p, a); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := os.Stat(p)
+	if st.Mode().Perm() != 0600 {
+		t.Fatalf("mode=%o", st.Mode().Perm())
+	}
+	got, err := LoadExternalAdoption(p)
+	if err != nil || got != a {
+		t.Fatalf("got=%#v err=%v", got, err)
+	}
+	b, _ := os.ReadFile(p)
+	if strings.Contains(string(b), "secret") {
+		t.Fatal("secret persisted")
+	}
+}
+
+func TestExternalAdoptionLoadRejectsUnknownAndInvalidJSON(t *testing.T) {
+	p := filepath.Join(realTempDir(t), "adoption.json")
+	os.WriteFile(p, []byte(`{"endpoint":"x","extra":true}`), 0600)
+	if _, err := LoadExternalAdoption(p); err == nil {
+		t.Fatal("accepted invalid record")
+	}
+}
+
+func TestExternalAdoptionLoadRejectsTrailingJSON(t *testing.T) {
+	d := realTempDir(t)
+	if err := os.Chmod(d, 0700); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(d, "adoption.json")
+	if err := os.WriteFile(p, []byte(`{} {}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadExternalAdoption(p); err == nil {
+		t.Fatal("accepted trailing JSON")
+	}
+}
+
+func TestExternalAdoptionRequiresCredentialReference(t *testing.T) {
+	a := ExternalAdoption{Endpoint: "https://hermes.example", EndpointOriginDigest: "sha256:" + strings.Repeat("a", 64), EndpointIdentityDigest: "sha256:" + strings.Repeat("b", 64), Version: "1.0.0"}
+	if validAdoption(a) {
+		t.Fatal("accepted adoption without credential reference")
+	}
+}
+
+func TestSaveExternalAdoptionRejectsSymlinkedParent(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(root, "real")
+	if err := os.Mkdir(real, 0700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	cred := filepath.Join(root, "credential")
+	if err := os.WriteFile(cred, []byte("opaque"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a := ExternalAdoption{Endpoint: "https://hermes.example", EndpointOriginDigest: "sha256:" + strings.Repeat("a", 64), EndpointIdentityDigest: "sha256:" + strings.Repeat("b", 64), Version: "1.0.0", CredentialFile: cred}
+	if err := SaveExternalAdoption(filepath.Join(link, "adoption.json"), a); err == nil {
+		t.Fatal("accepted adoption path through symlinked parent")
+	}
+}
+
+func TestExternalAdoptionRejectsUnsafeCredentialParent(t *testing.T) {
+	c, _ := goodExternalCandidate(t)
+	if err := os.Chmod(filepath.Dir(c.CredentialFile), 0770); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := boundedContext()
+	defer cancel()
+	if _, err := AdoptExternalHermes(ctx, c); !errors.Is(err, ErrHermesIncompatible) {
+		t.Fatalf("accepted credential in unsafe parent: %v", err)
+	}
+}
+
+func TestPersonalAlphaExternalAdoptionRequiresTLSMaterial(t *testing.T) {
+	c, _ := goodExternalCandidate(t)
+	c.Profile = PersonalAlpha
+	c.Endpoint = "https://hermes.example/runs"
+	ctx, cancel := boundedContext()
+	defer cancel()
+	if _, err := AdoptExternalHermes(ctx, c); !errors.Is(err, ErrHermesIncompatible) {
+		t.Fatalf("accepted personal-alpha external transport without TLS material: %v", err)
+	}
+}
+
+func TestCheckExternalBindingMatchesEndpointAndIdentity(t *testing.T) {
+	endpoint := "https://hermes.example/api"
+	identity := "tls-leaf-sha256:leaf"
+	a := ExternalAdoption{
+		Endpoint:               endpoint,
+		EndpointOriginDigest:   digest(endpoint),
+		EndpointIdentityDigest: digest(identity),
+		Version:                "1.0.0",
+		CredentialFile:         "/tmp/credential",
+	}
+	if err := CheckExternalBinding(a, endpoint, identity); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckExternalBinding(a, "https://other.example/api", identity); !errors.Is(err, ErrHermesIncompatible) {
+		t.Fatalf("endpoint mismatch = %v", err)
+	}
+	if err := CheckExternalBinding(a, endpoint, "tls-leaf-sha256:other"); !errors.Is(err, ErrHermesIncompatible) {
+		t.Fatalf("identity mismatch = %v", err)
+	}
+}
+
+func TestReferenceDigestsBindCredentialAndTLSReferences(t *testing.T) {
+	a := ExternalAdoption{
+		CredentialFile: "/state/hermes.token",
+		CAFile:         "/state/ca.pem",
+		ClientCertFile: "/state/client.crt",
+		ClientKeyFile:  "/state/client.key",
+		ServerCertPin:  "pin",
+	}
+	want := DigestReferences(map[string]string{
+		"credential":  a.CredentialFile,
+		"ca":          a.CAFile,
+		"client_cert": a.ClientCertFile,
+		"client_key":  a.ClientKeyFile,
+		"server_pin":  a.ServerCertPin,
+	})
+	if !ReferenceDigestsMatch(want, DigestReferences(map[string]string{
+		"credential":  a.CredentialFile,
+		"ca":          a.CAFile,
+		"client_cert": a.ClientCertFile,
+		"client_key":  a.ClientKeyFile,
+		"server_pin":  a.ServerCertPin,
+	})) {
+		t.Fatal("matching references were rejected")
+	}
+	changed := DigestReferences(map[string]string{
+		"credential":  "/state/other.token",
+		"ca":          a.CAFile,
+		"client_cert": a.ClientCertFile,
+		"client_key":  a.ClientKeyFile,
+		"server_pin":  a.ServerCertPin,
+	})
+	if ReferenceDigestsMatch(want, changed) {
+		t.Fatal("changed credential reference was accepted")
+	}
+}
+
+func TestExternalAdoptionDirectorySyncFailureRestoresPrior(t *testing.T) {
+	d := realTempDir(t)
+	if err := os.Chmod(d, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cred := filepath.Join(d, "credential")
+	if err := os.WriteFile(cred, []byte("opaque"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(d, "adoption.json")
+	old := ExternalAdoption{Endpoint: "https://old.example", EndpointOriginDigest: "sha256:" + strings.Repeat("a", 64), EndpointIdentityDigest: "sha256:" + strings.Repeat("b", 64), Version: "1.0.0", CredentialFile: cred}
+	if err := SaveExternalAdoption(p, old); err != nil {
+		t.Fatal(err)
+	}
+	originalSync := adoptionSyncDirectory
+	calls := 0
+	adoptionSyncDirectory = func(path string) error {
+		calls++
+		if calls == 1 {
+			return errors.New("injected sync failure")
+		}
+		return originalSync(path)
+	}
+	t.Cleanup(func() { adoptionSyncDirectory = originalSync })
+	next := old
+	next.Endpoint = "https://new.example"
+	if err := SaveExternalAdoption(p, next); !errors.Is(err, ErrInstallDurabilityUncertain) {
+		t.Fatalf("got %v", err)
+	}
+	got, err := LoadExternalAdoption(p)
+	if err != nil || got != old {
+		t.Fatalf("prior record not restored: got=%#v err=%v", got, err)
+	}
+}
+
+func TestExternalAdoptionRenameFailureRestoresPriorDurably(t *testing.T) {
+	d := realTempDir(t)
+	if err := os.Chmod(d, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cred := filepath.Join(d, "credential")
+	if err := os.WriteFile(cred, []byte("opaque"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(d, "adoption.json")
+	old := ExternalAdoption{Endpoint: "https://old.example", EndpointOriginDigest: "sha256:" + strings.Repeat("a", 64), EndpointIdentityDigest: "sha256:" + strings.Repeat("b", 64), Version: "1.0.0", CredentialFile: cred}
+	if err := SaveExternalAdoption(p, old); err != nil {
+		t.Fatal(err)
+	}
+	originalRename, originalSync := adoptionRename, adoptionSyncDirectory
+	renames, syncs := 0, 0
+	adoptionRename = func(oldPath, newPath string) error {
+		renames++
+		if renames == 2 {
+			return errors.New("injected rename failure")
+		}
+		return originalRename(oldPath, newPath)
+	}
+	adoptionSyncDirectory = func(path string) error { syncs++; return originalSync(path) }
+	t.Cleanup(func() { adoptionRename, adoptionSyncDirectory = originalRename, originalSync })
+	next := old
+	next.Endpoint = "https://new.example"
+	if err := SaveExternalAdoption(p, next); err == nil {
+		t.Fatal("expected rename failure")
+	}
+	got, err := LoadExternalAdoption(p)
+	if err != nil || got != old {
+		t.Fatalf("prior record not restored: got=%#v err=%v", got, err)
+	}
+	if syncs == 0 {
+		t.Fatal("restored directory was not synced")
+	}
+}
+
 type scalarSysFileInfo struct{}
 
 func (scalarSysFileInfo) Name() string       { return "hermes" }
@@ -31,6 +265,7 @@ func TestSameOwnerFailsClosedForUnexpectedMetadata(t *testing.T) {
 type adoptionFake struct {
 	h         hermes.Health
 	caps      hermes.Capabilities
+	identity  string
 	err       error
 	cancelled bool
 	calls     *int
@@ -56,10 +291,16 @@ func (f adoptionFake) Health(ctx context.Context) (hermes.Health, error) {
 	}
 	return f.h, f.err
 }
+func (f adoptionFake) VerifiedEndpointIdentity(context.Context) (string, error) {
+	if f.identity != "" {
+		return f.identity, nil
+	}
+	return "authenticated-test-peer", nil
+}
 
 func goodExternalCandidate(t *testing.T) (HermesCandidate, string) {
 	t.Helper()
-	d := t.TempDir()
+	d := realTempDir(t)
 	cred := filepath.Join(d, "bearer")
 	if err := os.WriteFile(cred, []byte("secret"), 0600); err != nil {
 		t.Fatal(err)
@@ -70,6 +311,23 @@ func goodExternalCandidate(t *testing.T) (HermesCandidate, string) {
 	}
 	f := adoptionFake{h: hermes.Health{Status: "ok", Version: "1.2.3"}, caps: hermes.Capabilities{Auth: hermes.CapabilityAuth{Type: "bearer", Required: true}, Features: caps}}
 	return HermesCandidate{Endpoint: "https://hermes.example/runs", VerifiedEndpointIdentity: "leaf-identity", CredentialFile: cred, ExpectedVersion: "1.2.3", Profile: Development, Platform: PlatformLinux, OwnerKnown: true, OwnerUID: uint32(os.Getuid()), EndpointIdentityVerified: true, CredentialsSeparated: true, Adapter: f}, cred
+}
+
+func realTempDir(t *testing.T) string {
+	t.Helper()
+	root, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := os.MkdirTemp(root, ".lumen-adoption-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(d, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(d) })
+	return d
 }
 
 func boundedContext() (context.Context, context.CancelFunc) {
@@ -114,6 +372,23 @@ func TestExternalAdoptionRejectsEndpointSubstitution(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Fatalf("adapter called before endpoint mismatch: %d", calls)
+	}
+}
+
+func TestExternalAdoptionUsesAuthenticatedAdapterIdentity(t *testing.T) {
+	c, _ := goodExternalCandidate(t)
+	c.VerifiedEndpointIdentity = "caller-supplied-identity"
+	f := c.Adapter.(adoptionFake)
+	f.identity = "authenticated-peer-identity"
+	c.Adapter = f
+	ctx, cancel := boundedContext()
+	defer cancel()
+	a, err := AdoptExternalHermes(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.EndpointIdentityDigest != digest("authenticated-peer-identity") {
+		t.Fatalf("identity digest = %q, caller claim was trusted", a.EndpointIdentityDigest)
 	}
 }
 
@@ -209,7 +484,7 @@ func (f adoptionFake) Stop(context.Context, string) (hermes.Run, error)         
 
 func goodAdoption(t *testing.T) (HermesCandidate, string) {
 	t.Helper()
-	p := t.TempDir() + "/hermes"
+	p := filepath.Join(realTempDir(t), "hermes")
 	if err := os.WriteFile(p, []byte("keep"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -231,6 +506,18 @@ func TestAdoptHermesAcceptsAndPreserves(t *testing.T) {
 		t.Fatal("candidate mutated")
 	}
 }
+
+func TestAdoptHermesAcceptsApprovalResponseCapabilityAlias(t *testing.T) {
+	c, _ := goodAdoption(t)
+	f := c.Adapter.(adoptionFake)
+	delete(f.caps.Features, hermes.CapabilityRunApproval)
+	f.caps.Features["run_approval_response"] = true
+	c.Adapter = f
+	if err := AdoptHermes(context.Background(), c); err != nil {
+		t.Fatalf("documented approval response alias rejected: %v", err)
+	}
+}
+
 func TestAdoptHermesRejectsMatrix(t *testing.T) {
 	cases := []struct {
 		name   string

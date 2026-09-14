@@ -28,6 +28,9 @@ type ServiceDefinition struct {
 }
 type ServicePlan struct {
 	Hermes, Host ServiceDefinition
+	// Services is the exact locally owned service set. Empty preserves the
+	// original combined topology for callers that predate topology support.
+	Services []ServiceDefinition
 	// Deprecated fields retained for source compatibility; initialization must use Initializer.
 	HostInitialized bool
 	Verify          func() error
@@ -94,30 +97,132 @@ func InstallServices(ctx context.Context, s SupervisorAPI, p ServicePlan) error 
 	if s == nil {
 		return &ValidationError{"supervisor", "nil"}
 	}
-	if err := validateName(p.Hermes.Name); err != nil {
-		return err
+	services := p.serviceDefinitions()
+	if len(services) == 0 {
+		return &ValidationError{"services", "empty"}
 	}
-	if err := validateName(p.Host.Name); err != nil {
-		return err
+	for _, service := range services {
+		if err := validateName(service.Name); err != nil {
+			return err
+		}
 	}
 	if p.Initializer == nil {
 		return errors.New("host initialization not verified")
 	}
-	if p.Initializer != nil {
-		if err := p.Initializer.Initialize(ctx); err != nil {
-			return fmt.Errorf("initialize Host: %w", err)
-		}
-		if err := p.Initializer.Verify(ctx); err != nil {
-			return fmt.Errorf("verify Host state: %w", err)
-		}
+	if err := p.Initializer.Verify(ctx); err != nil {
+		return fmt.Errorf("verify Host state: %w", err)
 	}
 	if err := s.Install(ctx, p); err != nil {
 		return err
 	}
-	return s.Enable(ctx, []ServiceName{ServiceHermes, ServiceHost})
+	names := make([]ServiceName, 0, len(services))
+	for _, service := range services {
+		names = append(names, service.Name)
+	}
+	return s.Enable(ctx, names)
 }
 
-type CommandSupervisor struct{ Manager Supervisor }
+func (p ServicePlan) serviceDefinitions() []ServiceDefinition {
+	if len(p.Services) != 0 {
+		return p.Services
+	}
+	return []ServiceDefinition{p.Hermes, p.Host}
+}
+
+// ComposeConfig identifies the project and file set used by a Docker
+// supervisor. An empty value uses the repository's base Compose file and the
+// default Compose project selected by Docker.
+type ComposeConfig struct {
+	Project string
+	Files   []string
+}
+
+func validateComposeBinding(supervisor Supervisor, project string) error {
+	if project == "" {
+		return nil
+	}
+	if supervisor != SupervisorDocker {
+		return &ValidationError{"compose project", project}
+	}
+	return validateComposeProject(project)
+}
+
+type CommandSupervisor struct {
+	Manager  Supervisor
+	Topology Topology
+	Compose  ComposeConfig
+}
+
+const defaultComposeFile = "deploy/docker/compose.yaml"
+const externalComposeFile = "deploy/docker/compose.external.yaml"
+
+func (s CommandSupervisor) composeArgs(operation string, services ...string) ([]string, error) {
+	c := s.Compose
+	if c.Project == "" {
+		c.Project = os.Getenv("COMPOSE_PROJECT_NAME")
+	}
+	if s.Topology == TopologyExternal {
+		if len(c.Files) == 0 {
+			c.Files = []string{externalComposeFile}
+		} else if len(c.Files) != 1 || c.Files[0] != externalComposeFile {
+			return nil, &ValidationError{"compose file", strings.Join(c.Files, string(os.PathListSeparator))}
+		}
+	}
+	if len(c.Files) == 0 {
+		if raw := os.Getenv("COMPOSE_FILE"); raw != "" {
+			c.Files = strings.Split(raw, string(os.PathListSeparator))
+		} else {
+			c.Files = []string{defaultComposeFile}
+		}
+	}
+	if err := validateComposeProject(c.Project); err != nil {
+		return nil, err
+	}
+	args := []string{"compose"}
+	if c.Project != "" {
+		args = append(args, "-p", c.Project)
+	}
+	for _, file := range c.Files {
+		if err := validateComposeFile(file); err != nil {
+			return nil, err
+		}
+		args = append(args, "-f", file)
+	}
+	args = append(args, operation)
+	args = append(args, services...)
+	return args, nil
+}
+
+func validateComposeProject(project string) error {
+	if project == "" {
+		return nil
+	}
+	if len(project) > 63 {
+		return &ValidationError{"compose project", project}
+	}
+	for i, r := range project {
+		lowerOrDigit := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if i == 0 && !lowerOrDigit {
+			return &ValidationError{"compose project", project}
+		}
+		if !lowerOrDigit && r != '_' && r != '-' {
+			return &ValidationError{"compose project", project}
+		}
+	}
+	return nil
+}
+
+func validateComposeFile(file string) error {
+	if file == "" || filepath.IsAbs(file) || filepath.Clean(file) != file || file == "." {
+		return &ValidationError{"compose file", file}
+	}
+	for _, part := range strings.Split(file, string(filepath.Separator)) {
+		if part == ".." {
+			return &ValidationError{"compose file", file}
+		}
+	}
+	return nil
+}
 
 type CommandRunner interface {
 	Run(context.Context, string, ...string) (stdout, stderr []byte, err error)
@@ -136,8 +241,8 @@ func (execRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 var commandRunner CommandRunner = execRunner{}
 
 func (s CommandSupervisor) Install(ctx context.Context, p ServicePlan) error {
-	for _, d := range []ServiceDefinition{p.Hermes, p.Host} {
-		if d.Path == "" && (d.Source == "" || d.Destination == "") {
+	for _, d := range p.serviceDefinitions() {
+		if s.Manager != SupervisorDocker && d.Path == "" && (d.Source == "" || d.Destination == "") {
 			return errors.New("service definition path required")
 		}
 		if err := validateName(d.Name); err != nil {
@@ -173,7 +278,7 @@ func copyDefinition(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	if !st.Mode().IsRegular() || st.Mode()&0077 != 0 {
+	if !st.Mode().IsRegular() || st.Mode()&os.ModeSymlink != 0 || st.Mode()&0022 != 0 {
 		return errors.New("unsafe definition")
 	}
 	in, err := os.Open(src)
@@ -238,6 +343,66 @@ func (s CommandSupervisor) Control(ctx context.Context, a Action, names []Servic
 	}
 	return states, nil
 }
+
+// BootStatus observes whether the supervisor has enabled every selected
+// service. Managers without a stable enabled-state query fail closed instead
+// of inferring boot readiness from service status or setup history.
+func (s CommandSupervisor) BootStatus(ctx context.Context, names []ServiceName) (bool, error) {
+	if err := s.Manager.Validate(); err != nil {
+		return false, err
+	}
+	if len(names) == 0 {
+		return false, &ValidationError{"services", "empty"}
+	}
+	if s.Manager == SupervisorRunit {
+		return false, &ActionRequiredError{Manager: s.Manager, Service: names[0], Operation: "boot-status"}
+	}
+	if s.Manager == SupervisorDocker {
+		for _, name := range names {
+			compose, err := s.composeArgs("ps", "-q", "lumen-"+string(name))
+			if err != nil {
+				return false, err
+			}
+			out, _, err := s.call(ctx, name, "boot-status", "docker", compose...)
+			if err != nil {
+				return false, err
+			}
+			ids := strings.Fields(string(out))
+			if len(ids) != 1 {
+				return false, nil
+			}
+			out, _, err = s.call(ctx, name, "boot-status", "docker", "inspect", "--format", "{{.HostConfig.RestartPolicy.Name}}", ids[0])
+			if err != nil {
+				return false, err
+			}
+			policy := strings.TrimSpace(string(out))
+			if policy != "always" && policy != "unless-stopped" {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+	if s.Manager == SupervisorLaunchd {
+		return false, &ActionRequiredError{Manager: s.Manager, Service: names[0], Operation: "boot-status"}
+	}
+	if s.Manager != SupervisorSystemd {
+		return false, &ActionRequiredError{Manager: s.Manager, Service: names[0], Operation: "boot-status"}
+	}
+	for _, name := range names {
+		if err := validateName(name); err != nil {
+			return false, err
+		}
+		out, _, err := s.call(ctx, name, "is-enabled", "systemctl", "is-enabled", unitName(ServiceDefinition{Name: name}))
+		if err != nil {
+			return false, err
+		}
+		if strings.TrimSpace(string(out)) != "enabled" {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func unitName(d ServiceDefinition) string {
 	if d.Path != "" {
 		return d.Path
@@ -256,6 +421,15 @@ func launchdBootstrap(ctx context.Context, d ServiceDefinition) error {
 }
 func (s CommandSupervisor) observe(ctx context.Context, n ServiceName) (ServiceState, error) {
 	out, errout, err := s.runOutput(ctx, "status", ServiceDefinition{Name: n})
+	if s.Manager == SupervisorDocker {
+		if err != nil {
+			return ServiceState{}, fmt.Errorf("manager=%s service=%s operation=status: %w", s.Manager, n, err)
+		}
+		if strings.TrimSpace(string(out)) != "" {
+			return ServiceState{Name: n, State: StateRunning}, nil
+		}
+		return ServiceState{Name: n, State: StateStopped}, nil
+	}
 	text := strings.ToLower(string(out) + " " + string(errout))
 	st := StateUnknown
 	if strings.Contains(text, "running") || strings.Contains(text, "active (running)") {
@@ -276,6 +450,7 @@ func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDe
 	for _, d := range defs {
 		var name string
 		var args []string
+		var err error
 		switch s.Manager {
 		case SupervisorSystemd:
 			name = "systemctl"
@@ -289,10 +464,16 @@ func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDe
 		case SupervisorDocker:
 			name = "docker"
 			actual := op
-			if op == "enable" {
-				actual = "up"
+			args, err = s.composeArgs(actual, "lumen-"+string(d.Name))
+			if err != nil {
+				return err
 			}
-			args = []string{"compose", "-f", "deploy/docker/compose.yaml", actual, "-d", "lumen-" + string(d.Name)}
+			if op == "enable" {
+				args, err = s.composeArgs("up", "-d", "lumen-"+string(d.Name))
+				if err != nil {
+					return err
+				}
+			}
 		case SupervisorRunit:
 			name = "sv"
 			if op == "enable" {
@@ -329,7 +510,11 @@ func (s CommandSupervisor) runOutput(ctx context.Context, op string, d ServiceDe
 		args = []string{"print", "system/" + "dev.lumen." + string(d.Name)}
 	case SupervisorDocker:
 		name = "docker"
-		args = []string{"compose", "-f", "deploy/docker/compose.yaml", "ps", string(d.Name)}
+		var err error
+		args, err = s.composeArgs("ps", "--status", "running", "-q", "lumen-"+string(d.Name))
+		if err != nil {
+			return nil, nil, err
+		}
 	case SupervisorRunit:
 		name = "sv"
 		args = []string{"status", "lumen-" + string(d.Name)}

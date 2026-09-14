@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -105,6 +107,45 @@ func TestCreateRunUsesIdempotencyKeyAndDecodesRun(t *testing.T) {
 	}
 	if run.RunID != "run_1" || gotKey != "idem-1" {
 		t.Fatalf("run=%#v key=%q", run, gotKey)
+	}
+}
+
+func TestCreateRunDecodesReplayMetadata(t *testing.T) {
+	for _, replayed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replayed=%t", replayed), func(t *testing.T) {
+			srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusAccepted)
+				_, _ = fmt.Fprintf(w, `{"run_id":"run_1","status":"started","replayed":%t}`, replayed)
+			}))
+
+			c, err := New(testConfig(srv.URL))
+			if err != nil {
+				t.Fatal(err)
+			}
+			run, err := c.CreateRun(context.Background(), CreateRunRequest{Input: "hello"}, "idem-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if run.Replayed != replayed {
+				t.Fatalf("replayed = %t, want %t", run.Replayed, replayed)
+			}
+		})
+	}
+}
+
+func TestCreateRunRejectsUnknownResponseFields(t *testing.T) {
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"run_id":"run_1","status":"started","unexpected":true}`))
+	}))
+
+	c, err := New(testConfig(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.CreateRun(context.Background(), CreateRunRequest{Input: "hello"}, "idem-1"); !errors.Is(err, ErrCreateAmbiguous) {
+		t.Fatalf("error = %v, want ErrCreateAmbiguous", err)
 	}
 }
 
@@ -330,7 +371,7 @@ func TestStopUsesRunsEndpoint(t *testing.T) {
 			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"stopping"}`))
+		_, _ = w.Write([]byte(`{"run_id":"run_1","status":"stopping"}`))
 	}))
 	c, err := New(testConfig(srv.URL))
 	if err != nil {
@@ -339,6 +380,20 @@ func TestStopUsesRunsEndpoint(t *testing.T) {
 	got, err := c.Stop(context.Background(), "run_1")
 	if err != nil || got.Status != "stopping" {
 		t.Fatalf("stop=%#v err=%v", got, err)
+	}
+}
+
+func TestStopRejectsMismatchedRunEvidence(t *testing.T) {
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"run_id":"other","status":"completed"}`))
+	}))
+	c, err := New(testConfig(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Stop(context.Background(), "run_1"); !errors.Is(err, ErrInvalidEvidence) {
+		t.Fatalf("mismatched stop evidence accepted: %v", err)
 	}
 }
 
@@ -419,6 +474,60 @@ func TestHardenedConfigRequiresTLS13PinAndClientCertificate(t *testing.T) {
 	cfg.TLS = TLSConfig{MinVersion: tls.VersionTLS13}
 	if _, err := New(cfg); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("expected hardened identity requirements, got %v", err)
+	}
+}
+
+func TestVerifiedEndpointIdentityUsesLoopbackOrigin(t *testing.T) {
+	srv := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	c, err := New(testConfig(srv.URL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer, ok := any(c).(interface {
+		VerifiedEndpointIdentity(context.Context) (string, error)
+	})
+	if !ok {
+		t.Fatal("Hermes client does not expose verified endpoint identity")
+	}
+	identity, err := observer.VerifiedEndpointIdentity(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity != "loopback:"+srv.URL {
+		t.Fatalf("identity = %q, want loopback origin", identity)
+	}
+}
+
+func TestVerifiedEndpointIdentityUsesPinnedTLSPeer(t *testing.T) {
+	pki := makeTestPKI(t)
+	srv := newMutualTLSServer(t, pki, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	pin := sha256.Sum256(pki.ServerLeaf.Raw)
+	cfg := testConfig(srv.URL)
+	cfg.ProfileMode = ProfileHardened
+	cfg.TLS = TLSConfig{RootCAs: pki.Roots, ClientCertificate: pki.Client, ServerCertSHA256: pin[:], MinVersion: tls.VersionTLS13}
+	c, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observer, ok := any(c).(interface {
+		VerifiedEndpointIdentity(context.Context) (string, error)
+	})
+	if !ok {
+		t.Fatal("Hermes client does not expose verified endpoint identity")
+	}
+	identity, err := observer.VerifiedEndpointIdentity(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "tls-leaf-sha256:" + hex.EncodeToString(pin[:])
+	if identity != want {
+		t.Fatalf("identity = %q, want pinned TLS leaf identity %q", identity, want)
 	}
 }
 

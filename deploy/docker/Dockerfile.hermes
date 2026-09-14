@@ -2,13 +2,20 @@ FROM python:3.11-slim AS build
 COPY --from=ghcr.io/astral-sh/uv@sha256:b485bd65cc2cf1c9a93b3554012c9c3778cf7b1b5fd3d3096ce9e1226c97e1e6 /uv /uvx /bin/
 WORKDIR /src
 ARG HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
-ARG HERMES_SOURCE_ARCHIVE_SHA256
+ARG HERMES_SOURCE_ARCHIVE_SHA256=907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688
+ENV HERMES_EXPECTED_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
+ENV HERMES_EXPECTED_ARCHIVE_SHA256=907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688
 COPY hermes-source.tar.gz /tmp/hermes-source.tar.gz
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN test -n "$HERMES_SOURCE_ARCHIVE_SHA256" && echo "$HERMES_SOURCE_ARCHIVE_SHA256  /tmp/hermes-source.tar.gz" | sha256sum -c - && tar -xzf /tmp/hermes-source.tar.gz --strip-components=1 -C /src
-RUN uv sync --frozen --no-editable
+RUN test "$HERMES_COMMIT" = "$HERMES_EXPECTED_COMMIT" \
+    && test "$HERMES_SOURCE_ARCHIVE_SHA256" = "$HERMES_EXPECTED_ARCHIVE_SHA256" \
+    && echo "$HERMES_EXPECTED_ARCHIVE_SHA256  /tmp/hermes-source.tar.gz" | sha256sum -c - \
+    && test "$(tar -tzf /tmp/hermes-source.tar.gz | sed -n '1p')" = "hermes-agent-2026.9.7/" \
+    && tar -xzf /tmp/hermes-source.tar.gz --strip-components=1 -C /src
+RUN uv sync --frozen --extra messaging
 
 FROM python:3.11-slim
-WORKDIR /app
-COPY --from=build /src /app
-ENTRYPOINT ["/app/.venv/bin/hermes-agent"]
+WORKDIR /src
+COPY --from=build /src /src
+USER 65532:65532
+ENTRYPOINT ["/src/.venv/bin/hermes"]

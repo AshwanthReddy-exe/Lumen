@@ -1,0 +1,192 @@
+#!/bin/sh
+set -eu
+
+repo_root=${LUMEN_REPO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
+project=${COMPOSE_PROJECT_NAME:-lumen-external-check-$$}
+hermes_project=${project}-hermes
+port=${LUMEN_EXTERNAL_HERMES_HOST_PORT:-28643}
+work_root=${LUMEN_EXTERNAL_CHECK_ROOT:-${HOME:?HOME is required}/.lumen-external-check}
+mkdir -p -- "$work_root"
+chmod 700 -- "$work_root"
+work_dir=$(mktemp -d "$work_root/run.XXXXXX")
+data_dir=$work_dir/lumen-data
+secret_dir=$work_dir/secrets
+manifest=$work_dir/manifest.json
+cli=$work_dir/lumen
+host_artifact=$work_dir/lumen-host
+hermes_container=${hermes_project}-endpoint
+hermes_id=
+compose_ready=0
+
+cd "$repo_root"
+
+compose() {
+	docker compose -p "$project" -f deploy/docker/compose.external.yaml "$@"
+}
+
+cleanup() {
+	status=$?
+	if [ "$status" -ne 0 ] && [ "$compose_ready" -eq 1 ]; then
+		printf '%s\n' '--- redacted external journey logs ---' >&2
+		compose logs --no-color 2>&1 | sed -E 's/(Bearer[[:space:]]+)[A-Za-z0-9._-]+/\1REDACTED/g' >&2 || :
+		printf '%s\n' '--- end redacted logs ---' >&2
+	fi
+	if [ "$compose_ready" -eq 1 ]; then
+		# docker compose down --volumes is the owned Host cleanup boundary.
+		compose down --volumes --remove-orphans >/dev/null 2>&1 || :
+	fi
+	docker rm -f "$hermes_container" >/dev/null 2>&1 || :
+	rm -rf -- "$work_dir"
+	exit "$status"
+}
+trap cleanup EXIT
+
+fail() { printf 'lumen-external-check: %s\n' "$1" >&2; exit 1; }
+[ "$(uname -s)" = Linux ] || fail 'Linux is required for this journey'
+command -v docker >/dev/null 2>&1 || fail 'Docker is required'
+docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
+docker compose version >/dev/null 2>&1 || fail 'Docker Compose is required'
+command -v go >/dev/null 2>&1 || fail 'Go is required'
+command -v curl >/dev/null 2>&1 || fail 'curl is required'
+command -v openssl >/dev/null 2>&1 || fail 'OpenSSL is required'
+
+printf '%s\n' '=> external Hermes endpoint (independent Hermes lifecycle)'
+mkdir -m 700 "$data_dir" "$secret_dir"
+(umask 077; printf '%s\n' 'lumen-check-key' >"$secret_dir/hermes.token")
+chmod 600 "$secret_dir/hermes.token"
+bridge_gateway=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')
+[ -n "$bridge_gateway" ] || fail 'Docker bridge gateway is unavailable'
+openssl req -x509 -newkey rsa:2048 -nodes -days 1 -sha256 \
+	-subj '/CN=Lumen external check CA' -keyout "$secret_dir/ca.key" -out "$secret_dir/ca.pem" >/dev/null 2>&1
+openssl req -newkey rsa:2048 -nodes -sha256 -subj "/CN=$bridge_gateway" \
+	-keyout "$secret_dir/server.key" -out "$secret_dir/server.csr" >/dev/null 2>&1
+printf 'subjectAltName=IP:%s\n' "$bridge_gateway" >"$secret_dir/server.ext"
+openssl x509 -req -days 1 -sha256 -in "$secret_dir/server.csr" \
+	-CA "$secret_dir/ca.pem" -CAkey "$secret_dir/ca.key" -CAcreateserial \
+	-extfile "$secret_dir/server.ext" -out "$secret_dir/server.crt" >/dev/null 2>&1
+openssl req -newkey rsa:2048 -nodes -sha256 -subj '/CN=Lumen Host check' \
+	-keyout "$secret_dir/client.key" -out "$secret_dir/client.csr" >/dev/null 2>&1
+openssl x509 -req -days 1 -sha256 -in "$secret_dir/client.csr" \
+	-CA "$secret_dir/ca.pem" -CAkey "$secret_dir/ca.key" -CAcreateserial \
+	-out "$secret_dir/client.crt" >/dev/null 2>&1
+chmod 600 "$secret_dir"/*
+
+cat >"$work_dir/hermes.py" <<'PY'
+import json, ssl
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+class Hermes(BaseHTTPRequestHandler):
+    def log_message(self, *_): pass
+    def auth(self):
+        return self.headers.get("Authorization") == "Bearer lumen-check-key"
+    def send_json(self, value, status=200):
+        body = json.dumps(value).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def do_GET(self):
+        if not self.auth(): self.send_json({"error":"unauthorized"}, 401); return
+        if self.path == "/health": self.send_json({"status":"ok","version":"0.21.1"}); return
+        if self.path == "/v1/capabilities":
+            self.send_json({"object":"hermes.api_server.capabilities","platform":"hermes-agent","model":"external-check","auth":{"type":"bearer","required":True},"features":{"run_submission":True,"run_status":True,"run_events_sse":True,"run_approval_response":True,"run_stop":True},"endpoints":{"runs":"/v1/runs"},"runtime":{"version":"0.21.1"}}); return
+        if self.path == "/v1/runs/external-check-run": self.send_json({"id":"external-check-run","status":"completed","result":{"output":"external marker"}}); return
+        self.send_json({"error":"not found"}, 404)
+    def do_POST(self):
+        if not self.auth(): self.send_json({"error":"unauthorized"}, 401); return
+        if self.path != "/v1/runs": self.send_json({"error":"not found"}, 404); return
+        self.send_json({"id":"external-check-run","status":"completed"})
+
+server = ThreadingHTTPServer(("0.0.0.0", 8443), Hermes)
+tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+tls.minimum_version = ssl.TLSVersion.TLSv1_2
+tls.load_cert_chain("/tls/server.crt", "/tls/server.key")
+tls.load_verify_locations("/tls/ca.pem")
+tls.verify_mode = ssl.CERT_REQUIRED
+server.socket = tls.wrap_socket(server.socket, server_side=True)
+server.serve_forever()
+PY
+
+docker run -d --name "$hermes_container" --restart unless-stopped -p "0.0.0.0:$port:8443" \
+	-v "$work_dir/hermes.py:/hermes.py:ro" -v "$secret_dir:/tls:ro" \
+	python:3.12-alpine python -u /hermes.py >/dev/null
+# external Hermes container is independently supervised from the Host Compose project.
+hermes_id=$(docker inspect --format '{{.Id}}' "$hermes_container")
+endpoint="https://$bridge_gateway:$port"
+ready_i=0
+while [ "$ready_i" -lt 30 ]; do
+	if curl --silent --show-error --fail --max-time 2 \
+		--cacert "$secret_dir/ca.pem" --cert "$secret_dir/client.crt" --key "$secret_dir/client.key" \
+		-H 'Authorization: Bearer lumen-check-key' "$endpoint/health" >/dev/null 2>&1; then
+		break
+	fi
+	ready_i=$((ready_i + 1))
+	sleep 1
+done
+[ "$ready_i" -lt 30 ] || fail 'external Hermes endpoint did not become ready'
+export LUMEN_DATA_DIR="$data_dir"
+export LUMEN_HERMES_CREDENTIAL_FILE="$secret_dir/hermes.token"
+export LUMEN_HERMES_TOKEN_SOURCE="$secret_dir/hermes.token"
+export LUMEN_HERMES_CA_FILE="$secret_dir/ca.pem"
+export LUMEN_HERMES_CA_SOURCE="$secret_dir/ca.pem"
+export LUMEN_HERMES_CLIENT_CERT_FILE="$secret_dir/client.crt"
+export LUMEN_HERMES_CLIENT_CERT_SOURCE="$secret_dir/client.crt"
+export LUMEN_HERMES_CLIENT_KEY_FILE="$secret_dir/client.key"
+export LUMEN_HERMES_CLIENT_KEY_SOURCE="$secret_dir/client.key"
+export LUMEN_HERMES_BASE_URL="$endpoint"
+export LUMEN_HERMES_PROFILE=hardened
+export LUMEN_HERMES_SERVER_CERT_PIN=$(openssl x509 -in "$secret_dir/server.crt" -outform der | sha256sum | cut -d' ' -f1)
+export LUMEN_SETUP_PROFILE=personal-alpha
+export LUMEN_SETUP_TOPOLOGY=external
+export LUMEN_SUPERVISOR=docker
+export LUMEN_HOST_USER="$(id -u):$(id -g)"
+export COMPOSE_PROJECT_NAME="$project"
+export COMPOSE_FILE=deploy/docker/compose.yaml
+
+printf '%s\n' '=> build Host artifact and external manifest'
+go build -trimpath -ldflags='-s -w' -o "$cli" ./cmd/lumen
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$host_artifact" ./cmd/lumen-host
+chmod 700 "$cli" "$host_artifact"
+artifact_sha=$(sha256sum "$host_artifact" | cut -d' ' -f1)
+artifact_size=$(wc -c <"$host_artifact" | tr -d ' ')
+cat >"$manifest" <<EOF
+{"schemaVersion":1,"topology":"external","artifacts":[{"name":"lumen","version":"0.0.0","os":"linux","architecture":"amd64","profile":"personal-alpha","url":"https://github.com/AshwanthReddy-exe/Lumen","size":$artifact_size,"sha256":"sha256:$artifact_sha","contractVersion":1,"executableMode":448,"ownership":"lumen"}]}
+EOF
+export LUMEN_MANIFEST="$manifest"
+export LUMEN_LUMEN_ARTIFACT="$host_artifact"
+
+printf '%s\n' '=> prepare Host container artifact'
+compose_ready=1
+compose build lumen-host
+
+printf '%s\n' '=> lumen setup'
+setup_report=$("$cli" setup)
+printf '%s\n' "$setup_report" >"$work_dir/setup.json"
+printf '%s\n' "$setup_report" | grep -q '"outcome":"ready"' || {
+	printf '%s\n' "$setup_report" >&2
+	fail 'external setup did not report ready'
+}
+compose ps --status running -q lumen-host >/dev/null || fail 'external Host is not running'
+printf '%s\n' '=> rerun'
+"$cli" setup | grep -q '"outcome":"ready"' || fail 'external setup rerun did not report ready'
+printf '%s\n' '=> lumen doctor'
+"$cli" doctor | tee "$work_dir/doctor.json" | grep -q '"outcome":"ready"' || fail 'external doctor did not report ready'
+
+state_before=$(sha256sum "$data_dir/state.json" | cut -d' ' -f1)
+hermes_before=$(docker inspect --format '{{.Id}} {{.State.Status}}' "$hermes_container")
+printf '%s\n' '=> durable Compose project binding'
+export COMPOSE_PROJECT_NAME="${project}-substituted"
+printf '%s\n' '=> Host-only service restart'
+"$cli" service restart | grep -q '"outcome":"ready"' || fail 'Host-only restart failed'
+[ -z "$(docker ps -aq --filter label=com.docker.compose.project="${project}-substituted")" ] || fail 'service command used substituted Compose project'
+hermes_after_restart=$(docker inspect --format '{{.Id}} {{.State.Status}}' "$hermes_container")
+[ "$hermes_before" = "$hermes_after_restart" ] || fail 'Host-only restart changed external Hermes'
+printf '%s\n' '=> Host-only service stop/start'
+"$cli" service stop | grep -q '"outcome":"ready"' || fail 'Host-only stop failed'
+"$cli" service start | grep -q '"outcome":"ready"' || fail 'Host-only start failed'
+hermes_after_start=$(docker inspect --format '{{.Id}} {{.State.Status}}' "$hermes_container")
+[ "$hermes_before" = "$hermes_after_start" ] || fail 'Host-only stop/start changed external Hermes'
+state_after=$(sha256sum "$data_dir/state.json" | cut -d' ' -f1)
+[ "$state_before" = "$state_after" ] || fail 'state preservation check failed'
+printf '%s\n' 'external Hermes never controls Hermes lifecycle; state preservation passed'

@@ -1,0 +1,311 @@
+#!/bin/sh
+set -eu
+
+repo_root=${LUMEN_REPO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
+compose_file=$repo_root/deploy/docker/compose.yaml
+compose_override=$repo_root/deploy/docker/compose.milestone1.yaml
+project=${COMPOSE_PROJECT_NAME:-lumen-linux-check-$$}
+preserve=${LUMEN_LINUX_CHECK_PRESERVE:-0}
+case "$preserve" in
+	0) work_root=${TMPDIR:-/tmp} ;;
+	1)
+		work_root=${LUMEN_LINUX_CHECK_PRESERVE_ROOT:-${HOME:?HOME is required}/.local/state/lumen-owner-proof}
+		mkdir -p -- "$work_root"
+		chmod 700 -- "$work_root"
+		;;
+	*) printf '%s\n' 'lumen-linux-check: LUMEN_LINUX_CHECK_PRESERVE must be 0 or 1' >&2; exit 1 ;;
+esac
+work_dir=$(mktemp -d "$work_root/lumen-linux-check.XXXXXX")
+data_dir=$work_dir/lumen-data
+secret_dir=$work_dir/secrets
+manifest=$work_dir/manifest.json
+cli=$work_dir/lumen
+host_artifact=$work_dir/lumen-host
+setup_test=$work_dir/setup.test
+archive=$work_dir/hermes-source.tar.gz
+archive_target=$repo_root/hermes-source.tar.gz
+archive_copied=0
+compose_ready=0
+api_key=
+hermes_registry_tag=
+container_data_dir=/var/lib/lumen
+hermes_host_port=${LUMEN_HERMES_HOST_PORT:-28642}
+registry_host_port=${LUMEN_REGISTRY_HOST_PORT:-0}
+
+cd "$repo_root"
+
+compose() {
+	docker compose -p "$project" -f "$compose_file" -f "$compose_override" "$@"
+}
+
+redact() {
+	sed -E \
+		-e 's/[Bb]earer[[:space:]]+[A-Za-z0-9._-]+/[Bearer REDACTED]/g' \
+		-e 's/API_SERVER_KEY[=:][^[:space:]]+/API_SERVER_KEY=REDACTED/g' \
+		-e 's/lumen-test-key/REDACTED/g' \
+		-e "s/${api_key:-__unset__}/REDACTED/g" |
+		grep -v 'hermes\.token'
+}
+
+cleanup() {
+	status=$?
+	if [ "$status" -ne 0 ] && [ "$compose_ready" -eq 1 ]; then
+		printf '%s\n' '--- redacted combined Linux journey logs ---' >&2
+		if ! compose logs --no-color 2>&1 | redact >&2; then
+			:
+		fi
+		printf '%s\n' '--- end redacted logs ---' >&2
+	fi
+	if [ "$compose_ready" -eq 1 ]; then
+		if ! compose down --volumes --remove-orphans >/dev/null 2>&1; then
+			:
+		fi
+	fi
+	if [ "$archive_copied" -eq 1 ]; then
+		if ! rm -f -- "$archive_target"; then
+			:
+		fi
+	fi
+	if [ -n "$hermes_registry_tag" ]; then
+		docker image rm "$hermes_registry_tag" >/dev/null 2>&1 || :
+	fi
+	if ! rm -rf -- "$work_dir"; then
+		:
+	fi
+	exit "$status"
+}
+trap cleanup EXIT
+
+fail() {
+	printf 'lumen-linux-check: %s\n' "$1" >&2
+	exit 1
+}
+
+[ "$(uname -s)" = Linux ] || fail 'Linux is required for this journey'
+case "$(uname -m)" in
+	x86_64|amd64) ;;
+	*) fail 'amd64 Linux is required for this journey' ;;
+esac
+command -v docker >/dev/null 2>&1 || fail 'Docker is required'
+docker compose version >/dev/null 2>&1 || fail 'Docker Compose is required'
+docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
+command -v go >/dev/null 2>&1 || fail 'Go is required'
+command -v curl >/dev/null 2>&1 || fail 'curl is required to fetch the pinned source'
+command -v sha256sum >/dev/null 2>&1 || fail 'sha256sum is required'
+
+printf '%s\n' '=> clean-volume setup'
+mkdir -m 700 "$data_dir" "$secret_dir"
+mkdir -m 700 "$data_dir/hermes"
+api_key=${LUMEN_HERMES_API_SERVER_KEY:-lumen-linux-check-api-key-20260913}
+test "${#api_key}" -ge 16 || fail 'synthetic API server key must be at least 16 characters'
+(umask 077
+	printf '%s\n' "$api_key" >"$data_dir/hermes/hermes.token"
+	cp -- "$data_dir/hermes/hermes.token" "$secret_dir/hermes.token")
+chmod 600 "$data_dir/hermes/hermes.token" "$secret_dir/hermes.token"
+export LUMEN_DATA_DIR="$data_dir"
+export LUMEN_DATA_CONTAINER_DIR="$container_data_dir"
+export LUMEN_HERMES_API_SERVER_KEY="$api_key"
+export LUMEN_HERMES_HOST_PORT="$hermes_host_port"
+export LUMEN_REGISTRY_HOST_PORT="$registry_host_port"
+export LUMEN_HERMES_BASE_URL="http://127.0.0.1:$hermes_host_port"
+export LUMEN_HERMES_CONTAINER_BASE_URL=http://127.0.0.1:8642
+export LUMEN_HERMES_PROFILE=development
+export LUMEN_HERMES_TOKEN_SOURCE="$secret_dir/hermes.token"
+export LUMEN_HERMES_CA_SOURCE="$secret_dir/hermes.token"
+export LUMEN_HERMES_CLIENT_CERT_SOURCE="$secret_dir/hermes.token"
+export LUMEN_HERMES_CLIENT_KEY_SOURCE="$secret_dir/hermes.token"
+export LUMEN_SETUP_PROFILE=development
+export LUMEN_SETUP_TOPOLOGY=combined
+export LUMEN_SUPERVISOR=docker
+export LUMEN_HOST_USER="$(id -u):$(id -g)"
+export HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
+export COMPOSE_PROJECT_NAME="$project"
+export COMPOSE_FILE=deploy/docker/compose.yaml:deploy/docker/compose.milestone1.yaml
+export COMPOSE_PARALLEL_LIMIT=1
+export LUMEN_HERMES_BUILD_IMAGE="$project-lumen-hermes:milestone1"
+
+if [ -n "${LUMEN_HERMES_SOURCE_ARCHIVE:-}" ]; then
+	cp -- "$LUMEN_HERMES_SOURCE_ARCHIVE" "$archive"
+else
+	curl -fsSL --retry 3 --connect-timeout 10 --max-time 120 \
+		-o "$archive" \
+		https://github.com/NousResearch/hermes-agent/archive/refs/tags/v2026.9.7.tar.gz
+fi
+printf '%s  %s\n' 907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688 "$archive" | sha256sum -c -
+if [ -e "$archive_target" ]; then
+	printf '%s  %s\n' 907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688 "$archive_target" | sha256sum -c -
+else
+	cp -- "$archive" "$archive_target"
+	archive_copied=1
+fi
+export HERMES_SOURCE_ARCHIVE_SHA256=907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688
+
+go build -trimpath -ldflags='-s -w' -o "$cli" ./cmd/lumen
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o "$host_artifact" ./cmd/lumen-host
+go test -c -o "$setup_test" ./internal/setup
+chmod 700 "$cli" "$host_artifact"
+
+printf '%s\n' '=> Docker Compose build and pinned Hermes gateway'
+compose config >/dev/null
+compose_ready=1
+compose build lumen-hermes-init lumen-provider lumen-hermes lumen-host
+hermes_image_id=$(docker image inspect --format '{{.Id}}' "$LUMEN_HERMES_BUILD_IMAGE" 2>/dev/null) || \
+	fail 'Docker could not resolve the Hermes image identity'
+case "$hermes_image_id" in
+	sha256:*) ;;
+	*) fail 'Docker Compose did not return an immutable Hermes image identity' ;;
+esac
+compose up -d lumen-registry >/dev/null
+registry_container_id=$(compose ps -q lumen-registry)
+[ -n "$registry_container_id" ] || fail 'isolated registry container was not created'
+registry_address=$(docker inspect --format '{{with (index .NetworkSettings.Ports "5000/tcp")}}{{(index . 0).HostIp}}:{{(index . 0).HostPort}}{{end}}' "$registry_container_id")
+case "$registry_address" in
+	127.0.0.1:*) ;;
+	*) fail 'isolated registry was not published on loopback' ;;
+esac
+hermes_registry_tag="$registry_address/lumen/hermes:milestone1"
+docker image tag "$hermes_image_id" "$hermes_registry_tag"
+docker image push "$hermes_registry_tag" >/dev/null
+hermes_image_ref=$(docker image inspect --format '{{index .RepoDigests 0}}' "$hermes_registry_tag")
+case "$hermes_image_ref" in
+	"$registry_address/lumen/hermes@sha256:"*) ;;
+	*) fail 'local registry did not return an immutable Hermes manifest digest' ;;
+esac
+
+lumen_size=$(stat -c '%s' "$host_artifact")
+lumen_sha=$(sha256sum "$host_artifact" | cut -d' ' -f1)
+printf '%s\n' "{\"schemaVersion\":1,\"topology\":\"combined\",\"artifacts\":[{\"name\":\"lumen\",\"version\":\"0.0.0\",\"os\":\"linux\",\"architecture\":\"amd64\",\"profile\":\"development\",\"url\":\"https://github.com/AshwanthReddy-exe/Lumen\",\"size\":$lumen_size,\"sha256\":\"sha256:$lumen_sha\",\"contractVersion\":1,\"executableMode\":448,\"ownership\":\"lumen\"},{\"name\":\"hermes\",\"version\":\"2026.9.7\",\"os\":\"linux\",\"architecture\":\"amd64\",\"profile\":\"development\",\"kind\":\"docker-image\",\"imageRef\":\"$hermes_image_ref\",\"contractVersion\":1,\"ownership\":\"hermes\"}]}" >"$manifest"
+export LUMEN_MANIFEST="$manifest"
+export LUMEN_LUMEN_ARTIFACT="$host_artifact"
+
+printf '%s\n' '=> lumen setup'
+setup_report=$($cli setup)
+printf '%s\n' "$setup_report" | redact
+printf '%s\n' "$setup_report" | grep -q '"outcome":"ready"' || fail 'lumen setup did not report ready'
+
+wait_for_host() {
+	i=0
+	while [ "$i" -lt 60 ]; do
+		if compose exec -T lumen-host lumen-host status >"$work_dir/host-status.json" 2>"$work_dir/host-status.err"; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 1
+	done
+	redact <"$work_dir/host-status.err" >&2
+	return 1
+}
+
+wait_for_hermes() {
+	i=0
+	while [ "$i" -lt 60 ]; do
+		if compose exec -T lumen-hermes python -c 'import os,urllib.request; r=urllib.request.Request("http://127.0.0.1:8642/health",headers={"Authorization":"Bearer "+os.environ["API_SERVER_KEY"]}); urllib.request.urlopen(r,timeout=2).read()' >/dev/null 2>&1; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 1
+	done
+	return 1
+}
+
+wait_for_hermes || fail 'Hermes api_server did not become ready'
+wait_for_host || fail 'Host did not become ready'
+host_status=$(cat "$work_dir/host-status.json")
+host_node_id=$(printf '%s\n' "$host_status" | sed -n 's/.*"host_id":"\([^"]*\)".*/\1/p')
+[ -n "$host_node_id" ] || fail 'live Host status did not expose a node ID'
+
+printf '%s\n' '=> rerun'
+rerun_report=$($cli setup)
+printf '%s\n' "$rerun_report" | redact
+printf '%s\n' "$rerun_report" | grep -q '"outcome":"ready"' || fail 'setup rerun did not report ready'
+
+printf '%s\n' '=> forced interruption'
+[ -n "$(compose ps --status running -q lumen-host)" ] || fail 'Host was not running before forced interruption'
+compose kill -s SIGKILL lumen-host >/dev/null
+[ -z "$(compose ps --status running -q lumen-host)" ] || fail 'Host remained running after SIGKILL'
+compose up -d lumen-host >/dev/null
+wait_for_host || fail 'Host did not recover after forced interruption'
+wait_for_hermes || fail 'Hermes did not remain ready after Host interruption'
+
+printf '%s\n' '=> doctor'
+doctor_i=0
+while [ "$doctor_i" -lt 60 ]; do
+	doctor_report=$($cli doctor)
+	if printf '%s\n' "$doctor_report" | grep -q '"outcome":"ready"'; then
+		break
+	fi
+	doctor_i=$((doctor_i + 1))
+	sleep 1
+done
+printf '%s\n' "$doctor_report" | redact
+[ "$doctor_i" -lt 60 ] || fail 'doctor did not report ready'
+
+printf '%s\n' '=> service restart'
+service_report=$($cli service restart)
+printf '%s\n' "$service_report" | redact
+wait_for_hermes || fail 'Hermes did not recover after service restart'
+wait_for_host || fail 'Host did not recover after service restart'
+
+printf '%s\n' '=> configured synthetic task'
+approved_at=$(date +%s)
+expires_at=$((approved_at + 300))
+reconcile_by=$((approved_at + 240))
+task_submit=$(compose exec -T lumen-host lumen-host task submit \
+	--request_id linux-journey-submit --task_id linux-journey-task \
+	--capability_id agent.run/execute --action run \
+	--action_fingerprint linux-journey-input --input 'return the synthetic marker' \
+	--runtime_profile_digest sha256:linux-journey --reconcile_by "$reconcile_by" 2>&1) || fail 'configured synthetic task submission was rejected'
+printf '%s\n' "$task_submit" | redact
+approval=$(compose exec -T lumen-host lumen-host approval resolve \
+	--request_id linux-journey-approval --task_id linux-journey-task \
+	--target_node_id "$host_node_id" --action_fingerprint linux-journey-input \
+	--approval_id linux-journey-approval --approved_at "$approved_at" \
+	--expires_at "$expires_at" --reconcile_by "$reconcile_by" \
+	--runtime_profile_digest sha256:linux-journey --input 'return the synthetic marker' \
+	--decision once 2>&1) || fail 'configured synthetic task approval failed'
+printf '%s\n' "$approval" | redact
+i=0
+while [ "$i" -lt 60 ]; do
+	if task_status=$(compose exec -T lumen-host lumen-host task show --task_id linux-journey-task 2>/dev/null); then
+		if printf '%s\n' "$task_status" | grep -q '"status":"completed"' && printf '%s\n' "$task_status" | grep -q '"output":"synthetic marker"'; then
+			printf '%s\n' "$task_status" | redact
+			break
+		fi
+		if printf '%s\n' "$task_status" | grep -Eq '"status":"(failed|cancelled|unknown_outcome)"'; then
+			i=60
+			break
+		fi
+	fi
+	i=$((i + 1))
+	sleep 1
+done
+if [ "$i" -ge 60 ]; then
+	printf '%s\n' "${task_status:-{\"error\":\"task status unavailable\"}}" | redact >&2
+	compose logs --no-color lumen-hermes lumen-provider 2>&1 |
+		grep -E 'ERROR|Traceback|Provider:|Endpoint:|HTTP [45][0-9][0-9]' |
+		tail -n 80 | redact >&2 || :
+	fail 'configured synthetic task did not reach a proven terminal result with synthetic output'
+fi
+
+
+printf '%s\n' '=> failed update'
+"$setup_test" -test.run 'TestFailedReplacementPreservesInstalledArtifact|TestInstallRenameFailureRestoresPrior' -test.count=1
+printf '%s\n' '=> rollback'
+printf '%s\n' 'rollback evidence: failed replacement tests passed; prior artifact restoration was asserted by the setup contract'
+
+printf '%s\n' '=> final canonical state comparison'
+canonical_state() {
+	compose exec -T lumen-host lumen-host status
+}
+canonical_state >"$work_dir/state-before.json"
+compose restart lumen-host >/dev/null
+wait_for_host || fail 'Host did not recover before final comparison'
+canonical_state >"$work_dir/state-after.json"
+cmp -s "$work_dir/state-before.json" "$work_dir/state-after.json" || fail 'canonical Space identity/state changed'
+
+printf '%s\n' 'All combined Linux journey checkpoints passed.'
+if [ "$preserve" -eq 1 ]; then
+	printf 'preserved work directory: %s\n' "$work_dir"
+	printf 'preserved Compose project: %s\n' "$project"
+	trap - EXIT
+fi

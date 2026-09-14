@@ -44,10 +44,10 @@ func (d Doctor) Check(ctx context.Context) Report {
 		return Report{Outcome: ActionRequired, Actions: []Action{{Code: "doctor_unavailable"}}}
 	}
 	e := d.Observe(ctx)
-	r := Report{States: map[string]string{}}
+	r := Report{States: map[string]string{}, PreviouslyValidated: e.PreviouslyValidated, EndpointIdentityMatch: e.EndpointIdentityMatch, AuthenticationValid: e.AuthenticationValid, CompatibilityValid: e.CompatibilityValid, BindingMatch: e.BindingMatch}
 	r.Topology = e.Topology
-	externalMismatch := e.Topology == TopologyExternal && ((!e.EndpointIdentityMatch && e.PreviouslyValidated) || (!e.AuthenticationValid && e.PreviouslyValidated) || (!e.CompatibilityValid && e.PreviouslyValidated) || (!e.BindingMatch && e.PreviouslyValidated))
-	if externalMismatch {
+	durableMismatch := e.PreviouslyValidated && (!e.EndpointIdentityMatch || !e.AuthenticationValid || !e.CompatibilityValid || !e.BindingMatch)
+	if durableMismatch {
 		r.Outcome = ActionRequired
 		r.Actions = append(r.Actions, Action{Code: "hermes_binding_mismatch"})
 	}
@@ -143,7 +143,7 @@ func (d Doctor) Check(ctx context.Context) Report {
 		r.Actions = append(r.Actions, Action{Code: "host_unready"})
 		r.Outcome = ActionRequired
 	}
-	if e.HermesError != nil && !externalMismatch {
+	if e.HermesError != nil && !durableMismatch {
 		e.HermesReady = false
 		if r.Outcome == "" {
 			r.Outcome = Degraded

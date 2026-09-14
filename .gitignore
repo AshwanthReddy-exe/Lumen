@@ -16,6 +16,9 @@ DerivedData/
 # Machine-specific SDK configuration
 local.properties
 
+# Local credentials
+*.pem
+
 # Per-machine agent settings and generated repository graph
 .agents/
 .codex/

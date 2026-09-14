@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +26,21 @@ func TestDownloadAndInstallWritesExactBytes(t *testing.T) {
 	got, err := os.ReadFile(dir + "/installed/hermes")
 	if err != nil || string(got) != body {
 		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+func TestDownloadAndInstallRejectsDockerImageWithoutNetwork(t *testing.T) {
+	calls := 0
+	c := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("unexpected registry request")
+	})}
+	a := Artifact{Name: "hermes", Version: "1.0.0", OS: "linux", Architecture: "amd64", Profile: Development, Kind: ArtifactDockerImage, ImageRef: "ghcr.io/nousresearch/hermes-agent@sha256:" + strings.Repeat("c", 64), URL: "https://example.com/not-a-file", ContractVersion: 1, Ownership: "hermes"}
+	if err := DownloadAndInstall(context.Background(), a, Downloader{Client: c}, Installer{StageDir: t.TempDir(), InstallDir: t.TempDir()}); !errors.Is(err, ErrInvalidArtifact) {
+		t.Fatalf("docker image download error = %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("docker image triggered %d network calls", calls)
 	}
 }
 

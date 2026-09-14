@@ -108,7 +108,7 @@ func TestSupervisorDefinitionsAreStructuredAndBounded(t *testing.T) {
 		t.Fatalf("termux finish did not stop exact service: %s %v", out, err)
 	}
 	compose := readDefinition(t, "../../deploy/docker/compose.yaml")
-	for _, want := range []string{"restart: on-failure:3", "lumen-host", "read_only: true", "SIGTERM", "LUMEN_HERMES_PROFILE", "LUMEN_HERMES_BASE_URL", "LUMEN_HERMES_CA_FILE", "LUMEN_HERMES_CLIENT_CERT_FILE", "LUMEN_HERMES_CLIENT_KEY_FILE", "LUMEN_HERMES_SERVER_CERT_PIN", "hermes_ca.pem:ro", "hermes_client.crt:ro", "hermes_client.key:ro"} {
+	for _, want := range []string{"restart: unless-stopped", "lumen-host", "read_only: true", "SIGTERM", "LUMEN_HERMES_PROFILE", "LUMEN_HERMES_BASE_URL", "LUMEN_HERMES_CA_FILE", "LUMEN_HERMES_CLIENT_CERT_FILE", "LUMEN_HERMES_CLIENT_KEY_FILE", "LUMEN_HERMES_SERVER_CERT_PIN", "hermes_ca.pem:ro", "hermes_client.crt:ro", "hermes_client.key:ro"} {
 		if !strings.Contains(compose, want) {
 			t.Errorf("Docker compose missing %q", want)
 		}
@@ -118,6 +118,21 @@ func TestSupervisorDefinitionsAreStructuredAndBounded(t *testing.T) {
 	}
 	if strings.Contains(compose, "/var/lib/lumen/hermes") {
 		t.Error("Docker must not store Hermes secrets in the data volume")
+	}
+	external := readDefinition(t, "../../deploy/docker/compose.external.yaml")
+	if strings.Contains(external, "lumen-hermes") || strings.Contains(external, "lumen-hermes-init") {
+		t.Error("external Docker Compose must not define Hermes services")
+	}
+	if strings.Contains(external, "depends_on:") || strings.Contains(external, "network_mode: service:lumen-hermes") {
+		t.Error("external Docker Compose must not make Host depend on a local Hermes")
+	}
+	if !strings.Contains(external, "  lumen-host:") {
+		t.Error("external Docker Compose must define the Host service")
+	}
+	for _, want := range []string{"LUMEN_DATA_DIR: /var/lib/lumen", "LUMEN_HERMES_BASE_URL", "/run/secrets/hermes_token", "hermes_ca.pem:ro", "hermes_client.crt:ro", "hermes_client.key:ro", "host.docker.internal:host-gateway", "restart: unless-stopped"} {
+		if !strings.Contains(external, want) {
+			t.Errorf("external Docker Compose missing %q", want)
+		}
 	}
 }
 

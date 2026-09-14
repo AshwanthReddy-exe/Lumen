@@ -24,6 +24,9 @@ type Downloader struct {
 }
 
 func DownloadAndInstall(ctx context.Context, a Artifact, d Downloader, i Installer) error {
+	if validateArtifact(a) != nil {
+		return ErrInvalidArtifact
+	}
 	b, err := d.Open(ctx, a.URL, a.Size)
 	if err != nil {
 		return err

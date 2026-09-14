@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net"
@@ -8,16 +9,34 @@ import (
 )
 
 func Call(socket, credentialPath string, q Request) (Response, error) {
+	return CallContext(context.Background(), socket, credentialPath, q)
+}
+
+func CallContext(ctx context.Context, socket, credentialPath string, q Request) (Response, error) {
+	if err := ctx.Err(); err != nil {
+		return Response{}, err
+	}
 	b, err := ReadCredential(credentialPath)
 	if err != nil {
 		return Response{}, err
 	}
 	q.Credential = base64.RawStdEncoding.EncodeToString(b)
-	c, err := net.Dial("unix", socket)
+	c, err := (&net.Dialer{}).DialContext(ctx, "unix", socket)
 	if err != nil {
 		return Response{}, err
 	}
 	defer c.Close()
+	stopCancelWatch := make(chan struct{})
+	defer close(stopCancelWatch)
+	if ctx.Done() != nil {
+		go func() {
+			select {
+			case <-ctx.Done():
+				_ = c.SetDeadline(time.Now())
+			case <-stopCancelWatch:
+			}
+		}()
+	}
 	if err := writeRequest(c, q); err != nil {
 		return Response{}, err
 	}
@@ -26,7 +45,11 @@ func Call(socket, credentialPath string, q Request) (Response, error) {
 			return Response{}, err
 		}
 	}
-	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	deadline := time.Now().Add(5 * time.Second)
+	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
+	}
+	_ = c.SetReadDeadline(deadline)
 	rr, err := ReadResponse(c)
 	return rr, err
 }

@@ -4,11 +4,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 )
 
 func TestMacHostForwardsStatusWithConfiguredBinary(t *testing.T) {
+	if goruntime.GOOS != "darwin" {
+		t.Skip("macOS script contract")
+	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "lumen-host")
 	writeExecutable(t, bin, "#!/bin/sh\n[ \"$1\" = status ] || exit 9\nprintf '{\"status\":\"ready\"}\\n'\n")
@@ -21,6 +25,9 @@ func TestMacHostForwardsStatusWithConfiguredBinary(t *testing.T) {
 }
 
 func TestMacE2EApprovesOncePollsAndPrintsDurableOutput(t *testing.T) {
+	if goruntime.GOOS != "darwin" {
+		t.Skip("macOS script contract")
+	}
 	dir := t.TempDir()
 	home := filepath.Join(dir, "home")
 	dataDir := filepath.Join(home, ".local", "share", "lumen")
@@ -79,6 +86,9 @@ esac
 }
 
 func TestMacE2ERejectsHermesURLUserinfoWithoutLeakingIt(t *testing.T) {
+	if goruntime.GOOS != "darwin" {
+		t.Skip("macOS script contract")
+	}
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "lumen-host")
 	writeExecutable(t, bin, "#!/bin/sh\nprintf '{\"status\":\"ready\",\"host_id\":\"host-test\"}\\n'\n")

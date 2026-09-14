@@ -433,12 +433,15 @@ func TestInitialApprovalDenyRequiresExactPendingBinding(t *testing.T) {
 }
 
 func TestCancellationPersistsBeforeStopAndTerminalRaceWins(t *testing.T) {
-	r := &fakeRuntime{create: hermes.Run{RunID: "run-cancel", Status: "started"}, events: []hermes.Event{{ID: "done", Data: []byte(`{"status":"completed"}`)}}, stop: hermes.Run{RunID: "run-cancel", Status: "cancelled"}}
+	eventsGate := make(chan struct{})
+	r := &fakeRuntime{create: hermes.Run{RunID: "run-cancel", Status: "started"}, events: []hermes.Event{{ID: "done", Data: []byte(`{"status":"completed"}`)}}, stop: hermes.Run{RunID: "run-cancel", Status: "cancelled"}, eventsBlock: eventsGate}
 	s := executionService(t, r)
 	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-cancel", "task-cancel")); err != nil {
+		close(eventsGate)
 		t.Fatal(err)
 	}
 	tr, err := s.CancelTask(context.Background(), CancelRequest{Command: space.Command{Type: space.CommandRequestHostRunCancellation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "cancel", TaskID: "task-cancel", RuntimeRunID: "run-cancel", RuntimeProfileDigest: "sha256:profile", ObservedAt: 100}})
+	close(eventsGate)
 	if err != nil || tr.Rejection != "" || tr.Receipt.Outcome != space.OutcomeCancelling {
 		t.Fatalf("cancel: %#v %v", tr, err)
 	}
@@ -506,6 +509,35 @@ func TestRuntimeApprovalIsBoundAndForwardsOnceOrDeny(t *testing.T) {
 	}
 	if replay, err := s.ResolveRuntimeApproval(context.Background(), RuntimeApprovalRequest{Command: space.Command{Type: space.CommandResolveRuntimeApproval, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "resolve-runtime-approval", TaskID: "task-runtime-approval", RuntimeRunID: "run-approval", RuntimeProfileDigest: "sha256:profile", RuntimeApprovalID: "runtime-1", TargetNodeID: "host", ActionFingerprint: "digest", Decision: "once", ObservedAt: 110}}); err != nil || !replay.Replayed || len(r.approvalDecisions) != 1 {
 		t.Fatalf("approval replay duplicated delivery: %#v err=%v calls=%d", replay, err, len(r.approvalDecisions))
+	}
+}
+
+func TestRuntimeApprovalDoesNotTrustMismatchedStatusRun(t *testing.T) {
+	r := &fakeRuntime{
+		create:         hermes.Run{RunID: "run-approval-status", Status: "started"},
+		events:         []hermes.Event{{ID: "approval", Type: "approval.requested", Data: []byte(`{"status":"awaiting_approval","approval_id":"runtime-status","target_node_id":"host","action_fingerprint":"digest","expires_at":120}`)}},
+		statusDefault:  hermes.Run{RunID: "other-run", Status: "completed"},
+		approvalErrors: []error{errors.New("approval delivery uncertain")},
+	}
+	s := executionService(t, r)
+	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-runtime-status", "task-runtime-status")); err != nil {
+		t.Fatal(err)
+	}
+	waitForTask(t, s, "task-runtime-status", space.OutcomeAwaitingPermission)
+	command := space.Command{Type: space.CommandResolveRuntimeApproval, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "resolve-runtime-status", TaskID: "task-runtime-status", RuntimeRunID: "run-approval-status", RuntimeProfileDigest: "sha256:profile", RuntimeApprovalID: "runtime-status", TargetNodeID: "host", ActionFingerprint: "digest", Decision: "once", ObservedAt: 110}
+	if _, err := s.ResolveRuntimeApproval(context.Background(), RuntimeApprovalRequest{Command: command}); err == nil {
+		t.Fatal("expected first delivery to be uncertain")
+	}
+	if _, err := s.ResolveRuntimeApproval(context.Background(), RuntimeApprovalRequest{Command: command}); err == nil {
+		t.Fatal("mismatched status run was trusted")
+	}
+	state, err := s.state.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	approval := state.RuntimeApprovals["runtime-status"]
+	if approval.DeliveryState == "delivered" || state.Tasks["task-runtime-status"].Status != space.OutcomeAwaitingPermission {
+		t.Fatalf("mismatched status changed durable state: approval=%#v task=%#v", approval, state.Tasks["task-runtime-status"])
 	}
 }
 

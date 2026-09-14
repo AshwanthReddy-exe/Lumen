@@ -10,10 +10,7 @@ import (
 )
 
 func TestGeneratedConfigHasNoManualPlaceholders(t *testing.T) {
-	d, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := realTempDir(t)
 	p, err := WriteConfig(ConfigRequest{DataDir: filepath.Join(d, "lumen"), HermesDir: filepath.Join(d, "hermes"), Profile: Development, HermesBaseURL: "http://127.0.0.1:9090", HermesBearer: "token"})
 	if err != nil {
 		t.Fatal(err)
@@ -33,10 +30,7 @@ func TestGeneratedConfigHasNoManualPlaceholders(t *testing.T) {
 }
 
 func TestGeneratedPersonalAlphaConfigLoads(t *testing.T) {
-	d, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := realTempDir(t)
 	p, err := WriteConfig(ConfigRequest{DataDir: filepath.Join(d, "lumen"), HermesDir: filepath.Join(d, "hermes"), Profile: PersonalAlpha, HermesBaseURL: "http://127.0.0.1", HermesBearer: "token"})
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +59,7 @@ func TestWriteConfigRejectsSymlinkAndUncleanDirectories(t *testing.T) {
 }
 
 func TestWriteConfigRejectsSymlinkedIntermediateExistingFinal(t *testing.T) {
-	d, _ := filepath.EvalSymlinks(t.TempDir())
+	d := realTempDir(t)
 	real := filepath.Join(d, "real")
 	if err := os.Mkdir(real, 0700); err != nil {
 		t.Fatal(err)
@@ -84,10 +78,7 @@ func TestWriteConfigRejectsSymlinkedIntermediateExistingFinal(t *testing.T) {
 }
 
 func TestExternalWriteConfigDoesNotWriteHermesOwnedConfigOrSecrets(t *testing.T) {
-	d, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	d := realTempDir(t)
 	cred := filepath.Join(d, "external-token")
 	if err := os.WriteFile(cred, []byte("remote-secret"), 0600); err != nil {
 		t.Fatal(err)
@@ -109,7 +100,7 @@ func TestExternalWriteConfigDoesNotWriteHermesOwnedConfigOrSecrets(t *testing.T)
 }
 
 func TestExternalWriteConfigRejectsWrongOwnerReference(t *testing.T) {
-	d, _ := filepath.EvalSymlinks(t.TempDir())
+	d := realTempDir(t)
 	cred := filepath.Join(d, "token")
 	if err := os.WriteFile(cred, []byte("x"), 0600); err != nil {
 		t.Fatal(err)
@@ -120,5 +111,34 @@ func TestExternalWriteConfigRejectsWrongOwnerReference(t *testing.T) {
 	_, err := WriteConfig(ConfigRequest{DataDir: filepath.Join(d, "lumen"), HermesDir: filepath.Join(d, "hermes"), Profile: Development, Topology: TopologyExternal, HermesBaseURL: "https://hermes.example", HermesCredentialFile: cred})
 	if err == nil {
 		t.Fatal("wrong-owner reference accepted")
+	}
+}
+
+func TestExternalPersonalAlphaConfigUsesTLSFileReferences(t *testing.T) {
+	d := realTempDir(t)
+	files := make(map[string]string)
+	for _, name := range []string{"token", "ca.pem", "client.crt", "client.key"} {
+		path := filepath.Join(d, name)
+		if err := os.WriteFile(path, []byte(name), 0600); err != nil {
+			t.Fatal(err)
+		}
+		files[name] = path
+	}
+	p, err := WriteConfig(ConfigRequest{
+		DataDir: filepath.Join(d, "lumen"), HermesDir: filepath.Join(d, "unused-hermes"),
+		Profile: PersonalAlpha, Topology: TopologyExternal, HermesBaseURL: "https://hermes.example",
+		HermesCredentialFile: files["token"], HermesCAFile: files["ca.pem"],
+		HermesClientCertFile: files["client.crt"], HermesClientKeyFile: files["client.key"],
+		HermesServerPin: strings.Repeat("a", 64),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := host.ConfigFromFile(p.Lumen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HermesProfile != "hardened" || cfg.HermesCAPath != files["ca.pem"] {
+		t.Fatalf("external personal config = %#v", cfg)
 	}
 }

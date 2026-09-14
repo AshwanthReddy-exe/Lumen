@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27.1 standard library, existing encrypted Host/store, Hermes HTTP Runs adapter, JSON manifest/journal/configuration, systemd and Docker Compose reference deployment, existing `mise` gates.
 
-**Spec:** `docs/superpowers/specs/2026-09-11-milestone-1-dual-topology-design.md`
+**Spec:** [approved dual-topology foundation design](../specs/2026-09-11-milestone-1-dual-topology-design.md)
 
 ## Global Constraints
 

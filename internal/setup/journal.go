@@ -32,9 +32,14 @@ type Journal struct {
 type JournalBinding struct {
 	Profile                Profile           `json:"profile"`
 	Topology               Topology          `json:"topology"`
+	Supervisor             Supervisor        `json:"supervisor,omitempty"`
+	ComposeProject         string            `json:"composeProject,omitempty"`
 	EndpointOriginDigest   string            `json:"endpointOriginDigest,omitempty"`
 	EndpointIdentityDigest string            `json:"endpointIdentityDigest,omitempty"`
+	ReferenceDigests       map[string]string `json:"referenceDigests,omitempty"`
+	ArtifactPaths          map[string]string `json:"artifactPaths,omitempty"`
 	ArtifactDigests        map[string]string `json:"artifactDigests,omitempty"`
+	ArtifactRefs           map[string]string `json:"artifactRefs,omitempty"`
 	PlanDigest             string            `json:"planDigest"`
 }
 
@@ -44,13 +49,24 @@ func NewJournal(d string) (*Journal, error) {
 		var binding JournalBinding
 		dec := json.NewDecoder(bytes.NewReader(b))
 		dec.DisallowUnknownFields()
-		if dec.Decode(&binding) != nil || binding.Topology.Validate() != nil || !validProfile(binding.Profile) || !validDigest(binding.PlanDigest) || (binding.EndpointOriginDigest != "" && !validDigest(binding.EndpointOriginDigest)) || (binding.EndpointIdentityDigest != "" && !validDigest(binding.EndpointIdentityDigest)) {
+		if dec.Decode(&binding) != nil || binding.Topology.Validate() != nil || !validProfile(binding.Profile) || (binding.Supervisor != "" && binding.Supervisor.Validate() != nil) || validateComposeBinding(binding.Supervisor, binding.ComposeProject) != nil || !validDigest(binding.PlanDigest) || (binding.EndpointOriginDigest != "" && !validDigest(binding.EndpointOriginDigest)) || (binding.EndpointIdentityDigest != "" && !validDigest(binding.EndpointIdentityDigest)) {
 			return nil, ErrInvalidJournal
 		}
 		for _, digest := range binding.ArtifactDigests {
 			if !validDigest(digest) {
 				return nil, ErrInvalidJournal
 			}
+		}
+		for _, digest := range binding.ReferenceDigests {
+			if !validDigest(digest) {
+				return nil, ErrInvalidJournal
+			}
+		}
+		if !validArtifactPaths(binding.ArtifactPaths) {
+			return nil, ErrInvalidJournal
+		}
+		if !validArtifactRefs(binding.ArtifactRefs) || !disjointArtifactBindings(binding.ArtifactPaths, binding.ArtifactRefs) {
+			return nil, ErrInvalidJournal
 		}
 		var extra any
 		if dec.Decode(&extra) != io.EOF {
@@ -79,7 +95,7 @@ func NewJournal(d string) (*Journal, error) {
 	return j, validateEvidence(j.evidence)
 }
 func (j *Journal) Bind(b JournalBinding) error {
-	if !validProfile(b.Profile) || b.Topology.Validate() != nil || !validDigest(b.PlanDigest) || (b.EndpointOriginDigest != "" && !validDigest(b.EndpointOriginDigest)) || (b.EndpointIdentityDigest != "" && !validDigest(b.EndpointIdentityDigest)) {
+	if !validProfile(b.Profile) || b.Topology.Validate() != nil || (b.Supervisor != "" && b.Supervisor.Validate() != nil) || validateComposeBinding(b.Supervisor, b.ComposeProject) != nil || (b.Supervisor == SupervisorDocker && b.ComposeProject == "") || !validDigest(b.PlanDigest) || (b.EndpointOriginDigest != "" && !validDigest(b.EndpointOriginDigest)) || (b.EndpointIdentityDigest != "" && !validDigest(b.EndpointIdentityDigest)) {
 		return ErrInvalidJournal
 	}
 	for _, d := range b.ArtifactDigests {
@@ -87,7 +103,21 @@ func (j *Journal) Bind(b JournalBinding) error {
 			return ErrInvalidJournal
 		}
 	}
+	for _, d := range b.ReferenceDigests {
+		if !validDigest(d) {
+			return ErrInvalidJournal
+		}
+	}
+	if !validArtifactPaths(b.ArtifactPaths) {
+		return ErrInvalidJournal
+	}
+	if !validArtifactRefs(b.ArtifactRefs) || !disjointArtifactBindings(b.ArtifactPaths, b.ArtifactRefs) {
+		return ErrInvalidJournal
+	}
 	if j.binding != nil {
+		if ((j.binding.Supervisor == "" && b.Supervisor != "") || (j.binding.Supervisor == SupervisorDocker && j.binding.ComposeProject == "" && b.ComposeProject != "")) && legacyBindingCanUpgrade(*j.binding, b) {
+			return j.writeBinding(b)
+		}
 		if !bindingsEqual(*j.binding, b) {
 			return ErrInputChanged
 		}
@@ -96,7 +126,66 @@ func (j *Journal) Bind(b JournalBinding) error {
 	if err := os.MkdirAll(j.dir, 0700); err != nil {
 		return err
 	}
-	data, _ := json.Marshal(b)
+	return j.writeBinding(b)
+}
+
+// legacyBindingCanUpgrade accepts only fields absent from the old binding as
+// new evidence. Any value the old binding did record remains immutable.
+func legacyBindingCanUpgrade(old, next JournalBinding) bool {
+	if old.Profile != next.Profile || old.Topology != next.Topology || old.PlanDigest != next.PlanDigest {
+		return false
+	}
+	if old.ComposeProject != "" && old.ComposeProject != next.ComposeProject {
+		return false
+	}
+	if old.EndpointOriginDigest != "" && old.EndpointOriginDigest != next.EndpointOriginDigest {
+		return false
+	}
+	if old.EndpointIdentityDigest != "" && old.EndpointIdentityDigest != next.EndpointIdentityDigest {
+		return false
+	}
+	if old.ReferenceDigests != nil && !ReferenceDigestsMatch(old.ReferenceDigests, next.ReferenceDigests) {
+		return false
+	}
+	if old.ArtifactDigests != nil && !ReferenceDigestsMatch(old.ArtifactDigests, next.ArtifactDigests) {
+		return false
+	}
+	if old.ArtifactPaths != nil && !ReferenceDigestsMatch(old.ArtifactPaths, next.ArtifactPaths) {
+		return false
+	}
+	if old.ArtifactRefs != nil && !ReferenceDigestsMatch(old.ArtifactRefs, next.ArtifactRefs) {
+		return false
+	}
+	return true
+}
+
+func (j *Journal) writeBinding(b JournalBinding) error {
+	stored := b
+	if b.ReferenceDigests != nil {
+		stored.ReferenceDigests = make(map[string]string, len(b.ReferenceDigests))
+		for k, v := range b.ReferenceDigests {
+			stored.ReferenceDigests[k] = v
+		}
+	}
+	if b.ArtifactDigests != nil {
+		stored.ArtifactDigests = make(map[string]string, len(b.ArtifactDigests))
+		for k, v := range b.ArtifactDigests {
+			stored.ArtifactDigests[k] = v
+		}
+	}
+	if b.ArtifactPaths != nil {
+		stored.ArtifactPaths = make(map[string]string, len(b.ArtifactPaths))
+		for k, v := range b.ArtifactPaths {
+			stored.ArtifactPaths[k] = v
+		}
+	}
+	if b.ArtifactRefs != nil {
+		stored.ArtifactRefs = make(map[string]string, len(b.ArtifactRefs))
+		for k, v := range b.ArtifactRefs {
+			stored.ArtifactRefs[k] = v
+		}
+	}
+	data, _ := json.Marshal(stored)
 	tmp, err := os.CreateTemp(j.dir, ".binding-")
 	if err != nil {
 		return err
@@ -121,11 +210,46 @@ func (j *Journal) Bind(b JournalBinding) error {
 	if err = j.syncParent(j.dir); err != nil {
 		return fmt.Errorf("binding durability: %w", err)
 	}
-	j.binding = &b
+	j.binding = &stored
 	return nil
 }
+
+// Binding returns the immutable setup selection without exposing journal-owned
+// maps to callers. A missing binding is distinct from an empty binding.
+func (j *Journal) Binding() (JournalBinding, bool) {
+	if j == nil || j.binding == nil {
+		return JournalBinding{}, false
+	}
+	b := *j.binding
+	if j.binding.ReferenceDigests != nil {
+		b.ReferenceDigests = make(map[string]string, len(j.binding.ReferenceDigests))
+		for k, v := range j.binding.ReferenceDigests {
+			b.ReferenceDigests[k] = v
+		}
+	}
+	if j.binding.ArtifactDigests != nil {
+		b.ArtifactDigests = make(map[string]string, len(j.binding.ArtifactDigests))
+		for k, v := range j.binding.ArtifactDigests {
+			b.ArtifactDigests[k] = v
+		}
+	}
+	if j.binding.ArtifactPaths != nil {
+		b.ArtifactPaths = make(map[string]string, len(j.binding.ArtifactPaths))
+		for k, v := range j.binding.ArtifactPaths {
+			b.ArtifactPaths[k] = v
+		}
+	}
+	if j.binding.ArtifactRefs != nil {
+		b.ArtifactRefs = make(map[string]string, len(j.binding.ArtifactRefs))
+		for k, v := range j.binding.ArtifactRefs {
+			b.ArtifactRefs[k] = v
+		}
+	}
+	return b, true
+}
+
 func bindingsEqual(a, b JournalBinding) bool {
-	if a.Profile != b.Profile || a.Topology != b.Topology || a.EndpointOriginDigest != b.EndpointOriginDigest || a.EndpointIdentityDigest != b.EndpointIdentityDigest || a.PlanDigest != b.PlanDigest {
+	if a.Profile != b.Profile || a.Topology != b.Topology || a.Supervisor != b.Supervisor || a.ComposeProject != b.ComposeProject || a.EndpointOriginDigest != b.EndpointOriginDigest || a.EndpointIdentityDigest != b.EndpointIdentityDigest || a.PlanDigest != b.PlanDigest || !ReferenceDigestsMatch(a.ReferenceDigests, b.ReferenceDigests) || !ReferenceDigestsMatch(a.ArtifactPaths, b.ArtifactPaths) || !ReferenceDigestsMatch(a.ArtifactRefs, b.ArtifactRefs) {
 		return false
 	}
 	if len(a.ArtifactDigests) != len(b.ArtifactDigests) {
@@ -238,6 +362,34 @@ func validDigest(s string) bool {
 	}
 	return false
 }
+
+func validArtifactPaths(paths map[string]string) bool {
+	for name, path := range paths {
+		if name == "" || path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+			return false
+		}
+	}
+	return true
+}
+
+func validArtifactRefs(refs map[string]string) bool {
+	for name, ref := range refs {
+		if name == "" || !validPinnedImageRef(ref) {
+			return false
+		}
+	}
+	return true
+}
+
+func disjointArtifactBindings(paths, refs map[string]string) bool {
+	for name := range refs {
+		if _, ok := paths[name]; ok {
+			return false
+		}
+	}
+	return true
+}
+
 func validStage(s Stage) bool {
 	for _, v := range stageOrder {
 		if s == v {

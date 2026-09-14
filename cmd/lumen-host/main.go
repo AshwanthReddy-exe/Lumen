@@ -94,7 +94,7 @@ func doctor(c host.Config) int {
 func serve(c host.Config) int {
 	s, err := host.New(c)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "state unavailable")
+		fmt.Fprintf(os.Stderr, "startup unavailable: %v\n", err)
 		return 3
 	}
 	if err := s.Start(); err != nil {
