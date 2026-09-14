@@ -121,6 +121,7 @@ export LUMEN_HOST_USER="$(id -u):$(id -g)"
 export HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
 export COMPOSE_PROJECT_NAME="$project"
 export COMPOSE_FILE=deploy/docker/compose.yaml:deploy/docker/compose.milestone1.yaml
+export COMPOSE_PARALLEL_LIMIT=1
 export LUMEN_HERMES_BUILD_IMAGE="$project-lumen-hermes:milestone1"
 
 if [ -n "${LUMEN_HERMES_SOURCE_ARCHIVE:-}" ]; then
