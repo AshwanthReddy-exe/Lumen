@@ -127,6 +127,68 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 	}
 }
 
+func TestExternalSetupJourneyScriptContract(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scriptPath := filepath.Join(root, "scripts", "lumen-external-check")
+	b, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read external journey script: %v", err)
+	}
+	script := string(b)
+	if info, err := os.Stat(scriptPath); err != nil || info.Mode()&0111 == 0 {
+		t.Fatalf("external journey script must be executable: %v", err)
+	}
+	if !strings.HasPrefix(script, "#!/bin/sh\n") || !strings.Contains(script, "set -eu") {
+		t.Fatal("external journey script must use POSIX shell fail-fast mode")
+	}
+	for _, checkpoint := range []string{
+		"external Hermes endpoint", "docker run", "lumen setup", "rerun", "lumen doctor",
+		"Host-only service restart", "Host-only service stop/start", "state preservation",
+		"independent Hermes", "never controls Hermes", "cleanup",
+	} {
+		if !strings.Contains(script, checkpoint) {
+			t.Errorf("missing external journey checkpoint %q", checkpoint)
+		}
+	}
+	for _, required := range []string{
+		"LUMEN_SETUP_TOPOLOGY=external", "LUMEN_HERMES_PROFILE=development",
+		"COMPOSE_PROJECT_NAME", "compose.external.yaml", "--status running -q lumen-host",
+		"docker inspect", "docker compose", "docker compose down --volumes",
+		"external Hermes container", "sha256:", "LUMEN_LUMEN_ARTIFACT",
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("missing external journey operation %q", required)
+		}
+	}
+	for _, forbidden := range []string{"reboot", "host reboot", "docker compose.*lumen-hermes", "network_mode: host"} {
+		if strings.Contains(strings.ToLower(script), strings.ToLower(forbidden)) {
+			t.Errorf("external journey contains unsupported claim or unsafe boundary %q", forbidden)
+		}
+	}
+	miseBytes, err := os.ReadFile(filepath.Join(root, "mise.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mise := string(miseBytes)
+	start := strings.Index(mise, "[tasks.milestone1-external-check]")
+	if start < 0 {
+		t.Fatal("mise.toml is missing milestone1-external-check")
+	}
+	end := strings.Index(mise[start+1:], "\n[tasks.")
+	if end < 0 {
+		end = len(mise) - start - 1
+	}
+	task := mise[start : start+1+end]
+	for _, required := range []string{"go test", "go build", "docker compose", "lumen-external-check"} {
+		if !strings.Contains(task, required) {
+			t.Errorf("milestone1-external-check is missing %q", required)
+		}
+	}
+}
+
 func TestLinuxSetupJourneyUsesLiveHostNodeForApproval(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {

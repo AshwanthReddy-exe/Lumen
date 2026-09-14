@@ -48,3 +48,15 @@ run = [
   "test -f deploy/docker/compose.yaml && docker compose version",
   "scripts/lumen-linux-check",
 ]
+
+[tasks.milestone1-external-check]
+description = "Run the external Hermes adoption and Host-only lifecycle journey"
+run = [
+  "go test ./test/contract -run TestExternalSetupJourneyScriptContract -count=1",
+  "mkdir -p build/lumen-host",
+  "CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o build/lumen-host/lumen-host-linux-amd64 ./cmd/lumen-host",
+  "sh -n scripts/lumen-external-check",
+  "test -x scripts/lumen-external-check",
+  "docker compose version",
+  "scripts/lumen-external-check",
+]
