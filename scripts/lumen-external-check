@@ -156,8 +156,11 @@ EOF
 export LUMEN_MANIFEST="$manifest"
 export LUMEN_LUMEN_ARTIFACT="$host_artifact"
 
-printf '%s\n' '=> lumen setup'
+printf '%s\n' '=> prepare Host container artifact'
 compose_ready=1
+compose build lumen-host
+
+printf '%s\n' '=> lumen setup'
 setup_report=$("$cli" setup)
 printf '%s\n' "$setup_report" >"$work_dir/setup.json"
 printf '%s\n' "$setup_report" | grep -q '"outcome":"ready"' || {
