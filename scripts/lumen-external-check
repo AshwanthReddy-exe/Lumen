@@ -5,7 +5,10 @@ repo_root=${LUMEN_REPO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
 project=${COMPOSE_PROJECT_NAME:-lumen-external-check-$$}
 hermes_project=${project}-hermes
 port=${LUMEN_EXTERNAL_HERMES_HOST_PORT:-28643}
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/lumen-external-check.XXXXXX")
+work_root=${LUMEN_EXTERNAL_CHECK_ROOT:-${HOME:?HOME is required}/.lumen-external-check}
+mkdir -p -- "$work_root"
+chmod 700 -- "$work_root"
+work_dir=$(mktemp -d "$work_root/run.XXXXXX")
 data_dir=$work_dir/lumen-data
 secret_dir=$work_dir/secrets
 manifest=$work_dir/manifest.json

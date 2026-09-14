@@ -161,6 +161,7 @@ func TestExternalSetupJourneyScriptContract(t *testing.T) {
 		"./cmd/lumen\n", "./cmd/lumen-host", `"$cli" setup`, "$data_dir/state.json",
 		"ready_i", "curl --silent --show-error --fail", "external Hermes endpoint did not become ready",
 		"openssl req", "ssl.CERT_REQUIRED", "LUMEN_HERMES_SERVER_CERT_PIN", "--cacert", "--cert", "--key",
+		"LUMEN_EXTERNAL_CHECK_ROOT", "chmod 700",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("missing external journey operation %q", required)
