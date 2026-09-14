@@ -182,7 +182,14 @@ func setupCommand(ctx context.Context) setup.Report {
 		}
 		if topology == setup.TopologyExternal {
 			endpointDigest, digestErr := setup.EndpointOriginDigest(hermesEndpoint())
-			if digestErr != nil || endpointDigest != existingBinding.EndpointOriginDigest {
+			candidateReferences := setup.DigestReferences(map[string]string{
+				"credential":  os.Getenv("LUMEN_HERMES_CREDENTIAL_FILE"),
+				"ca":          os.Getenv("LUMEN_HERMES_CA_FILE"),
+				"client_cert": os.Getenv("LUMEN_HERMES_CLIENT_CERT_FILE"),
+				"client_key":  os.Getenv("LUMEN_HERMES_CLIENT_KEY_FILE"),
+				"server_pin":  os.Getenv("LUMEN_HERMES_SERVER_CERT_PIN"),
+			})
+			if digestErr != nil || endpointDigest != existingBinding.EndpointOriginDigest || !setup.ReferenceDigestsMatch(existingBinding.ReferenceDigests, candidateReferences) {
 				return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "setup_identity_mismatch"}}}
 			}
 		}

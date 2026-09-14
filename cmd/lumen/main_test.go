@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
@@ -454,7 +455,7 @@ func TestSetupRerunPreservesIdentityAndCredentials(t *testing.T) {
 
 func TestSetupExternalBindingRejectsImmutableEvidenceBeforeRecreatingMissingAdoption(t *testing.T) {
 	h := newSetupJourneyFixture(t, setup.TopologyExternal)
-	firstEndpoint := newExternalHermesServer(t)
+	firstEndpoint, hermesCalls := newExternalHermesServerWithCalls(t)
 	t.Setenv("LUMEN_HERMES_BASE_URL", firstEndpoint)
 	t.Setenv("LUMEN_HERMES_IDENTITY", "missing-adoption-first")
 	if report := runForTest([]string{"setup"}); report.Outcome != setup.Ready {
@@ -465,6 +466,7 @@ func TestSetupExternalBindingRejectsImmutableEvidenceBeforeRecreatingMissingAdop
 		t.Fatal(err)
 	}
 	before := snapshotRegularFiles(t, h.dataDir)
+	beforeCalls := hermesCalls.Load()
 
 	secondCredential := filepath.Join(secureTestDir(t), "remote.token")
 	if err := os.WriteFile(secondCredential, []byte("different-remote-secret"), 0600); err != nil {
@@ -478,6 +480,9 @@ func TestSetupExternalBindingRejectsImmutableEvidenceBeforeRecreatingMissingAdop
 	}
 	if after := snapshotRegularFiles(t, h.dataDir); !reflect.DeepEqual(after, before) {
 		t.Fatalf("rejected setup mutated data directory: before=%v after=%v", before, after)
+	}
+	if afterCalls := hermesCalls.Load(); afterCalls != beforeCalls {
+		t.Fatalf("rejected credential substitution contacted Hermes: before=%d after=%d", beforeCalls, afterCalls)
 	}
 }
 
@@ -624,7 +629,15 @@ func newSetupJourneyFixture(t *testing.T, topology setup.Topology) setupJourneyF
 
 func newExternalHermesServer(t *testing.T) string {
 	t.Helper()
+	endpoint, _ := newExternalHermesServerWithCalls(t)
+	return endpoint
+}
+
+func newExternalHermesServerWithCalls(t *testing.T) (string, *atomic.Int32) {
+	t.Helper()
+	var calls atomic.Int32
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
 		if r.Method != http.MethodGet {
 			t.Errorf("external Hermes received lifecycle method %s", r.Method)
 		}
@@ -645,7 +658,7 @@ func newExternalHermesServer(t *testing.T) string {
 	remote := &http.Server{Handler: handler}
 	go func() { _ = remote.Serve(listener) }()
 	t.Cleanup(func() { _ = remote.Close() })
-	return "http://" + listener.Addr().String()
+	return "http://" + listener.Addr().String(), &calls
 }
 
 func fixtureDigest(b []byte) string {

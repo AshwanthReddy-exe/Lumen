@@ -52,7 +52,7 @@ command -v openssl >/dev/null 2>&1 || fail 'OpenSSL is required'
 
 printf '%s\n' '=> external Hermes endpoint (independent Hermes lifecycle)'
 mkdir -m 700 "$data_dir" "$secret_dir"
-(umask 077; printf '%s\n' 'lumen-external-check-token' >"$secret_dir/hermes.token")
+(umask 077; printf '%s\n' 'lumen-check-key' >"$secret_dir/hermes.token")
 chmod 600 "$secret_dir/hermes.token"
 bridge_gateway=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')
 [ -n "$bridge_gateway" ] || fail 'Docker bridge gateway is unavailable'
@@ -78,7 +78,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 class Hermes(BaseHTTPRequestHandler):
     def log_message(self, *_): pass
     def auth(self):
-        return self.headers.get("Authorization") == "Bearer lumen-external-check-token"
+        return self.headers.get("Authorization") == "Bearer lumen-check-key"
     def send_json(self, value, status=200):
         body = json.dumps(value).encode()
         self.send_response(status)
@@ -118,7 +118,7 @@ ready_i=0
 while [ "$ready_i" -lt 30 ]; do
 	if curl --silent --show-error --fail --max-time 2 \
 		--cacert "$secret_dir/ca.pem" --cert "$secret_dir/client.crt" --key "$secret_dir/client.key" \
-		-H 'Authorization: Bearer lumen-external-check-token' "$endpoint/health" >/dev/null 2>&1; then
+		-H 'Authorization: Bearer lumen-check-key' "$endpoint/health" >/dev/null 2>&1; then
 		break
 	fi
 	ready_i=$((ready_i + 1))
