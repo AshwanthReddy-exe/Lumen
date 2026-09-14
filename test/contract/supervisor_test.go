@@ -119,6 +119,21 @@ func TestSupervisorDefinitionsAreStructuredAndBounded(t *testing.T) {
 	if strings.Contains(compose, "/var/lib/lumen/hermes") {
 		t.Error("Docker must not store Hermes secrets in the data volume")
 	}
+	external := readDefinition(t, "../../deploy/docker/compose.external.yaml")
+	if strings.Contains(external, "lumen-hermes") || strings.Contains(external, "lumen-hermes-init") {
+		t.Error("external Docker Compose must not define Hermes services")
+	}
+	if strings.Contains(external, "depends_on:") || strings.Contains(external, "network_mode: service:lumen-hermes") {
+		t.Error("external Docker Compose must not make Host depend on a local Hermes")
+	}
+	if !strings.Contains(external, "  lumen-host:") {
+		t.Error("external Docker Compose must define the Host service")
+	}
+	for _, want := range []string{"LUMEN_DATA_DIR: /var/lib/lumen", "LUMEN_HERMES_BASE_URL", "/run/secrets/hermes_token", "hermes_ca.pem:ro", "hermes_client.crt:ro", "hermes_client.key:ro", "restart: unless-stopped"} {
+		if !strings.Contains(external, want) {
+			t.Errorf("external Docker Compose missing %q", want)
+		}
+	}
 }
 
 func TestTermuxInstallerHardensManifestArtifacts(t *testing.T) {

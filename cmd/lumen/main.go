@@ -467,7 +467,7 @@ func serviceCommand(ctx context.Context, action string) setup.Report {
 	if d.journal.Next() != setup.Validated {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: d.binding.Profile, Topology: d.binding.Topology, Stage: d.journal.Next(), Actions: []setup.Action{{Code: "setup_incomplete"}}}
 	}
-	states, err := (setup.CommandSupervisor{Manager: d.supervisor}).Control(ctx, setup.Action{Code: action}, d.services)
+	states, err := (setup.CommandSupervisor{Manager: d.supervisor, Topology: d.binding.Topology}).Control(ctx, setup.Action{Code: action}, d.services)
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: d.binding.Profile, Topology: d.binding.Topology, Actions: []setup.Action{{Code: "service_unavailable"}}}
 	}
@@ -650,11 +650,18 @@ func defaultHostStatus(ctx context.Context, cfg host.Config) (string, error) {
 }
 
 func defaultSupervisorStatus(ctx context.Context, manager setup.Supervisor, services []setup.ServiceName) ([]setup.ServiceState, error) {
-	return (setup.CommandSupervisor{Manager: manager}).Control(ctx, setup.Action{Code: "status"}, services)
+	return (setup.CommandSupervisor{Manager: manager, Topology: topologyForOwnedServices(services)}).Control(ctx, setup.Action{Code: "status"}, services)
 }
 
 func defaultBootStatus(ctx context.Context, manager setup.Supervisor, services []setup.ServiceName) (bool, error) {
-	return (setup.CommandSupervisor{Manager: manager}).BootStatus(ctx, services)
+	return (setup.CommandSupervisor{Manager: manager, Topology: topologyForOwnedServices(services)}).BootStatus(ctx, services)
+}
+
+func topologyForOwnedServices(services []setup.ServiceName) setup.Topology {
+	if len(services) == 1 && services[0] == setup.ServiceHost {
+		return setup.TopologyExternal
+	}
+	return setup.TopologyCombined
 }
 
 func defaultHermesProbe(ctx context.Context, cfg host.Config, adoption *setup.ExternalAdoption) hermesObservation {
@@ -916,7 +923,7 @@ func (s *setupState) runStage(ctx context.Context, stage setup.Stage) error {
 			return errors.New("supervisor unavailable")
 		}
 		s.manager = manager
-		if _, err := (setup.CommandSupervisor{Manager: manager}).Control(ctx, setup.Action{Code: "start"}, ownedServices(s.topology)); err != nil {
+		if _, err := (setup.CommandSupervisor{Manager: manager, Topology: s.topology}).Control(ctx, setup.Action{Code: "start"}, ownedServices(s.topology)); err != nil {
 			return err
 		}
 		s.started = true
@@ -1252,7 +1259,7 @@ func (s *setupState) installServices(ctx context.Context) error {
 			return err
 		}},
 	}
-	if err := setup.InstallServices(ctx, setup.CommandSupervisor{Manager: manager}, plan); err != nil {
+	if err := setup.InstallServices(ctx, setup.CommandSupervisor{Manager: manager, Topology: s.topology}, plan); err != nil {
 		return err
 	}
 	s.installed = true

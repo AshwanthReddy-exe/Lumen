@@ -138,16 +138,25 @@ type ComposeConfig struct {
 }
 
 type CommandSupervisor struct {
-	Manager Supervisor
-	Compose ComposeConfig
+	Manager  Supervisor
+	Topology Topology
+	Compose  ComposeConfig
 }
 
 const defaultComposeFile = "deploy/docker/compose.yaml"
+const externalComposeFile = "deploy/docker/compose.external.yaml"
 
 func (s CommandSupervisor) composeArgs(operation string, services ...string) ([]string, error) {
 	c := s.Compose
 	if c.Project == "" {
 		c.Project = os.Getenv("COMPOSE_PROJECT_NAME")
+	}
+	if s.Topology == TopologyExternal {
+		if len(c.Files) == 0 {
+			c.Files = []string{externalComposeFile}
+		} else if len(c.Files) != 1 || c.Files[0] != externalComposeFile {
+			return nil, &ValidationError{"compose file", strings.Join(c.Files, string(os.PathListSeparator))}
+		}
 	}
 	if len(c.Files) == 0 {
 		if raw := os.Getenv("COMPOSE_FILE"); raw != "" {

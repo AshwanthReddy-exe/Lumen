@@ -1,0 +1,31 @@
+services:
+  lumen-host:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    command: ["serve"]
+    read_only: true
+    environment:
+      LUMEN_DATA_DIR: /var/lib/lumen
+      LUMEN_OPERATOR_CREDENTIAL_FILE: /var/lib/lumen/operator.credential
+      LUMEN_HERMES_BEARER_FILE: /run/secrets/hermes_token
+      LUMEN_HERMES_PROFILE: ${LUMEN_HERMES_PROFILE:?set Hermes profile}
+      LUMEN_HERMES_BASE_URL: ${LUMEN_HERMES_BASE_URL:?set external Hermes API server URL}
+      LUMEN_HERMES_CA_FILE: /run/secrets/hermes_ca.pem
+      LUMEN_HERMES_CLIENT_CERT_FILE: /run/secrets/hermes_client.crt
+      LUMEN_HERMES_CLIENT_KEY_FILE: /run/secrets/hermes_client.key
+      LUMEN_HERMES_SERVER_CERT_PIN: ${LUMEN_HERMES_SERVER_CERT_PIN:?set Hermes server certificate pin}
+    volumes:
+      - ${LUMEN_DATA_DIR:?set isolated Lumen data directory}:/var/lib/lumen
+      - ${LUMEN_HERMES_TOKEN_SOURCE:?set Hermes bearer secret source}:/run/secrets/hermes_token:ro
+      - ${LUMEN_HERMES_CA_SOURCE:?set Hermes CA source}:/run/secrets/hermes_ca.pem:ro
+      - ${LUMEN_HERMES_CLIENT_CERT_SOURCE:?set Hermes client certificate source}:/run/secrets/hermes_client.crt:ro
+      - ${LUMEN_HERMES_CLIENT_KEY_SOURCE:?set Hermes client key source}:/run/secrets/hermes_client.key:ro
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    user: "${LUMEN_HOST_USER:-65532:65532}"
+    networks: [lumen-egress]
+
+networks:
+  lumen-egress: {}

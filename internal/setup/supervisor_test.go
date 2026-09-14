@@ -95,6 +95,38 @@ func TestDockerSupervisorUsesComposeServiceNamesAndOptions(t *testing.T) {
 	}
 }
 
+func TestDockerExternalSupervisorForcesStandaloneComposeFile(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &recordingRunner{}
+	commandRunner = r
+	t.Setenv("COMPOSE_FILE", "deploy/docker/compose.yaml")
+	s := CommandSupervisor{Manager: SupervisorDocker, Topology: TopologyExternal}
+	if _, err := s.Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHost}); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"docker", "compose", "-f", "deploy/docker/compose.external.yaml", "ps", "--status", "running", "-q", "lumen-host"}
+	if !reflect.DeepEqual(r.calls[0], want) {
+		t.Fatalf("status call=%#v, want %#v", r.calls[0], want)
+	}
+}
+
+func TestDockerExternalSupervisorRejectsCombinedComposeFile(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &recordingRunner{}
+	commandRunner = r
+	s := CommandSupervisor{Manager: SupervisorDocker, Topology: TopologyExternal, Compose: ComposeConfig{
+		Files: []string{"deploy/docker/compose.yaml"},
+	}}
+	if _, err := s.Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHost}); err == nil {
+		t.Fatal("accepted combined Compose file for external topology")
+	}
+	if len(r.calls) != 0 {
+		t.Fatalf("ran Docker command after rejecting combined Compose file: %#v", r.calls)
+	}
+}
+
 func TestDockerSupervisorUsesConfiguredComposeProjectAndFiles(t *testing.T) {
 	old := commandRunner
 	t.Cleanup(func() { commandRunner = old })
