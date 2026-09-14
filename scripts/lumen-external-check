@@ -9,7 +9,8 @@ work_dir=$(mktemp -d "${TMPDIR:-/tmp}/lumen-external-check.XXXXXX")
 data_dir=$work_dir/lumen-data
 secret_dir=$work_dir/secrets
 manifest=$work_dir/manifest.json
-artifact=$work_dir/lumen-host
+cli=$work_dir/lumen
+host_artifact=$work_dir/lumen-host
 hermes_container=${hermes_project}-endpoint
 hermes_id=
 compose_ready=0
@@ -44,7 +45,7 @@ docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
 docker compose version >/dev/null 2>&1 || fail 'Docker Compose is required'
 command -v go >/dev/null 2>&1 || fail 'Go is required'
 
-	printf '%s\n' '=> external Hermes endpoint (independent Hermes lifecycle)'
+printf '%s\n' '=> external Hermes endpoint (independent Hermes lifecycle)'
 mkdir -m 700 "$data_dir" "$secret_dir"
 (umask 077; printf '%s\n' 'lumen-external-check-token' >"$secret_dir/hermes.token")
 chmod 600 "$secret_dir/hermes.token"
@@ -82,7 +83,9 @@ PY
 docker run -d --name "$hermes_container" --restart unless-stopped -p "0.0.0.0:$port:8080" -v "$work_dir/hermes.py:/hermes.py:ro" python:3.12-alpine python -u /hermes.py >/dev/null
 # external Hermes container is independently supervised from the Host Compose project.
 hermes_id=$(docker inspect --format '{{.Id}}' "$hermes_container")
-endpoint="http://host.docker.internal:$port"
+bridge_gateway=$(docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}')
+[ -n "$bridge_gateway" ] || fail 'Docker bridge gateway is unavailable'
+endpoint="http://$bridge_gateway:$port"
 export LUMEN_DATA_DIR="$data_dir"
 export LUMEN_HERMES_CREDENTIAL_FILE="$secret_dir/hermes.token"
 export LUMEN_HERMES_TOKEN_SOURCE="$secret_dir/hermes.token"
@@ -100,37 +103,37 @@ export COMPOSE_PROJECT_NAME="$project"
 export COMPOSE_FILE=deploy/docker/compose.yaml
 
 printf '%s\n' '=> build Host artifact and external manifest'
-CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$artifact" ./cmd/lumen-host
-chmod 700 "$artifact"
-artifact_sha=$(sha256sum "$artifact" | cut -d' ' -f1)
-artifact_size=$(wc -c <"$artifact" | tr -d ' ')
+go build -trimpath -ldflags='-s -w' -o "$cli" ./cmd/lumen
+CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$host_artifact" ./cmd/lumen-host
+chmod 700 "$cli" "$host_artifact"
+artifact_sha=$(sha256sum "$host_artifact" | cut -d' ' -f1)
+artifact_size=$(wc -c <"$host_artifact" | tr -d ' ')
 cat >"$manifest" <<EOF
-{"schemaVersion":1,"topology":"external","artifacts":[{"name":"lumen","version":"external-check","os":"linux","architecture":"amd64","profile":"development","url":"https://example.invalid/lumen","size":$artifact_size,"sha256":"sha256:$artifact_sha","contractVersion":1,"executableMode":448,"ownership":"lumen"}]}
+{"schemaVersion":1,"topology":"external","artifacts":[{"name":"lumen","version":"0.0.0","os":"linux","architecture":"amd64","profile":"development","url":"https://github.com/AshwanthReddy-exe/Lumen","size":$artifact_size,"sha256":"sha256:$artifact_sha","contractVersion":1,"executableMode":448,"ownership":"lumen"}]}
 EOF
 export LUMEN_MANIFEST="$manifest"
-export LUMEN_LUMEN_ARTIFACT="$artifact"
+export LUMEN_LUMEN_ARTIFACT="$host_artifact"
 
 printf '%s\n' '=> lumen setup'
-compose up -d --build
 compose_ready=1
+"$cli" setup | tee "$work_dir/setup.json" | grep -q '"outcome":"ready"' || fail 'external setup did not report ready'
 compose ps --status running -q lumen-host >/dev/null || fail 'external Host is not running'
-"$artifact" setup | tee "$work_dir/setup.json" | grep -q '"outcome":"ready"' || fail 'external setup did not report ready'
 printf '%s\n' '=> rerun'
-"$artifact" setup | grep -q '"outcome":"ready"' || fail 'external setup rerun did not report ready'
+"$cli" setup | grep -q '"outcome":"ready"' || fail 'external setup rerun did not report ready'
 printf '%s\n' '=> lumen doctor'
-"$artifact" doctor | tee "$work_dir/doctor.json" | grep -q '"outcome":"ready"' || fail 'external doctor did not report ready'
+"$cli" doctor | tee "$work_dir/doctor.json" | grep -q '"outcome":"ready"' || fail 'external doctor did not report ready'
 
-state_before=$(sha256sum "$data_dir/space.state" | cut -d' ' -f1)
+state_before=$(sha256sum "$data_dir/state.json" | cut -d' ' -f1)
 hermes_before=$(docker inspect --format '{{.Id}} {{.State.Status}}' "$hermes_container")
 printf '%s\n' '=> Host-only service restart'
-"$artifact" service restart | grep -q '"outcome":"ready"' || fail 'Host-only restart failed'
+"$cli" service restart | grep -q '"outcome":"ready"' || fail 'Host-only restart failed'
 hermes_after_restart=$(docker inspect --format '{{.Id}} {{.State.Status}}' "$hermes_container")
 [ "$hermes_before" = "$hermes_after_restart" ] || fail 'Host-only restart changed external Hermes'
 printf '%s\n' '=> Host-only service stop/start'
-"$artifact" service stop | grep -q '"outcome":"ready"' || fail 'Host-only stop failed'
-"$artifact" service start | grep -q '"outcome":"ready"' || fail 'Host-only start failed'
+"$cli" service stop | grep -q '"outcome":"ready"' || fail 'Host-only stop failed'
+"$cli" service start | grep -q '"outcome":"ready"' || fail 'Host-only start failed'
 hermes_after_start=$(docker inspect --format '{{.Id}} {{.State.Status}}' "$hermes_container")
 [ "$hermes_before" = "$hermes_after_start" ] || fail 'Host-only stop/start changed external Hermes'
-state_after=$(sha256sum "$data_dir/space.state" | cut -d' ' -f1)
+state_after=$(sha256sum "$data_dir/state.json" | cut -d' ' -f1)
 [ "$state_before" = "$state_after" ] || fail 'state preservation check failed'
 printf '%s\n' 'external Hermes never controls Hermes lifecycle; state preservation passed'

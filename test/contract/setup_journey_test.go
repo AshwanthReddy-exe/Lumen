@@ -158,12 +158,13 @@ func TestExternalSetupJourneyScriptContract(t *testing.T) {
 		"COMPOSE_PROJECT_NAME", "compose.external.yaml", "--status running -q lumen-host",
 		"docker inspect", "docker compose", "docker compose down --volumes",
 		"external Hermes container", "sha256:", "LUMEN_LUMEN_ARTIFACT",
+		"./cmd/lumen\n", "./cmd/lumen-host", `"$cli" setup`, "$data_dir/state.json",
 	} {
 		if !strings.Contains(script, required) {
 			t.Errorf("missing external journey operation %q", required)
 		}
 	}
-	for _, forbidden := range []string{"reboot", "host reboot", "docker compose.*lumen-hermes", "network_mode: host"} {
+	for _, forbidden := range []string{"reboot", "host reboot", "docker compose.*lumen-hermes", "network_mode: host", "example.invalid", `"version":"external-check"`} {
 		if strings.Contains(strings.ToLower(script), strings.ToLower(forbidden)) {
 			t.Errorf("external journey contains unsupported claim or unsafe boundary %q", forbidden)
 		}
