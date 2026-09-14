@@ -11,6 +11,12 @@ chmod 600 "$LUMEN_OPERATOR_CREDENTIAL_FILE" "$LUMEN_HERMES_BEARER_FILE" "$LUMEN_
 
 For hardened Hermes, set `LUMEN_HERMES_PROFILE=hardened`, the HTTPS base URL, CA/client certificate/key files, bearer file, and pinned server certificate before starting `lumen-host serve`. Docker Compose mounts these files read-only and expects the state volume to have been initialized by a one-time `docker compose run --rm lumen-host init` using the same environment and secret mounts.
 
+## Verified Azure Docker reference
+
+On 2026-09-14 IST / 2026-09-13 UTC, the combined gate passed twice clean on Azure Ubuntu 22.04 amd64 with Docker `29.1.3`, Compose `2.40.3`, and Hermes `v2026.9.7` (`2237be355906fbe6065ce1815711eee52b2d646e`, archive SHA-256 `907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688`). A real reboot preserved both services, canonical state, and a completed marker task; doctor returned `ready`.
+
+The external proof used a separate Host-only Compose project and independently supervised Hermes `0.21.1` behind pinned mutual TLS. Host lifecycle commands did not change Hermes or its TLS gateway. A real reboot preserved all service identities and canonical state, and doctor returned `ready`. `mise run milestone1-external-check` supplies a repeatable isolated-endpoint lifecycle check. This same-VPS evidence proves ownership separation, not a second-machine deployment or the still-open distributable/live-update gate.
+
 ## Android Termux provisioning
 
 With an authorized Android device connected over ADB, run `scripts/push-termux-host` from the repository root. It runs the Phase 2 gate, configures USB-only `adb reverse` access from device-local port 8642 to the Mac Hermes gateway, and copies the verified ARM64 PIE binary plus installer bundle to `/sdcard/Download/lumen`. For an explicit development-only run, it also stages the existing Mac Hermes bearer token and a development `host.env`; the installer immediately moves both into Termux-private storage and deletes the shared copies. It never copies Host state. Do not use this development handoff for hardened or release evidence.
