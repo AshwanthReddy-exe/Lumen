@@ -8,7 +8,9 @@ The product north star is a Jarvis-like personal intelligence Space: the user ca
 
 ## Current execution lock
 
-**Milestone 1 is the only active implementation milestone.** The durable Go Space authority, encrypted store, authenticated local control boundary, Host-to-Hermes Runs execution, dual-topology public setup, and durable doctor/service paths exist. The combined gate passed twice clean on Azure Ubuntu 22.04 amd64 and survived a real reboot. External setup against an independently supervised, pinned Hermes runtime passed authenticated mutual-TLS adoption, Host-only lifecycle control, doctor, canonical-state preservation, and a real reboot on that same VPS; the automated external journey also passed twice clean with an isolated compatibility endpoint. The release manifest is still not distributable, live deployment artifact replacement/rollback is absent, and real cross-machine external Runs behavior remains unproven. Node transport, web UI, messaging continuity, voice, canonical conversations, and device capabilities are not implemented. M1 therefore remains active.
+**Milestone 1 foundation closure and the bounded Milestone 2 conversation nucleus are the active implementation lanes.** The durable Go Space authority, encrypted store, authenticated local control boundary, Host-to-Hermes Runs execution, dual-topology public setup, and durable doctor/service paths exist. The combined gate passed twice clean on Azure Ubuntu 22.04 amd64 and survived a real reboot. External setup against an independently supervised, pinned Hermes runtime passed authenticated mutual-TLS adoption, Host-only lifecycle control, doctor, canonical-state preservation, and a real reboot on that same VPS; the automated external journey also passed twice clean with an isolated compatibility endpoint. The release manifest is still not distributable, live deployment artifact replacement/rollback is absent, and real cross-machine external Runs behavior remains unproven. M1 therefore remains open and cannot be inferred complete.
+
+The owner authorized the conversation nucleus on 2026-09-15 after a real-model manual journey showed that the current test script was only a generic Hermes API caller: Hermes selected web, files, terminal and memory tools and claimed Hermes-owned persistence without Lumen-owned identity, context or policy. The approved slice may proceed without weakening M1 gates because it preserves the existing Host and setup boundaries and adds the missing fail-closed Lumen authority layer. Node transport, web UI, messaging continuity, voice and device capabilities remain out of scope.
 
 The current setup branch must be integrated and verified before product-surface implementation begins. Physical Android, Mac, or iPhone completion is not a prerequisite unless it proves the active milestone's contract.
 
@@ -24,7 +26,7 @@ Every release check records the date, commit, build and dependency versions, top
 | Host-to-Hermes run execution | Development adapter and recovery path implemented; the pinned combined runtime completed the configured synthetic task | Real pinned-runtime exact deny/cancel/lost-stream probes and cross-machine external Runs evidence |
 | Setup and public lifecycle | Combined and external Docker journeys pass; real Azure reboot, doctor, state preservation, and Host-only external lifecycle are recorded | Publish distributable artifacts and prove live replacement/rollback |
 | Distribution | Official Hermes `v2026.9.7` source archive and container recipe are pinned and locally build-verified; release manifest remains a fixture | Reproducible Lumen artifact plus distributable combined manifest |
-| Conversations and memory | Not implemented | Canonical conversation and inspectable-memory nucleus |
+| Conversations and memory | A real-model path reaches Hermes, but identity, history, personalization, tool policy and memory are Hermes-owned rather than canonical Lumen state | Implement the approved canonical conversation nucleus with a zero-tool certified profile and separate Hermes plugin |
 | Node fabric and remote capabilities | Domain fixtures only | Authenticated transport plus one restricted capability |
 | Product surfaces | Disabled Android shell only | Responsive web conversation surface |
 | Jarvis voice and presence | Not implemented | Local activation, streaming speech, barge-in, and handoff |
@@ -65,16 +67,18 @@ The combined Azure machine proof and same-VPS external lifecycle/reboot proof ar
 
 ## Milestone 2 — Feature registry, conversation, and memory nucleus
 
+**Status:** bounded conversation-nucleus implementation authorized while the remaining M1 distribution evidence stays open. The governing [conversation nucleus design](./superpowers/specs/2026-09-15-lumen-hermes-conversation-nucleus-design.md) makes an existing co-located Hermes installation the first supported path. Lumen and Hermes remain separately installed, supervised and stored; an unmodified pinned Hermes gains Lumen abilities through a separately versioned native plugin and skill. Combined packaging must use the same contracts and isolation, not a private fork or shared state.
+
 **Journey:** create one Space, talk to Lumen in a responsive web application, retain one useful memory transparently, continue after restart, and inspect or delete what was remembered.
 
 **Deliver:**
 
-1. Add the Host-owned feature registry and canonical `Conversation`, `Message`, `Participant`, `Surface`, `ContextRecord`, `MemoryProposal`, `RetentionPolicy`, and `ArtifactReference` contracts.
-2. Map canonical conversations to replaceable Hermes runtime sessions and stream normalized text, tool, approval, usage, artifact, and terminal events.
-3. Project only task-authorized context into Hermes. Accept low-risk memory with provenance and retention; require confirmation for sensitive or consequential memory.
-4. Enforce provider, model, region, retention, locality, cost, and data-class constraints before Hermes routing.
-5. Build the responsive Lumen experience around Conversation, Memory, Devices and abilities, Activity, and Automations. Hide infrastructure detail until requested.
-6. Add the Hermes/upstream component registry with version, provenance, license, data flow, benchmark, health, fallback, upgrade, rollback, and kill-switch evidence.
+1. Add canonical Host-owned `Conversation`, `Message`, `Persona`, `Surface`, `ContextRecord`, `RuntimeProfile`, `RuntimeCertification`, and replaceable runtime-session mapping records with a safe state migration.
+2. Add `conversation.chat/respond` and public conversation commands that accept no Hermes instructions, session IDs, model/provider overrides or profile digests; persist intent before network I/O and append one assistant message only after verified completion.
+3. Ship a separately pinned native Hermes plugin and bundled onboarding skill. The plugin talks only to a dedicated authenticated Host broker, exposes narrow Lumen tools and hooks, never opens Space storage, and never grants, approves or selects a node.
+4. Certify and enforce `lumen.chat.default/v1`: immutable Lumen persona, bounded canonical context, one turn, zero Hermes tools, zero Hermes memory and explicit provider/model/token/deadline policy. Missing or contradictory certification fails before conversation content is sent.
+5. Prove the same conversation contract first with an existing co-located Hermes installation and then with isolated combined containers. Host restart and Hermes session loss must preserve canonical continuity; plugin removal must preserve the Space.
+6. Add normalized text, usage and failure events, accepted preferences and deletion behavior. Memory proposals, broader policy dimensions, the responsive product experience and the full Hermes component registry follow only after the zero-tool nucleus passes its acceptance, negative, privacy and recovery gates.
 
 **Exit:** conversation and memory survive Host and Hermes restarts; runtime replacement does not lose canonical history; deletion affects future context; unauthorized providers receive no classified context.
 
