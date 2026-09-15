@@ -19,6 +19,9 @@ type CommandType string
 
 const (
 	CommandCreateSpace                CommandType = "create_space"
+	CommandCreateConversation         CommandType = "conversation.create"
+	CommandSendConversation           CommandType = "conversation.send"
+	CommandCompleteConversation       CommandType = "conversation.complete"
 	CommandPairNode                   CommandType = "pair_node"
 	CommandAdvertiseCapability        CommandType = "advertise_capability"
 	CommandSetGrant                   CommandType = "set_grant"
@@ -195,6 +198,11 @@ type Command struct {
 	Action                string          `json:"action,omitempty"`
 	ActionFingerprint     string          `json:"actionFingerprint,omitempty"`
 	TaskID                string          `json:"taskId,omitempty"`
+	ConversationID        string          `json:"conversationId,omitempty"`
+	SurfaceID             string          `json:"surfaceId,omitempty"`
+	PersonaID             string          `json:"personaId,omitempty"`
+	Content               string          `json:"content,omitempty"`
+	CreatedAt             int64           `json:"createdAt,omitempty"`
 	OriginNodeID          string          `json:"originNodeId,omitempty"`
 	TargetNodeID          string          `json:"targetNodeId,omitempty"`
 	Grant                 Grant           `json:"grant,omitempty"`
