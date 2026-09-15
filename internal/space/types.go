@@ -73,8 +73,9 @@ type Persona struct {
 }
 
 type Surface struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
+	ID            string `json:"id"`
+	SchemaVersion int    `json:"schemaVersion"`
+	Type          string `json:"type"`
 }
 
 type ContextRecord struct {
@@ -121,20 +122,32 @@ type RuntimeProfile struct {
 	Digest            string   `json:"digest"`
 }
 
+type RuntimeProfileLimits struct {
+	Version         int `json:"version"`
+	MaxTurns        int `json:"maxTurns"`
+	MaxMessages     int `json:"maxMessages"`
+	MaxContextBytes int `json:"maxContextBytes"`
+	MaxInputTokens  int `json:"maxInputTokens"`
+	MaxOutputTokens int `json:"maxOutputTokens"`
+	MaxTotalTokens  int `json:"maxTotalTokens"`
+	DeadlineSeconds int `json:"deadlineSeconds"`
+}
+
 type RuntimeCertification struct {
-	ID                string   `json:"id"`
-	RuntimeIdentity   string   `json:"runtimeIdentity"`
-	EndpointIdentity  string   `json:"endpointIdentity"`
-	HermesVersion     string   `json:"hermesVersion"`
-	PluginIdentity    string   `json:"pluginIdentity"`
-	PluginCommit      string   `json:"pluginCommit"`
-	ProfileDigest     string   `json:"profileDigest"`
-	ConfigDigest      string   `json:"configDigest"`
-	EffectiveToolsets []string `json:"effectiveToolsets"`
-	MemoryRead        bool     `json:"memoryRead"`
-	MemoryWrite       bool     `json:"memoryWrite"`
-	Evidence          string   `json:"evidence"`
-	ExpiresAt         int64    `json:"expiresAt"`
+	ID                string               `json:"id"`
+	RuntimeIdentity   string               `json:"runtimeIdentity"`
+	EndpointIdentity  string               `json:"endpointIdentity"`
+	HermesVersion     string               `json:"hermesVersion"`
+	PluginIdentity    string               `json:"pluginIdentity"`
+	PluginCommit      string               `json:"pluginCommit"`
+	ProfileDigest     string               `json:"profileDigest"`
+	ConfigDigest      string               `json:"configDigest"`
+	EffectiveToolsets []string             `json:"effectiveToolsets"`
+	MemoryRead        bool                 `json:"memoryRead"`
+	MemoryWrite       bool                 `json:"memoryWrite"`
+	Limits            RuntimeProfileLimits `json:"limits"`
+	Evidence          string               `json:"evidence"`
+	ExpiresAt         int64                `json:"expiresAt"`
 }
 
 const DefaultPersonaInstructions = "You are Lumen, the user's private Space intelligence. Use only canonical context supplied by the Host. Distinguish known context from inference. Never claim memory, permissions, tools, or completed actions not represented by Host records. Ask when ambiguity changes privacy, authority, or target selection."
