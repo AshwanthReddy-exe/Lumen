@@ -33,6 +33,8 @@ func TestConversationCreateAndSendPersistAtomicIntent(t *testing.T) {
 		Content:               "hello",
 		RuntimeIdempotencyKey: "runtime-task-1",
 		RuntimeProfileDigest:  DefaultRuntimeProfile().Digest,
+		CreatedAt:             100,
+		ReconcileBy:           200,
 		RequestID:             "send-1",
 	})
 	if sent.Rejection != "" || sent.Receipt.Outcome != OutcomeQueued {
@@ -66,7 +68,7 @@ func TestConversationCompletionAppendsDeterministicAssistantOnce(t *testing.T) {
 		TaskID:    "task-1",
 		Outcome:   OutcomeCompleted,
 		Output:    "world",
-		RequestID: "complete-1",
+		CreatedAt: 300, RequestID: "complete-1",
 	})
 	if completed.Rejection != "" || completed.Receipt.Outcome != OutcomeCompleted {
 		t.Fatalf("completion result: %#v", completed)
@@ -88,7 +90,7 @@ func TestConversationCompletionAppendsDeterministicAssistantOnce(t *testing.T) {
 		TaskID:    "task-1",
 		Outcome:   OutcomeCompleted,
 		Output:    "world",
-		RequestID: "complete-2",
+		CreatedAt: 300, RequestID: "complete-2",
 	})
 	if duplicate.Rejection != "" || len(duplicate.State.Messages["conversation-1"]) != 2 {
 		t.Fatalf("duplicate completion: %#v", duplicate)
@@ -123,7 +125,7 @@ func TestConversationDuplicateAndConflictingRequestIDs(t *testing.T) {
 func TestConversationSendRejectsOversizeInputAndPreservesSequence(t *testing.T) {
 	s := conversationState()
 	created := Apply(s, Command{Type: CommandCreateConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", RequestID: "create-1"})
-	tooLarge := Apply(created.State, Command{Type: CommandSendConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", TaskID: "task-1", Content: strings.Repeat("x", MaxChatMessageBytes+1), RequestID: "send-large"})
+	tooLarge := Apply(created.State, Command{Type: CommandSendConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", TaskID: "task-1", Content: strings.Repeat("x", MaxChatMessageBytes+1), CreatedAt: 100, ReconcileBy: 200, RequestID: "send-large"})
 	if tooLarge.Rejection != "message_too_large" {
 		t.Fatalf("oversize result = %#v", tooLarge)
 	}
@@ -151,17 +153,105 @@ func TestConversationCompletionIsMonotonicAndUnknownHasNoAssistant(t *testing.T)
 	}
 }
 
+func TestConversationSendRequiresDispatchableDeadlineAndMatchingDispatch(t *testing.T) {
+	created := Apply(conversationState(), Command{Type: CommandCreateConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", RequestID: "create-1"})
+	for name, edit := range map[string]func(*Command){
+		"missing created at":      func(c *Command) { c.CreatedAt = 0; c.ReconcileBy = 200 },
+		"nonpositive created at":  func(c *Command) { c.CreatedAt = -1; c.ReconcileBy = 200 },
+		"deadline at created":     func(c *Command) { c.CreatedAt = 100; c.ReconcileBy = 100 },
+		"deadline before created": func(c *Command) { c.CreatedAt = 100; c.ReconcileBy = 99 },
+	} {
+		command := conversationSendCommand()
+		command.RequestID = "send-deadline-" + name
+		edit(&command)
+		tr := Apply(created.State, command)
+		if tr.Rejection != "invalid_deadline" {
+			t.Fatalf("%s: %#v", name, tr)
+		}
+		if len(tr.State.Messages["conversation-1"]) != 0 || len(tr.State.HostCreates) != 0 || len(tr.State.Tasks) != 0 {
+			t.Fatalf("%s mutated canonical state: %#v", name, tr.State)
+		}
+	}
+
+	sent := Apply(created.State, conversationSendCommand())
+	if sent.Rejection != "" {
+		t.Fatalf("send rejected: %#v", sent)
+	}
+	dispatched := Apply(sent.State, Command{Type: CommandDispatchHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", TaskID: "task-1", RuntimeRunID: "runtime-run-1", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest, DispatchedAt: 100, ReconcileBy: 200, RequestID: "dispatch-1"})
+	if dispatched.Rejection != "" || dispatched.State.Tasks["task-1"].Status != OutcomeDispatched {
+		t.Fatalf("matching dispatch: %#v", dispatched)
+	}
+}
+
+func TestConversationSendRequiresExactSurfaceIdentity(t *testing.T) {
+	created := Apply(conversationState(), Command{Type: CommandCreateConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", RequestID: "create-1"})
+	for name, surface := range map[string]string{"missing": "", "wrong": "desktop"} {
+		command := conversationSendCommand()
+		command.RequestID = "send-surface-" + name
+		command.SurfaceID = surface
+		tr := Apply(created.State, command)
+		want := "surface_mismatch"
+		if surface == "" {
+			want = "invalid_identifier"
+		}
+		if tr.Rejection != want {
+			t.Fatalf("%s: got %#v, want %q", name, tr, want)
+		}
+	}
+}
+
+func TestConversationCompletionRejectsTerminalGenericTaskBeforeMonotonicShortCircuit(t *testing.T) {
+	s := conversationWithSend(t)
+	task := s.Tasks["task-1"]
+	task.Status = OutcomeCompleted
+	task.CapabilityID = "agent.run/execute"
+	s.Tasks[task.ID] = task
+	tr := Apply(s, Command{Type: CommandCompleteConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", TaskID: "task-1", Outcome: OutcomeCompleted, Output: "late", RequestID: "generic-capability"})
+	if tr.Rejection != "conversation_capability_mismatch" {
+		t.Fatalf("generic capability: %#v", tr)
+	}
+
+	s = conversationState()
+	s.Tasks = map[string]Task{"generic": {ID: "generic", CapabilityID: "agent.run/execute", Status: OutcomeCompleted}}
+	tr = Apply(s, Command{Type: CommandCompleteConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", TaskID: "generic", Outcome: OutcomeCompleted, Output: "late", RequestID: "generic-linkage"})
+	if tr.Rejection != "conversation_unknown" {
+		t.Fatalf("generic linkage: %#v", tr)
+	}
+}
+
+func TestConversationCompletionValidatesLateTerminalOutputBounds(t *testing.T) {
+	s := conversationWithSend(t)
+	completed := Apply(s, Command{Type: CommandCompleteConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", TaskID: "task-1", Outcome: OutcomeCompleted, Output: "world", RequestID: "complete-first"})
+	for name, output := range map[string]string{
+		"oversize":     strings.Repeat("x", MaxChatMessageBytes+1),
+		"invalid utf8": string([]byte{0xff}),
+	} {
+		tr := Apply(completed.State, Command{Type: CommandCompleteConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", TaskID: "task-1", Outcome: OutcomeCompleted, Output: output, RequestID: "late-output-" + name})
+		want := "message_too_large"
+		if name == "invalid utf8" {
+			want = "invalid_utf8"
+		}
+		if tr.Rejection != want {
+			t.Fatalf("%s: %#v, want %q", name, tr, want)
+		}
+	}
+}
+
 func conversationWithSend(t *testing.T) State {
 	t.Helper()
 	created := Apply(conversationState(), Command{Type: CommandCreateConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", RequestID: "create-1"})
 	if created.Rejection != "" {
 		t.Fatalf("create rejected: %#v", created)
 	}
-	sent := Apply(created.State, Command{Type: CommandSendConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", TaskID: "task-1", Content: "hello", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest, RequestID: "send-1"})
+	sent := Apply(created.State, conversationSendCommand())
 	if sent.Rejection != "" {
 		t.Fatalf("send rejected: %#v", sent)
 	}
 	return sent.State
+}
+
+func conversationSendCommand() Command {
+	return Command{Type: CommandSendConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", TaskID: "task-1", Content: "hello", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest, CreatedAt: 100, ReconcileBy: 200, RequestID: "send-1"}
 }
 
 func conversationState() State {

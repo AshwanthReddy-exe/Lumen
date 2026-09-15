@@ -44,6 +44,9 @@ func sendConversation(s State, c Command) Transition {
 	if reason := conversationContext(s, c, false); reason != "" {
 		return reject(s, c, reason)
 	}
+	if c.CreatedAt <= 0 || c.ReconcileBy <= c.CreatedAt {
+		return reject(s, c, "invalid_deadline")
+	}
 	conversation, exists := s.Conversations[c.ConversationID]
 	if !exists {
 		return reject(s, c, "conversation_unknown")
@@ -51,7 +54,10 @@ func sendConversation(s State, c Command) Transition {
 	if conversation.OwnerID != c.ActorID || conversation.Status != ConversationActive {
 		return reject(s, c, "conversation_unavailable")
 	}
-	if c.SurfaceID != "" && c.SurfaceID != conversation.SurfaceID {
+	if c.SurfaceID == "" {
+		return reject(s, c, "invalid_identifier")
+	}
+	if c.SurfaceID != conversation.SurfaceID {
 		return reject(s, c, "surface_mismatch")
 	}
 	if c.TaskID == "" {
@@ -138,20 +144,26 @@ func completeConversation(s State, c Command) Transition {
 	if c.Outcome != OutcomeCompleted && c.Outcome != OutcomeFailed && c.Outcome != OutcomeUnknown {
 		return reject(s, c, "invalid_completion_outcome")
 	}
+	if !utf8.ValidString(c.Output) {
+		return reject(s, c, "invalid_utf8")
+	}
+	if len(c.Output) > MaxChatMessageBytes {
+		return reject(s, c, "message_too_large")
+	}
+	conversationID, ok := conversationForTask(s, c.TaskID)
+	if !ok {
+		return reject(s, c, "conversation_unknown")
+	}
+	if task.CapabilityID != "conversation.chat/respond" {
+		return reject(s, c, "conversation_capability_mismatch")
+	}
 	// Terminal observations are deliberately monotonic. A late success cannot
 	// turn an uncertain or failed task into a success, and vice versa.
 	if task.Status == OutcomeCompleted || task.Status == OutcomeFailed || task.Status == OutcomeUnknown {
 		return accepted(s, c, task.Status, c.TaskID)
 	}
-	if !utf8.ValidString(c.Output) || len(c.Output) > MaxChatMessageBytes {
-		return reject(s, c, "message_too_large")
-	}
 	if task.Status != OutcomeQueued && task.Status != OutcomeCreating && task.Status != OutcomeDispatched && task.Status != OutcomeRunning {
 		return reject(s, c, "invalid_task_state")
-	}
-	conversationID, ok := conversationForTask(s, c.TaskID)
-	if !ok {
-		return reject(s, c, "conversation_unknown")
 	}
 	task.Status = c.Outcome
 	if c.Outcome == OutcomeUnknown {
