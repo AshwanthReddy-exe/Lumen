@@ -22,6 +22,9 @@ const (
 	CommandCreateConversation         CommandType = "conversation.create"
 	CommandSendConversation           CommandType = "conversation.send"
 	CommandCompleteConversation       CommandType = "conversation.complete"
+	CommandSetPreference              CommandType = "preference.set"
+	CommandBindRuntimeSession         CommandType = "conversation.bind_session"
+	CommandRegisterSurface            CommandType = "surface.register"
 	CommandPairNode                   CommandType = "pair_node"
 	CommandAdvertiseCapability        CommandType = "advertise_capability"
 	CommandSetGrant                   CommandType = "set_grant"
@@ -202,6 +205,7 @@ type Command struct {
 	SurfaceID             string          `json:"surfaceId,omitempty"`
 	PersonaID             string          `json:"personaId,omitempty"`
 	Content               string          `json:"content,omitempty"`
+	PreferenceName        string          `json:"preferenceName,omitempty"`
 	CreatedAt             int64           `json:"createdAt,omitempty"`
 	OriginNodeID          string          `json:"originNodeId,omitempty"`
 	TargetNodeID          string          `json:"targetNodeId,omitempty"`
@@ -213,6 +217,8 @@ type Command struct {
 	RuntimeRunID          string          `json:"runtimeRunId,omitempty"`
 	RuntimeIdempotencyKey string          `json:"runtimeIdempotencyKey,omitempty"`
 	RuntimeProfileDigest  string          `json:"runtimeProfileDigest,omitempty"`
+	RuntimeIdentity       string          `json:"runtimeIdentity,omitempty"`
+	HermesSessionID       string          `json:"hermesSessionId,omitempty"`
 	DispatchedAt          int64           `json:"dispatchedAt,omitempty"`
 	ReconcileBy           int64           `json:"reconcileBy,omitempty"`
 	ObservedAt            int64           `json:"observedAt,omitempty"`
@@ -223,6 +229,7 @@ type Command struct {
 	DeliveryAttempt       int             `json:"deliveryAttempt,omitempty"`
 	Output                string          `json:"output,omitempty"`
 	OutputTruncated       bool            `json:"outputTruncated,omitempty"`
+	TerminalReason        string          `json:"terminalReason,omitempty"`
 }
 
 const MaxTaskOutputBytes = 8 << 10

@@ -35,6 +35,14 @@ func run(args []string) int {
 		if len(args) < 2 || args[1] != "resolve" {
 			return usage()
 		}
+	case "conversation":
+		if len(args) < 2 || (args[1] != "create" && args[1] != "send" && args[1] != "show") {
+			return usage()
+		}
+	case "preference":
+		if len(args) < 2 || args[1] != "set" {
+			return usage()
+		}
 	default:
 		return usage()
 	}
@@ -61,11 +69,14 @@ func run(args []string) int {
 		if !ok {
 			return usage()
 		}
+		if !validPublicArguments(args[0]+" "+args[1], arguments) {
+			return usage()
+		}
 		return callWithArguments(c, args[0]+" "+args[1], arguments)
 	}
 }
 func usage() int {
-	fmt.Fprintln(os.Stderr, "usage: lumen-host doctor|init|serve|status|task submit|task show|task cancel|approval resolve|shutdown")
+	fmt.Fprintln(os.Stderr, "usage: lumen-host doctor|init|serve|status|task submit|task show|task cancel|approval resolve|conversation create|conversation send|conversation show|preference set|shutdown")
 	return 2
 }
 
@@ -172,4 +183,33 @@ func parseArguments(args []string) (map[string]string, bool) {
 		i++
 	}
 	return arguments, true
+}
+
+func validPublicArguments(command string, arguments map[string]string) bool {
+	allowed := map[string]map[string]bool{
+		"conversation create": {"request_id": true, "conversation_id": true, "surface_id": true},
+		"conversation send":   {"request_id": true, "conversation_id": true, "surface_id": true, "input": true, "task_id": true},
+		"conversation show":   {"conversation_id": true},
+		"preference set":      {"request_id": true, "name": true, "value": true},
+	}
+	set, ok := allowed[command]
+	if !ok {
+		return true
+	}
+	for key := range arguments {
+		if !set[key] {
+			return false
+		}
+	}
+	for _, required := range map[string][]string{
+		"conversation create": {"request_id", "conversation_id", "surface_id"},
+		"conversation send":   {"request_id", "conversation_id", "surface_id", "input"},
+		"conversation show":   {"conversation_id"},
+		"preference set":      {"request_id", "name", "value"},
+	}[command] {
+		if arguments[required] == "" {
+			return false
+		}
+	}
+	return true
 }

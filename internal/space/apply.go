@@ -41,6 +41,12 @@ func Apply(s State, c Command) Transition {
 		tr = sendConversation(s, c)
 	case CommandCompleteConversation:
 		tr = completeConversation(s, c)
+	case CommandSetPreference:
+		tr = setPreference(s, c)
+	case CommandBindRuntimeSession:
+		tr = bindRuntimeSession(s, c)
+	case CommandRegisterSurface:
+		tr = registerSurface(s, c)
 	case CommandPairNode:
 		tr = pair(s, c)
 	case CommandAdvertiseCapability:

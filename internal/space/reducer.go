@@ -1,6 +1,7 @@
 package space
 
 import (
+	"encoding/json"
 	"unicode/utf8"
 )
 
@@ -169,7 +170,10 @@ func completeConversation(s State, c Command) Transition {
 	if c.Outcome == OutcomeUnknown {
 		task.TerminalReason = "unknown_outcome"
 	} else if c.Outcome == OutcomeFailed {
-		task.TerminalReason = "runtime_failed"
+		task.TerminalReason = c.TerminalReason
+		if task.TerminalReason == "" {
+			task.TerminalReason = "runtime_failed"
+		}
 	}
 	if c.Outcome == OutcomeCompleted {
 		task.Output = c.Output
@@ -203,6 +207,73 @@ func completeConversation(s State, c Command) Transition {
 	}
 	s.Tasks[c.TaskID] = task
 	return accepted(s, c, c.Outcome, c.TaskID)
+}
+
+func setPreference(s State, c Command) Transition {
+	if reason := conversationContext(s, c, true); reason != "" {
+		return reject(s, c, reason)
+	}
+	if c.PreferenceName != "preferred_name" && c.PreferenceName != "communication_style" && c.PreferenceName != "locale" {
+		return reject(s, c, "invalid_preference")
+	}
+	if c.Content == "" || !utf8.ValidString(c.Content) || len(c.Content) > MaxChatMessageBytes {
+		return reject(s, c, "invalid_preference")
+	}
+	payload, err := json.Marshal(map[string]string{c.PreferenceName: c.Content})
+	if err != nil {
+		return reject(s, c, "invalid_preference")
+	}
+	if s.ContextRecords == nil {
+		s.ContextRecords = map[string]ContextRecord{}
+	}
+	id := "user.preference." + c.PreferenceName
+	s.ContextRecords[id] = ContextRecord{ID: id, Namespace: "user.preferences/v1", SchemaVersion: 1, OriginNodeID: s.OwnerID, Version: 1, Provenance: "owner", Classification: "private", AcceptedAt: c.CreatedAt, Digest: DigestText(string(payload)), Payload: payload}
+	return accepted(s, c, OutcomeApplied, id)
+}
+
+func bindRuntimeSession(s State, c Command) Transition {
+	if reason := executionContext(s, c); reason != "" {
+		return reject(s, c, reason)
+	}
+	conversation, ok := s.Conversations[c.ConversationID]
+	if !ok {
+		return reject(s, c, "conversation_unknown")
+	}
+	profile, ok := profileByDigest(s.RuntimeProfiles, c.RuntimeProfileDigest)
+	if !ok || profile.PersonaDigest != s.Personas[conversation.PersonaID].Digest {
+		return reject(s, c, "runtime_profile_mismatch")
+	}
+	if c.RuntimeIdentity == "" || c.HermesSessionID == "" {
+		return reject(s, c, "invalid_runtime_session")
+	}
+	if s.RuntimeSessions == nil {
+		s.RuntimeSessions = map[string]RuntimeSessionMapping{}
+	}
+	if existing, exists := s.RuntimeSessions[c.ConversationID]; exists && (existing.RuntimeIdentity != c.RuntimeIdentity || existing.PersonaDigest != profile.PersonaDigest || existing.ProfileDigest != c.RuntimeProfileDigest || existing.HostEpoch != s.Epoch) {
+		return reject(s, c, "runtime_session_mismatch")
+	}
+	s.RuntimeSessions[c.ConversationID] = RuntimeSessionMapping{ConversationID: c.ConversationID, RuntimeIdentity: c.RuntimeIdentity, HermesSessionID: c.HermesSessionID, PersonaDigest: profile.PersonaDigest, ProfileDigest: c.RuntimeProfileDigest, HostEpoch: s.Epoch, LastProjectedSequence: conversation.NextSequence - 1}
+	return accepted(s, c, OutcomeApplied, c.ConversationID)
+}
+
+func registerSurface(s State, c Command) Transition {
+	if reason := conversationContext(s, c, true); reason != "" {
+		return reject(s, c, reason)
+	}
+	if c.SurfaceID == "" {
+		return reject(s, c, "invalid_identifier")
+	}
+	if s.Surfaces == nil {
+		s.Surfaces = map[string]Surface{}
+	}
+	if existing, exists := s.Surfaces[c.SurfaceID]; exists {
+		if existing.Type != c.SurfaceID {
+			return reject(s, c, "surface_mismatch")
+		}
+		return accepted(s, c, OutcomeApplied, c.SurfaceID)
+	}
+	s.Surfaces[c.SurfaceID] = Surface{ID: c.SurfaceID, SchemaVersion: 1, Type: c.SurfaceID}
+	return accepted(s, c, OutcomeApplied, c.SurfaceID)
 }
 
 func conversationContext(s State, c Command, ownerActor bool) string {
