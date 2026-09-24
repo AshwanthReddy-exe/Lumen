@@ -117,8 +117,20 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 		taskID = "conversation:" + req.RequestID
 	}
 	queued, err := s.apply(space.Command{Type: space.CommandSendConversation, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.OwnerID, RequestID: req.RequestID, ConversationID: req.ConversationID, SurfaceID: req.SurfaceID, TaskID: taskID, Content: req.Input, RuntimeIdempotencyKey: req.RequestID, CreatedAt: created, ReconcileBy: by})
-	if err != nil || queued.Rejection != "" || queued.Replayed {
+	if err != nil || queued.Rejection != "" {
 		return queued, errOrRejection(err, queued.Rejection)
+	}
+	if queued.Replayed {
+		current, readErr := s.state.Read()
+		if readErr != nil {
+			return queued, readErr
+		}
+		task, ok := current.Tasks[queued.Receipt.SubjectID]
+		if !ok {
+			return queued, errors.New("replayed conversation task is missing")
+		}
+		queued.Receipt.Outcome = task.Status
+		return queued, nil
 	}
 	state, err = s.state.Read()
 	if err != nil {
@@ -139,7 +151,7 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	if err != nil {
 		return s.fail(queued, state, taskID, err)
 	}
-	projection, err := Project(state, req.ConversationID, persona, profile)
+	projection, err := Project(state, req.ConversationID, persona, profile, s.now().Unix())
 	if err != nil {
 		return s.fail(queued, state, taskID, err)
 	}
@@ -165,7 +177,12 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	if err != nil || dispatched.Rejection != "" {
 		return queued, errOrRejection(err, dispatched.Rejection)
 	}
-	status, statusErr := s.runtime.RunStatus(ctx, run.RunID)
+	reconcileCtx, cancel := context.WithTimeout(ctx, time.Unix(by, 0).Sub(s.now()))
+	defer cancel()
+	if s.now().Unix() >= by {
+		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conversation reconciliation deadline reached"))
+	}
+	status, statusErr := s.runtime.RunStatus(reconcileCtx, run.RunID)
 	if statusErr != nil || status.RunID != run.RunID {
 		if statusErr == nil {
 			statusErr = errors.New("Hermes status run mismatch")
@@ -173,9 +190,13 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", statusErr)
 	}
 	if !isTerminalStatus(status.Status) {
-		events, eventsErr := s.runtime.Events(ctx, run.RunID)
+		events, eventsErr := s.runtime.Events(reconcileCtx, run.RunID)
 		if eventsErr == nil {
 			for _, event := range events {
+				if !allowedChatEvent(event) {
+					_, _ = s.runtime.Stop(ctx, run.RunID)
+					return s.fail(queued, state, taskID, errors.New("runtime emitted an uncertified event"))
+				}
 				if eventStatus, output, ok := conversationEvent(event); ok {
 					status.Status, status.Output = eventStatus, output
 					if isTerminalStatus(status.Status) {
@@ -185,6 +206,9 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 			}
 		}
 	}
+	if s.now().Unix() >= by {
+		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conversation reconciliation deadline reached"))
+	}
 	switch status.Status {
 	case "completed", "succeeded", "success":
 		return s.complete(queued, state, taskID, space.OutcomeCompleted, status.Output, nil)
@@ -192,6 +216,35 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 		return s.complete(queued, state, taskID, space.OutcomeFailed, "", nil)
 	default:
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("Hermes completion remains uncertain"))
+	}
+}
+
+func allowedChatEvent(event hermes.Event) bool {
+	if !allowedChatStatus(event.Type) {
+		return false
+	}
+	var payload struct {
+		Status string `json:"status"`
+		Event  string `json:"event"`
+		Type   string `json:"type"`
+	}
+	if len(event.Data) > 0 && json.Unmarshal(event.Data, &payload) != nil {
+		return false
+	}
+	for _, value := range []string{payload.Status, payload.Event, payload.Type} {
+		if value != "" && !allowedChatStatus(value) {
+			return false
+		}
+	}
+	return true
+}
+
+func allowedChatStatus(value string) bool {
+	switch strings.ToLower(value) {
+	case "created", "started", "running", "progress", "completed", "succeeded", "success", "failed", "error", "cancelled", "canceled", "run.created", "run.started", "run.running", "run.progress", "run.completed", "run.failed", "run.cancelled":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -250,7 +303,7 @@ func publicOverrides(instructions, session, provider, model, profile string) boo
 
 func certificationMatches(cert space.RuntimeCertification, profile space.RuntimeProfile, now time.Time) bool {
 	limits := cert.Limits
-	return cert.ID != "" && cert.RuntimeIdentity != "" && cert.EndpointIdentity != "" && cert.ProfileDigest == profile.Digest && len(cert.EffectiveToolsets) == 0 && !cert.MemoryRead && !cert.MemoryWrite && cert.ExpiresAt > now.Unix() && limits.Version == 1 && limits.MaxTurns == profile.MaxTurns && limits.MaxMessages == profile.MaxMessages && limits.MaxContextBytes == profile.MaxContextBytes && limits.MaxInputTokens == profile.MaxInputTokens && limits.MaxOutputTokens == profile.MaxOutputTokens && limits.MaxTotalTokens == profile.MaxTotalTokens && limits.DeadlineSeconds == profile.DeadlineSeconds
+	return cert.ID != "" && cert.RuntimeIdentity != "" && cert.EndpointIdentity != "" && cert.HermesVersion != "" && cert.PluginIdentity != "" && cert.PluginCommit != "" && cert.ConfigDigest != "" && cert.Evidence != "" && profile.Digest == space.RuntimeProfileDigest(profile) && len(profile.AllowedFeatureSet) == 0 && !profile.MemoryRead && !profile.MemoryWrite && cert.ProfileDigest == profile.Digest && len(cert.EffectiveToolsets) == 0 && !cert.MemoryRead && !cert.MemoryWrite && cert.ExpiresAt > now.Unix() && limits.Version == 1 && limits.MaxTurns == profile.MaxTurns && limits.MaxMessages == profile.MaxMessages && limits.MaxContextBytes == profile.MaxContextBytes && limits.MaxInputTokens == profile.MaxInputTokens && limits.MaxOutputTokens == profile.MaxOutputTokens && limits.MaxTotalTokens == profile.MaxTotalTokens && limits.DeadlineSeconds == profile.DeadlineSeconds
 }
 
 func errOrRejection(err error, rejection string) error {

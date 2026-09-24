@@ -6,6 +6,8 @@ Lumen is a proprietary, paid personal AI Space inspired by Jarvis: one continuou
 
 The defining experience is not voice alone. It combines presence, continuity, awareness, agency, and restraint. Lumen must always make it understandable when it is listening, thinking, acting, waiting for approval, offline, or degraded.
 
+"The same agent on every device" means each supported surface continues the same Host-owned Space identity, conversation, accepted memory, task state, and approvals. A surface may disconnect or be replaced without creating a second agent identity or a separate authoritative history.
+
 ## Audience and product shape
 
 Lumen serves normal users, power users, and self-hosters through progressive disclosure. A normal user can start with managed hosting and a conversational interface; a power user can inspect memory, permissions, models, tasks, and automation; a self-hoster can operate the same Space contract without receiving a different product.
@@ -134,7 +136,7 @@ A launch candidate must demonstrate that a new user reaches a continuity-and-act
 
 The repository has a substantive native Go Space authority, encrypted persistence, task and approval lifecycle, local operator boundary, constrained Hermes Runs adapter, setup planning and artifact/configuration components, and supervision definitions. Those foundations must be preserved.
 
-The public setup runner and whole-deployment doctor are incomplete. Canonical conversations and memory UX, web and messaging surfaces, node pairing and transport, restricted file execution, Jarvis-like voice presence, managed hosting, migration, and the public SDK are not implemented. Requirements describe the target product and must not be read as claims of current availability. Delivery status and evidence belong in [PLAN.md](./PLAN.md) and [CHANGELOG.md](./CHANGELOG.md).
+Public setup and whole-deployment doctor paths exist for combined and external topologies, with the remaining release and real-runtime evidence in [PLAN.md](./PLAN.md). Canonical conversation records and a Host chat path exist on the active implementation branch, but production certification and restart continuity remain open. Memory UX, web and messaging surfaces, node pairing and transport, restricted file execution, Jarvis-like voice presence, managed hosting, migration, and the public SDK are not implemented. Requirements describe the target product and must not be read as claims of current availability.
 
 ## Non-goals for the first launch
 

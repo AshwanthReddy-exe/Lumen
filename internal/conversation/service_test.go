@@ -25,10 +25,13 @@ func (m *memoryStore) Update(fn func(space.State) space.Transition) (space.Trans
 }
 
 type fakeRuntime struct {
-	created int
-	before  func()
-	run     hermes.Run
-	req     hermes.CreateRunRequest
+	created      int
+	stopped      int
+	before       func()
+	beforeEvents func()
+	run          hermes.Run
+	events       []hermes.Event
+	req          hermes.CreateRunRequest
 }
 
 func (f *fakeRuntime) Capabilities(context.Context) (hermes.Capabilities, error) {
@@ -45,11 +48,19 @@ func (f *fakeRuntime) CreateRun(_ context.Context, req hermes.CreateRunRequest, 
 	f.req = req
 	return f.run, nil
 }
-func (f *fakeRuntime) RunStatus(context.Context, string) (hermes.Run, error)    { return f.run, nil }
-func (f *fakeRuntime) Events(context.Context, string) ([]hermes.Event, error)   { return nil, nil }
+func (f *fakeRuntime) RunStatus(context.Context, string) (hermes.Run, error) { return f.run, nil }
+func (f *fakeRuntime) Events(context.Context, string) ([]hermes.Event, error) {
+	if f.beforeEvents != nil {
+		f.beforeEvents()
+	}
+	return f.events, nil
+}
 func (f *fakeRuntime) ResolveApproval(context.Context, string, string) error    { return nil }
 func (f *fakeRuntime) Steer(context.Context, string, hermes.SteerRequest) error { return nil }
-func (f *fakeRuntime) Stop(context.Context, string) (hermes.Run, error)         { return f.run, nil }
+func (f *fakeRuntime) Stop(context.Context, string) (hermes.Run, error) {
+	f.stopped++
+	return f.run, nil
+}
 
 type fakeCertifier struct {
 	cert space.RuntimeCertification
@@ -90,11 +101,11 @@ func TestProjectionIsBoundedDeterministicAndSelectsAcceptedPreferences(t *testin
 		tr = space.Apply(s, space.Command{Type: space.CommandCompleteConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", TaskID: task, Outcome: space.OutcomeCompleted, Output: "answer-" + task, CreatedAt: int64(i + 1), RequestID: "done-" + task})
 		s = tr.State
 	}
-	one, err := Project(s, "c1", space.DefaultPersona(), space.DefaultRuntimeProfile())
+	one, err := Project(s, "c1", space.DefaultPersona(), space.DefaultRuntimeProfile(), 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	two, err := Project(s, "c1", space.DefaultPersona(), space.DefaultRuntimeProfile())
+	two, err := Project(s, "c1", space.DefaultPersona(), space.DefaultRuntimeProfile(), 100)
 	if err != nil || !reflect.DeepEqual(one, two) {
 		t.Fatalf("projection not deterministic: one=%#v two=%#v err=%v", one, two, err)
 	}
@@ -108,12 +119,30 @@ func TestProjectionIsBoundedDeterministicAndSelectsAcceptedPreferences(t *testin
 
 func TestProjectionContextNeverExceedsByteBudget(t *testing.T) {
 	records := map[string]space.ContextRecord{
-		"a": {ID: "a", Namespace: "user.preferences/v1", Provenance: "owner", AcceptedAt: 1, Payload: json.RawMessage(`{"locale":"en"}`)},
-		"b": {ID: "b", Namespace: "user.preferences/v1", Provenance: "owner", AcceptedAt: 1, Payload: json.RawMessage(`{"locale":"en"}`)},
+		"a": {ID: "a", Namespace: "user.preferences/v1", SchemaVersion: 1, Provenance: "owner", Classification: "private", AcceptedAt: 1, Digest: space.DigestText(`{"locale":"en"}`), Payload: json.RawMessage(`{"locale":"en"}`)},
+		"b": {ID: "b", Namespace: "user.preferences/v1", SchemaVersion: 1, Provenance: "owner", Classification: "private", AcceptedAt: 1, Digest: space.DigestText(`{"locale":"en"}`), Payload: json.RawMessage(`{"locale":"en"}`)},
 	}
 	const budget = 74
-	if contextText := projectedPreferences(records, budget); len(contextText) > budget {
+	if contextText := projectedPreferences(records, budget, 100); len(contextText) > budget {
 		t.Fatalf("projected context bytes=%d, want at most %d: %q", len(contextText), budget, contextText)
+	}
+}
+
+func TestProjectionExcludesExpiredNonPrivateAndTamperedPreferences(t *testing.T) {
+	valid := space.ContextRecord{ID: "valid", Namespace: "user.preferences/v1", SchemaVersion: 1, Provenance: "owner", Classification: "private", AcceptedAt: 1, Digest: space.DigestText(`{"preferred_name":"Ada"}`), Payload: json.RawMessage(`{"preferred_name":"Ada"}`)}
+	records := map[string]space.ContextRecord{"valid": valid}
+	expired := valid
+	expired.ID, expired.RetentionUntil = "expired", 99
+	records["expired"] = expired
+	public := valid
+	public.ID, public.Classification = "public", "public"
+	records["public"] = public
+	tampered := valid
+	tampered.ID, tampered.Payload = "tampered", json.RawMessage(`{"preferred_name":"Mallory"}`)
+	records["tampered"] = tampered
+	contextText := projectedPreferences(records, 4096, 100)
+	if !strings.Contains(contextText, `"id":"valid"`) || strings.Contains(contextText, `"id":"expired"`) || strings.Contains(contextText, `"id":"public"`) || strings.Contains(contextText, `"id":"tampered"`) {
+		t.Fatalf("unsafe preference projected: %s", contextText)
 	}
 }
 
@@ -159,6 +188,87 @@ func TestPreferenceSetAcceptsOnlyTypedOwnerPreference(t *testing.T) {
 	}
 }
 
+func TestCertificationRequiresCompleteBindingAndUntamperedProfile(t *testing.T) {
+	profile := space.DefaultRuntimeProfile()
+	valid := exactCertification()
+	valid.HermesVersion = "v1"
+	valid.PluginIdentity = "lumen-plugin"
+	valid.PluginCommit = "commit"
+	valid.ConfigDigest = space.DigestText("config")
+	valid.Evidence = "verified"
+	if !certificationMatches(valid, profile, time.Unix(100, 0)) {
+		t.Fatal("complete certification rejected")
+	}
+	for name, change := range map[string]func(*space.RuntimeCertification){
+		"version":  func(c *space.RuntimeCertification) { c.HermesVersion = "" },
+		"plugin":   func(c *space.RuntimeCertification) { c.PluginIdentity = "" },
+		"commit":   func(c *space.RuntimeCertification) { c.PluginCommit = "" },
+		"config":   func(c *space.RuntimeCertification) { c.ConfigDigest = "" },
+		"evidence": func(c *space.RuntimeCertification) { c.Evidence = "" },
+	} {
+		cert := valid
+		change(&cert)
+		if certificationMatches(cert, profile, time.Unix(100, 0)) {
+			t.Errorf("%s: incomplete certification accepted", name)
+		}
+	}
+	profile.Model = "tampered"
+	if certificationMatches(valid, profile, time.Unix(100, 0)) {
+		t.Error("profile changed without digest update")
+	}
+	profile = space.DefaultRuntimeProfile()
+	profile.AllowedFeatureSet = []string{"shell"}
+	profile.Digest = space.RuntimeProfileDigest(profile)
+	valid.ProfileDigest = profile.Digest
+	if certificationMatches(valid, profile, time.Unix(100, 0)) {
+		t.Error("ordinary chat accepted a tool-enabled profile")
+	}
+}
+
+func TestUnexpectedToolEventCannotAppendAssistantMessage(t *testing.T) {
+	store := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "tool_call", Data: json.RawMessage(`{"tool":"shell"}`)}, {Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"unsafe answer"}`)}}}
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err == nil || runtime.stopped != 1 || len(store.state.Messages["c1"]) != 1 || store.state.Tasks["task-1"].Status == space.OutcomeCompleted {
+		t.Fatalf("unexpected tool event accepted: err=%v stopped=%d messages=%d task=%q", err, runtime.stopped, len(store.state.Messages["c1"]), store.state.Tasks["task-1"].Status)
+	}
+}
+
+func TestToolStatusHiddenInProgressCannotAppendAssistantMessage(t *testing.T) {
+	store := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "progress", Data: json.RawMessage(`{"status":"tool_call"}`)}, {Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"unsafe answer"}`)}}}
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err == nil || runtime.stopped != 1 || len(store.state.Messages["c1"]) != 1 {
+		t.Fatalf("tool status accepted: err=%v stopped=%d messages=%d", err, runtime.stopped, len(store.state.Messages["c1"]))
+	}
+}
+
+func TestLateTerminalResultDoesNotAppendAssistantMessage(t *testing.T) {
+	store := &memoryStore{state: conversationState()}
+	now := int64(100)
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"late"}`)}}}
+	runtime.beforeEvents = func() { now = 201 }
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(now, 0) }))
+	_, _ = svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if got := store.state.Tasks["task-1"].Status; got != space.OutcomeUnknown || len(store.state.Messages["c1"]) != 1 {
+		t.Fatalf("late result accepted: task=%q messages=%d", got, len(store.state.Messages["c1"]))
+	}
+}
+
+func TestReplayedSendReportsDurableTaskOutcome(t *testing.T) {
+	store := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}}
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	req := SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200}
+	_, _ = svc.Send(context.Background(), req)
+	replayed, err := svc.Send(context.Background(), req)
+	if err != nil || !replayed.Replayed || replayed.Receipt.Outcome != space.OutcomeUnknown || runtime.created != 1 {
+		t.Fatalf("replay hid durable outcome or redispatched: receipt=%#v err=%v creates=%d", replayed.Receipt, err, runtime.created)
+	}
+}
+
 func conversationState() space.State {
 	persona := space.DefaultPersona()
 	profile := space.DefaultRuntimeProfile()
@@ -167,5 +277,5 @@ func conversationState() space.State {
 
 func exactCertification() space.RuntimeCertification {
 	p := space.DefaultRuntimeProfile()
-	return space.RuntimeCertification{ID: "cert-1", RuntimeIdentity: "hermes:test", EndpointIdentity: "endpoint:test", ProfileDigest: p.Digest, EffectiveToolsets: []string{}, MemoryRead: false, MemoryWrite: false, Limits: space.RuntimeProfileLimits{Version: 1, MaxTurns: p.MaxTurns, MaxMessages: p.MaxMessages, MaxContextBytes: p.MaxContextBytes, MaxInputTokens: p.MaxInputTokens, MaxOutputTokens: p.MaxOutputTokens, MaxTotalTokens: p.MaxTotalTokens, DeadlineSeconds: p.DeadlineSeconds}, ExpiresAt: 1000}
+	return space.RuntimeCertification{ID: "cert-1", RuntimeIdentity: "hermes:test", EndpointIdentity: "endpoint:test", HermesVersion: "v1", PluginIdentity: "lumen-plugin", PluginCommit: "commit", ConfigDigest: space.DigestText("config"), Evidence: "verified", ProfileDigest: p.Digest, EffectiveToolsets: []string{}, MemoryRead: false, MemoryWrite: false, Limits: space.RuntimeProfileLimits{Version: 1, MaxTurns: p.MaxTurns, MaxMessages: p.MaxMessages, MaxContextBytes: p.MaxContextBytes, MaxInputTokens: p.MaxInputTokens, MaxOutputTokens: p.MaxOutputTokens, MaxTotalTokens: p.MaxTotalTokens, DeadlineSeconds: p.DeadlineSeconds}, ExpiresAt: 1000}
 }

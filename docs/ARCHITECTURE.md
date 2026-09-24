@@ -24,7 +24,7 @@ V1 has one active headless Host process. The same service artifact may run on Li
 
 ## Current implementation status
 
-The repository currently implements the Go Space authority, encrypted durable storage, owner-restricted local control, Host-local task execution and recovery, and a versioned Hermes Runs adapter. The public setup, doctor, and service experience is not yet complete. Canonical conversations and product memory, authenticated node transport, remote node execution, restricted file capabilities, web and messaging surfaces, and the Jarvis voice experience described below are target architecture, not shipped behavior. Phase-specific evidence is tracked in [PLAN.md](./PLAN.md); architecture must not be read as an implementation claim.
+The repository currently implements the Go Space authority, encrypted durable storage, owner-restricted local control, Host-local task execution and recovery, a versioned Hermes Runs adapter, and public setup, doctor, and service paths for combined and external topologies. The conversation nucleus has canonical records and a Host chat path, but its review, real runtime certification, and restart continuity gates remain open. Product memory, authenticated node transport, remote node execution, restricted file capabilities, web and messaging surfaces, and the Jarvis voice experience described below are target architecture, not shipped behavior. Phase-specific evidence is tracked in [PLAN.md](./PLAN.md); architecture must not be read as an implementation claim.
 
 ## Component responsibilities
 

@@ -6,6 +6,22 @@ Lumen ships complete capability journeys, not collections of platform features. 
 
 The product north star is a Jarvis-like personal intelligence Space: the user can speak naturally from any supported surface, continue one relationship and inspectable memory, and safely act across permitted devices and services. Hermes supplies the intelligence and existing agent subsystems; Lumen owns the Space, authority, continuity, product experience, and commercial service.
 
+## One-agent delivery sequence
+
+Future OS at commit `98f7f3a` is a reference for inspectable work, approachable setup, desktop/mobile continuity, remote control, and release presentation. It is not Lumen's state authority. [D-053](./DECISIONS.md) keeps Hermes as the preferred execution runtime while preserving the option to qualify another runtime behind the same Host contract. Direct code reuse requires per-component license, attribution, dependency, and security review; copying an unrestricted tool policy or process-local approval route is prohibited.
+
+The shortest useful commercial path is one visible continuity journey, then broader capabilities:
+
+1. **Foundation:** finish the distributable manifest, live replacement/rollback, cross-machine external Runs, and pinned-runtime negative probes. Milestone 1 stays open until those real checks pass.
+2. **One conversation:** resolve every Important finding in the existing conversation nucleus review, wire a real certified zero-tool Hermes profile, and prove one Host-owned history from two reconnectable clients after Host and Hermes restart. No assistant message follows an uncertain run.
+3. **One action across devices:** pair one node, grant one selected file root, ask from another surface, revalidate at the node, and show an exact receipt or an honest uncertain outcome. Revoke access and prove the next attempt fails.
+4. **One natural relationship:** add a messaging surface and then voice to the same conversation; make listening, progress, interruption, and approval visible. Do not create channel-specific memory.
+5. **Commercial readiness:** package self-hosted and managed deployment with equivalent Space semantics, encrypted export/import, billing, support boundaries, backups, rollback, and user-tested onboarding. A compelling demo and concise product promise come from these working journeys, not from listing future features.
+
+For each step, acceptance requires a clean-install journey, negative and restart tests, real intended-platform evidence, and an independent security review for authority, persistence, transport, or migration changes. Track time to the first useful continuity-and-action moment, setup completion, recovery success, latency, and repeat use before expanding the feature catalog.
+
+The existing conversation-nucleus branch has six Important review findings. This branch has test-backed changes for certificate binding (I1), preference projection (I3), deadline rejection (I5), and part of event rejection (I2) and replay (I6). The conversation gate remains **open** until unexpected runtime events also invalidate certification with redacted evidence (I2), a session intent is durable before certification I/O (I4), and queued/dispatched chat survives restart with verified completion and truthful replay (I6). Then wire a real certifier and run the two-client, Host-restart, Hermes-restart, and zero-tool journeys. No product-surface milestone is complete merely because package tests pass.
+
 ## Current execution lock
 
 **Milestone 1 foundation closure and the bounded Milestone 2 conversation nucleus are the active implementation lanes.** The durable Go Space authority, encrypted store, authenticated local control boundary, Host-to-Hermes Runs execution, dual-topology public setup, and durable doctor/service paths exist. The combined gate passed twice clean on Azure Ubuntu 22.04 amd64 and survived a real reboot. External setup against an independently supervised, pinned Hermes runtime passed authenticated mutual-TLS adoption, Host-only lifecycle control, doctor, canonical-state preservation, and a real reboot on that same VPS; the automated external journey also passed twice clean with an isolated compatibility endpoint. The release manifest is still not distributable, live deployment artifact replacement/rollback is absent, and real cross-machine external Runs behavior remains unproven. M1 therefore remains open and cannot be inferred complete.

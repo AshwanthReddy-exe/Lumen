@@ -23,7 +23,7 @@ type Projection struct {
 
 // Project deterministically selects the newest bounded canonical messages and
 // accepted owner preferences. It never consults Hermes sessions or memory.
-func Project(state space.State, conversationID string, persona space.Persona, profile space.RuntimeProfile) (Projection, error) {
+func Project(state space.State, conversationID string, persona space.Persona, profile space.RuntimeProfile, now int64) (Projection, error) {
 	conversation, ok := state.Conversations[conversationID]
 	if !ok || persona.Status != space.PersonaActive || persona.Digest != space.DigestText(persona.Instructions) || profile.MaxMessages > space.MaxProjectedMessages || profile.MaxContextBytes > space.MaxProjectedContextBytes {
 		return Projection{}, errors.New("invalid conversation projection")
@@ -38,7 +38,7 @@ func Project(state space.State, conversationID string, persona space.Persona, pr
 	for _, message := range messages {
 		projected = append(projected, ProjectedMessage{Role: message.Role, Content: message.Content})
 	}
-	contextText := projectedPreferences(state.ContextRecords, profile.MaxContextBytes)
+	contextText := projectedPreferences(state.ContextRecords, profile.MaxContextBytes, now)
 	instructions := persona.Instructions
 	if contextText != "" {
 		instructions += "\n\nHost-accepted preferences (canonical):\n" + contextText
@@ -51,7 +51,7 @@ func Project(state space.State, conversationID string, persona space.Persona, pr
 	return Projection{Instructions: instructions, Input: input, Messages: projected, Context: contextText}, nil
 }
 
-func projectedPreferences(records map[string]space.ContextRecord, maxBytes int) string {
+func projectedPreferences(records map[string]space.ContextRecord, maxBytes int, now int64) string {
 	type selected struct {
 		ID      string          `json:"id"`
 		Payload json.RawMessage `json:"payload"`
@@ -64,7 +64,7 @@ func projectedPreferences(records map[string]space.ContextRecord, maxBytes int) 
 	sort.Strings(ids)
 	for _, id := range ids {
 		record := records[id]
-		if record.Namespace != "user.preferences/v1" || record.Provenance != "owner" || record.AcceptedAt <= 0 || len(record.Payload) == 0 || !json.Valid(record.Payload) {
+		if record.Namespace != "user.preferences/v1" || record.SchemaVersion != 1 || record.Provenance != "owner" || record.Classification != "private" || record.AcceptedAt <= 0 || (record.RetentionUntil != 0 && record.RetentionUntil <= now) || len(record.Payload) == 0 || !json.Valid(record.Payload) || record.Digest != space.DigestText(string(record.Payload)) {
 			continue
 		}
 		var typed map[string]string
