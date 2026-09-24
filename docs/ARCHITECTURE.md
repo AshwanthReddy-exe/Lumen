@@ -133,6 +133,8 @@ State-changing capability contracts also declare authority, validation point, id
 
 All surfaces map into Host-owned `Conversation`, `Message`, `Participant`, and `Surface` records. Hermes runtime sessions are replaceable execution mappings, not conversation authority. A runtime outage, upgrade, or replacement cannot erase canonical history.
 
+For zero-tool conversation runs, the Host examines the complete bounded runtime event evidence before accepting an assistant message. Unknown or conflicting evidence cannot establish completion. An observed forbidden event invalidates the exact runtime certification through a durable, redacted Host audit record; subsequent sends must obtain a different qualified certification.
+
 Runtimes may propose memory, but only the Host validates and persists canonical records. Low-risk memory may be accepted automatically under an inspectable retention policy; sensitive or consequential durable memory requires confirmation. Records carry scope, provenance, classification, retention, expiry, confidence, and a digest; users can inspect why a record exists and edit, export, or delete it within their authorized scope. Deletion excludes it from future context projections and follows the documented durable deletion and backup policy.
 
 The Host stores canonical Space context as typed records and append-only events, not one unbounded prompt. Context namespaces include user preferences, projects, devices, tasks, schedules, and capability-specific memory. Each synchronized record carries origin node, version, timestamp, classification, retention, and content digest.

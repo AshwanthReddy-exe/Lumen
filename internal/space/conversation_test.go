@@ -75,6 +75,35 @@ func TestRuntimeSessionBindingRequiresDurableReservation(t *testing.T) {
 	}
 }
 
+func TestRuntimeCertificationInvalidationRequiresExactHostRun(t *testing.T) {
+	s := conversationWithSend(t)
+	reserve := Apply(s, Command{Type: CommandReserveRuntimeSession, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "reserve", ConversationID: "conversation-1", HermesSessionID: "session-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest})
+	bind := Apply(reserve.State, Command{Type: CommandBindRuntimeSession, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "bind", ConversationID: "conversation-1", HermesSessionID: "session-1", RuntimeIdentity: "hermes:test", RuntimeProfileDigest: DefaultRuntimeProfile().Digest})
+	dispatch := Apply(bind.State, Command{Type: CommandDispatchHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "dispatch", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest, DispatchedAt: 100, ReconcileBy: 200})
+	if reserve.Rejection != "" || bind.Rejection != "" || dispatch.Rejection != "" {
+		t.Fatalf("test setup rejected: reserve=%q bind=%q dispatch=%q", reserve.Rejection, bind.Rejection, dispatch.Rejection)
+	}
+	cert := RuntimeCertification{ID: "cert-1", RuntimeIdentity: "hermes:test", ProfileDigest: DefaultRuntimeProfile().Digest}
+	command := Command{Type: CommandInvalidateRuntimeCertification, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: RuntimeCertificationInvalidationID(cert), CertificationID: cert.ID, RuntimeIdentity: cert.RuntimeIdentity, RuntimeProfileDigest: cert.ProfileDigest, TaskID: "task-1", RuntimeRunID: "run-1"}
+	wrong := command
+	wrong.RuntimeRunID = "other-run"
+	if tr := Apply(dispatch.State, wrong); tr.Rejection == "" || RuntimeCertificationInvalidated(tr.State, cert) {
+		t.Fatalf("mismatched run invalidated certification: %#v", tr)
+	}
+	wrong = command
+	wrong.ActorID = "owner"
+	if tr := Apply(dispatch.State, wrong); tr.Rejection == "" || RuntimeCertificationInvalidated(tr.State, cert) {
+		t.Fatalf("owner invalidated certification: %#v", tr)
+	}
+	invalidated := Apply(dispatch.State, command)
+	if invalidated.Rejection != "" || !RuntimeCertificationInvalidated(invalidated.State, cert) {
+		t.Fatalf("valid violation not recorded: %#v", invalidated)
+	}
+	if err := ValidateState(invalidated.State); err != nil {
+		t.Fatalf("invalidated state failed validation: %v", err)
+	}
+}
+
 func TestConversationCompletionAppendsDeterministicAssistantOnce(t *testing.T) {
 	s := conversationWithSend(t)
 	completed := Apply(s, Command{

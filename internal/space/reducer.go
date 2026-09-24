@@ -288,6 +288,29 @@ func bindRuntimeSession(s State, c Command) Transition {
 	return accepted(s, c, OutcomeApplied, c.ConversationID)
 }
 
+func invalidateRuntimeCertification(s State, c Command) Transition {
+	if reason := executionContext(s, c); reason != "" {
+		return reject(s, c, reason)
+	}
+	if c.CertificationID == "" || c.RuntimeIdentity == "" || c.RuntimeProfileDigest == "" || c.TaskID == "" || c.RuntimeRunID == "" {
+		return reject(s, c, "invalid_certification_invalidation")
+	}
+	cert := RuntimeCertification{ID: c.CertificationID, RuntimeIdentity: c.RuntimeIdentity, ProfileDigest: c.RuntimeProfileDigest}
+	if c.RequestID != RuntimeCertificationInvalidationID(cert) {
+		return reject(s, c, "invalid_certification_invalidation")
+	}
+	run, task, reason := runMapping(s, c)
+	if reason != "" || task.CapabilityID != "conversation.chat/respond" || run.RuntimeProfileDigest != c.RuntimeProfileDigest {
+		return reject(s, c, "run_mapping_mismatch")
+	}
+	conversationID, ok := conversationForTask(s, c.TaskID)
+	if !ok || s.RuntimeSessions[conversationID].RuntimeIdentity != c.RuntimeIdentity {
+		return reject(s, c, "runtime_session_mismatch")
+	}
+	s = audit(s, AuditRuntimeCertificationInvalidated, c.RequestID, s.HostID, c.Type, "runtime_event_violation")
+	return accepted(s, c, OutcomeApplied, c.CertificationID)
+}
+
 func registerSurface(s State, c Command) Transition {
 	if reason := conversationContext(s, c, true); reason != "" {
 		return reject(s, c, reason)

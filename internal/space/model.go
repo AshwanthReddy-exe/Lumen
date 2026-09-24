@@ -18,29 +18,30 @@ const (
 type CommandType string
 
 const (
-	CommandCreateSpace                CommandType = "create_space"
-	CommandCreateConversation         CommandType = "conversation.create"
-	CommandSendConversation           CommandType = "conversation.send"
-	CommandCompleteConversation       CommandType = "conversation.complete"
-	CommandSetPreference              CommandType = "preference.set"
-	CommandReserveRuntimeSession      CommandType = "conversation.reserve_session"
-	CommandBindRuntimeSession         CommandType = "conversation.bind_session"
-	CommandRegisterSurface            CommandType = "surface.register"
-	CommandPairNode                   CommandType = "pair_node"
-	CommandAdvertiseCapability        CommandType = "advertise_capability"
-	CommandSetGrant                   CommandType = "set_grant"
-	CommandSubmit                     CommandType = "submit"
-	CommandApprove                    CommandType = "approve"
-	CommandComplete                   CommandType = "complete"
-	CommandRevokeNode                 CommandType = "revoke_node"
-	CommandRecoverAfterRestart        CommandType = "recover_after_restart"
-	CommandDispatchHostRun            CommandType = "dispatch_host_run"
-	CommandReconcileHostRun           CommandType = "reconcile_host_run"
-	CommandRequestHostRunCancellation CommandType = "request_host_run_cancellation"
-	CommandCreateHostRun              CommandType = "create_host_run"
-	CommandRequestRuntimeApproval     CommandType = "request_runtime_approval"
-	CommandResolveRuntimeApproval     CommandType = "resolve_runtime_approval"
-	CommandRecordRuntimeApproval      CommandType = "record_runtime_approval"
+	CommandCreateSpace                    CommandType = "create_space"
+	CommandCreateConversation             CommandType = "conversation.create"
+	CommandSendConversation               CommandType = "conversation.send"
+	CommandCompleteConversation           CommandType = "conversation.complete"
+	CommandSetPreference                  CommandType = "preference.set"
+	CommandReserveRuntimeSession          CommandType = "conversation.reserve_session"
+	CommandBindRuntimeSession             CommandType = "conversation.bind_session"
+	CommandInvalidateRuntimeCertification CommandType = "conversation.invalidate_certification"
+	CommandRegisterSurface                CommandType = "surface.register"
+	CommandPairNode                       CommandType = "pair_node"
+	CommandAdvertiseCapability            CommandType = "advertise_capability"
+	CommandSetGrant                       CommandType = "set_grant"
+	CommandSubmit                         CommandType = "submit"
+	CommandApprove                        CommandType = "approve"
+	CommandComplete                       CommandType = "complete"
+	CommandRevokeNode                     CommandType = "revoke_node"
+	CommandRecoverAfterRestart            CommandType = "recover_after_restart"
+	CommandDispatchHostRun                CommandType = "dispatch_host_run"
+	CommandReconcileHostRun               CommandType = "reconcile_host_run"
+	CommandRequestHostRunCancellation     CommandType = "request_host_run_cancellation"
+	CommandCreateHostRun                  CommandType = "create_host_run"
+	CommandRequestRuntimeApproval         CommandType = "request_runtime_approval"
+	CommandResolveRuntimeApproval         CommandType = "resolve_runtime_approval"
+	CommandRecordRuntimeApproval          CommandType = "record_runtime_approval"
 )
 
 type Outcome string
@@ -72,10 +73,11 @@ const (
 type AuditEventType string
 
 const (
-	AuditSpaceCreated    AuditEventType = "space.created"
-	AuditCommandAccepted AuditEventType = "command.accepted"
-	AuditCommandRejected AuditEventType = "command.rejected"
-	AuditCommandReplayed AuditEventType = "command.replayed"
+	AuditSpaceCreated                    AuditEventType = "space.created"
+	AuditCommandAccepted                 AuditEventType = "command.accepted"
+	AuditCommandRejected                 AuditEventType = "command.rejected"
+	AuditCommandReplayed                 AuditEventType = "command.replayed"
+	AuditRuntimeCertificationInvalidated AuditEventType = "runtime.certification_invalidated"
 )
 
 type State struct {
@@ -219,6 +221,7 @@ type Command struct {
 	RuntimeIdempotencyKey string          `json:"runtimeIdempotencyKey,omitempty"`
 	RuntimeProfileDigest  string          `json:"runtimeProfileDigest,omitempty"`
 	RuntimeIdentity       string          `json:"runtimeIdentity,omitempty"`
+	CertificationID       string          `json:"certificationId,omitempty"`
 	HermesSessionID       string          `json:"hermesSessionId,omitempty"`
 	DispatchedAt          int64           `json:"dispatchedAt,omitempty"`
 	ReconcileBy           int64           `json:"reconcileBy,omitempty"`

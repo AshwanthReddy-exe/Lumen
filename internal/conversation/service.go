@@ -1,10 +1,12 @@
 package conversation
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -153,7 +155,7 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 		return queued, err
 	}
 	cert, certErr := s.certifier.Certify(ctx, state, profile)
-	if certErr != nil || !certificationMatches(cert, profile, s.now()) {
+	if certErr != nil || !certificationMatches(cert, profile, s.now()) || space.RuntimeCertificationInvalidated(state, cert) {
 		return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 	}
 	persona, err := CompilePersona(state, req.ConversationID)
@@ -197,22 +199,41 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 		}
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", statusErr)
 	}
-	if !isTerminalStatus(status.Status) {
-		events, eventsErr := s.runtime.Events(reconcileCtx, run.RunID)
-		if eventsErr == nil {
-			for _, event := range events {
-				if !allowedChatEvent(event) {
-					_, _ = s.runtime.Stop(ctx, run.RunID)
-					return s.fail(queued, state, taskID, errors.New("runtime emitted an uncertified event"))
-				}
-				if eventStatus, output, ok := conversationEvent(event); ok {
-					status.Status, status.Output = eventStatus, output
-					if isTerminalStatus(status.Status) {
-						break
-					}
-				}
+	events, eventsErr := s.runtime.Events(reconcileCtx, run.RunID)
+	for _, event := range events {
+		if !allowedChatEvent(event) {
+			invalidated, invalidateErr := s.apply(space.Command{Type: space.CommandInvalidateRuntimeCertification, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: space.RuntimeCertificationInvalidationID(cert), CertificationID: cert.ID, RuntimeIdentity: cert.RuntimeIdentity, RuntimeProfileDigest: profile.Digest, TaskID: taskID, RuntimeRunID: run.RunID})
+			_, _ = s.runtime.Stop(ctx, run.RunID)
+			if invalidateErr != nil || invalidated.Rejection != "" {
+				return s.fail(queued, state, taskID, errors.Join(ErrRuntimeProfileUnverified, errOrRejection(invalidateErr, invalidated.Rejection)))
 			}
+			return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 		}
+	}
+	terminalEvent := false
+	terminal := terminalOutcome(status.Status)
+	for _, event := range events {
+		if eventStatus, output, ok := conversationEvent(event); ok {
+			if outcome := terminalOutcome(eventStatus); terminal != "" && outcome != terminal {
+				return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conflicting runtime terminal evidence"))
+			} else {
+				terminal = outcome
+			}
+			if status.Output != "" && output != "" && status.Output != output {
+				return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conflicting runtime output evidence"))
+			}
+			status.Status = eventStatus
+			if output != "" {
+				status.Output = output
+			}
+			terminalEvent = true
+		}
+	}
+	if eventsErr != nil && !errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) {
+		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", eventsErr)
+	}
+	if errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) && !terminalEvent {
+		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("runtime event stream ended without terminal evidence"))
 	}
 	if s.now().Unix() >= by {
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conversation reconciliation deadline reached"))
@@ -231,28 +252,81 @@ func allowedChatEvent(event hermes.Event) bool {
 	if !allowedChatStatus(event.Type) {
 		return false
 	}
-	var payload struct {
-		Status string `json:"status"`
-		Event  string `json:"event"`
-		Type   string `json:"type"`
-	}
-	if len(event.Data) > 0 && json.Unmarshal(event.Data, &payload) != nil {
-		return false
-	}
-	for _, value := range []string{payload.Status, payload.Event, payload.Type} {
-		if value != "" && !allowedChatStatus(value) {
+	if len(event.Data) > 0 {
+		if data := bytes.TrimSpace(event.Data); len(data) == 0 || data[0] != '{' {
+			return false
+		}
+		decoder := json.NewDecoder(bytes.NewReader(event.Data))
+		start, err := decoder.Token()
+		if err != nil || start != json.Delim('{') {
+			return false
+		}
+		seen := map[string]bool{}
+		expected := canonicalChatStatus(event.Type)
+		for decoder.More() {
+			key, err := decoder.Token()
+			if err != nil {
+				return false
+			}
+			name, ok := key.(string)
+			if !ok || seen[name] {
+				return false
+			}
+			seen[name] = true
+			var value string
+			if decoder.Decode(&value) != nil {
+				return false
+			}
+			switch name {
+			case "status", "event", "type":
+				if canonicalChatStatus(value) != expected {
+					return false
+				}
+			case "output":
+			default:
+				return false
+			}
+		}
+		end, err := decoder.Token()
+		if err != nil || end != json.Delim('}') {
+			return false
+		}
+		var extra any
+		if decoder.Decode(&extra) != io.EOF {
 			return false
 		}
 	}
 	return true
 }
 
-func allowedChatStatus(value string) bool {
-	switch strings.ToLower(value) {
-	case "created", "started", "running", "progress", "completed", "succeeded", "success", "failed", "error", "cancelled", "canceled", "run.created", "run.started", "run.running", "run.progress", "run.completed", "run.failed", "run.cancelled":
-		return true
+func terminalOutcome(status string) space.Outcome {
+	status = strings.TrimPrefix(strings.ToLower(status), "run.")
+	switch status {
+	case "completed", "succeeded", "success":
+		return space.OutcomeCompleted
+	case "failed", "error", "cancelled", "canceled":
+		return space.OutcomeFailed
 	default:
-		return false
+		return ""
+	}
+}
+
+func allowedChatStatus(value string) bool {
+	return canonicalChatStatus(value) != ""
+}
+
+func canonicalChatStatus(value string) string {
+	switch strings.TrimPrefix(strings.ToLower(value), "run.") {
+	case "created", "started", "running", "progress":
+		return strings.TrimPrefix(strings.ToLower(value), "run.")
+	case "completed", "succeeded", "success":
+		return "completed"
+	case "failed", "error":
+		return "failed"
+	case "cancelled", "canceled":
+		return "cancelled"
+	default:
+		return ""
 	}
 }
 
@@ -346,7 +420,7 @@ func conversationEvent(event hermes.Event) (string, string, bool) {
 		Output string `json:"output"`
 	}
 	if json.Unmarshal(event.Data, &payload) == nil && payload.Status != "" {
-		status, output := strings.ToLower(payload.Status), payload.Output
+		status, output := strings.TrimPrefix(strings.ToLower(payload.Status), "run."), payload.Output
 		return status, output, isTerminalStatus(status)
 	}
 	return status, "", isTerminalStatus(status)

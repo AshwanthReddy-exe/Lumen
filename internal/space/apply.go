@@ -47,6 +47,8 @@ func Apply(s State, c Command) Transition {
 		tr = reserveRuntimeSession(s, c)
 	case CommandBindRuntimeSession:
 		tr = bindRuntimeSession(s, c)
+	case CommandInvalidateRuntimeCertification:
+		tr = invalidateRuntimeCertification(s, c)
 	case CommandRegisterSurface:
 		tr = registerSurface(s, c)
 	case CommandPairNode:

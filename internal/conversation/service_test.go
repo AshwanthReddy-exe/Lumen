@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
+	"github.com/AshwanthReddy-exe/Lumen/internal/store"
 )
 
 type memoryStore struct{ state space.State }
@@ -29,8 +31,10 @@ type fakeRuntime struct {
 	stopped      int
 	before       func()
 	beforeEvents func()
+	beforeStop   func()
 	run          hermes.Run
 	events       []hermes.Event
+	eventsErr    error
 	req          hermes.CreateRunRequest
 }
 
@@ -53,11 +57,14 @@ func (f *fakeRuntime) Events(context.Context, string) ([]hermes.Event, error) {
 	if f.beforeEvents != nil {
 		f.beforeEvents()
 	}
-	return f.events, nil
+	return f.events, f.eventsErr
 }
 func (f *fakeRuntime) ResolveApproval(context.Context, string, string) error    { return nil }
 func (f *fakeRuntime) Steer(context.Context, string, hermes.SteerRequest) error { return nil }
 func (f *fakeRuntime) Stop(context.Context, string) (hermes.Run, error) {
+	if f.beforeStop != nil {
+		f.beforeStop()
+	}
 	f.stopped++
 	return f.run, nil
 }
@@ -239,6 +246,122 @@ func TestUnexpectedToolEventCannotAppendAssistantMessage(t *testing.T) {
 	}
 }
 
+func TestRuntimeViolationInvalidatesCertificationForLaterSend(t *testing.T) {
+	state := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "unsafe"}, events: []hermes.Event{{Type: "failed", Data: json.RawMessage(`{"status":"failed"}`)}, {Type: "tool_call", Data: json.RawMessage(`{"tool":"secret-command"}`)}}}
+	cert := exactCertification()
+	runtime.beforeStop = func() {
+		if !space.RuntimeCertificationInvalidated(state.state, cert) {
+			t.Fatal("Stop I/O started before durable certification invalidation")
+		}
+	}
+	svc := NewService(state, runtime, fakeCertifier{cert: cert}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, _ = svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if !space.RuntimeCertificationInvalidated(state.state, cert) {
+		t.Fatal("runtime violation did not invalidate exact certification")
+	}
+	for _, event := range state.state.Audit {
+		if strings.Contains(event.RequestID+event.Outcome, "secret-command") {
+			t.Fatal("runtime evidence leaked into durable audit")
+		}
+	}
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-2", ConversationID: "c1", SurfaceID: "web", TaskID: "task-2", Input: "again", CreatedAt: 101, ReconcileBy: 201})
+	if !errors.Is(err, ErrRuntimeProfileUnverified) || runtime.created != 1 || state.state.Tasks["task-2"].Status != space.OutcomeFailed {
+		t.Fatalf("invalidated certificate reused: err=%v creates=%d task=%q", err, runtime.created, state.state.Tasks["task-2"].Status)
+	}
+}
+
+func TestRuntimeViolationInvalidationSurvivesEncryptedStoreReopen(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	durable, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := durable.Initialize(conversationState()); err != nil {
+		t.Fatal(err)
+	}
+	cert := exactCertification()
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "tool_call", Data: json.RawMessage(`{"tool":"private"}`)}}}
+	svc := NewService(durable, runtime, fakeCertifier{cert: cert}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, _ = svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err := durable.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	state, err := reopened.Read()
+	if err != nil || !space.RuntimeCertificationInvalidated(state, cert) {
+		t.Fatalf("certification invalidation lost after reopen: invalidated=%v err=%v", space.RuntimeCertificationInvalidated(state, cert), err)
+	}
+	runtime.events = nil
+	svc = NewService(reopened, runtime, fakeCertifier{cert: cert}, WithClock(func() time.Time { return time.Unix(101, 0) }))
+	_, err = svc.Send(context.Background(), SendRequest{RequestID: "send-2", ConversationID: "c1", SurfaceID: "web", TaskID: "task-2", Input: "again", CreatedAt: 101, ReconcileBy: 201})
+	if !errors.Is(err, ErrRuntimeProfileUnverified) || runtime.created != 1 {
+		t.Fatalf("reopened state reused invalidated cert: err=%v creates=%d", err, runtime.created)
+	}
+}
+
+func TestTerminalStatusStillRejectsHiddenToolEvent(t *testing.T) {
+	store := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "unsafe answer"}, events: []hermes.Event{
+		{Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"unsafe answer"}`)},
+		{Type: "progress", Data: json.RawMessage(`{"status":"progress","details":{"tool_call":"shell"}}`)},
+	}}
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err == nil || runtime.stopped != 1 || len(store.state.Messages["c1"]) != 1 || store.state.Tasks["task-1"].Status == space.OutcomeCompleted {
+		t.Fatalf("hidden tool event accepted: err=%v stopped=%d messages=%d task=%q", err, runtime.stopped, len(store.state.Messages["c1"]), store.state.Tasks["task-1"].Status)
+	}
+}
+
+func TestDisconnectedEventStreamWithoutTerminalEvidenceIsUncertain(t *testing.T) {
+	store := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "unverified"}, eventsErr: hermes.ErrEventStreamDisconnected}
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err == nil || store.state.Tasks["task-1"].Status != space.OutcomeUnknown || len(store.state.Messages["c1"]) != 1 {
+		t.Fatalf("disconnected evidence accepted: err=%v task=%q messages=%d", err, store.state.Tasks["task-1"].Status, len(store.state.Messages["c1"]))
+	}
+}
+
+func TestConflictingTerminalEvidenceCannotCompleteConversation(t *testing.T) {
+	for name, run := range map[string]hermes.Run{
+		"event conflict":  {RunID: "run-1", Status: "running"},
+		"status conflict": {RunID: "run-1", Status: "failed"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := &memoryStore{state: conversationState()}
+			runtime := &fakeRuntime{run: run, events: []hermes.Event{
+				{Type: "failed", Data: json.RawMessage(`{"status":"failed"}`)},
+				{Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"unsafe"}`)},
+			}}
+			svc := NewService(state, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+			_, _ = svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+			if state.state.Tasks["task-1"].Status == space.OutcomeCompleted || len(state.state.Messages["c1"]) != 1 {
+				t.Fatalf("conflicting terminal evidence accepted: task=%q messages=%d", state.state.Tasks["task-1"].Status, len(state.state.Messages["c1"]))
+			}
+		})
+	}
+}
+
+func TestDuplicateEventKeyCannotHideToolEvidence(t *testing.T) {
+	if allowedChatEvent(hermes.Event{Type: "completed", Data: json.RawMessage(`{"status":"tool_call","status":"completed","output":"unsafe"}`)}) {
+		t.Fatal("duplicate status hid tool evidence")
+	}
+}
+
+func TestEventTypeCannotContradictPayloadStatus(t *testing.T) {
+	if allowedChatEvent(hermes.Event{Type: "failed", Data: json.RawMessage(`{"status":"completed","output":"unsafe"}`)}) {
+		t.Fatal("terminal type contradicted by payload status")
+	}
+}
+
 func TestToolStatusHiddenInProgressCannotAppendAssistantMessage(t *testing.T) {
 	store := &memoryStore{state: conversationState()}
 	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "progress", Data: json.RawMessage(`{"status":"tool_call"}`)}, {Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"unsafe answer"}`)}}}
@@ -286,6 +409,40 @@ func TestSessionIntentIsDurableBeforeCertificationIO(t *testing.T) {
 	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
 	if err != nil || store.state.RuntimeSessions["c1"].Pending {
 		t.Fatalf("certified session did not bind: err=%v mapping=%#v", err, store.state.RuntimeSessions["c1"])
+	}
+}
+
+func TestSessionReservationSurvivesEncryptedStoreReopen(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	durable, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := durable.Initialize(conversationState()); err != nil {
+		t.Fatal(err)
+	}
+	certifier := fakeCertifier{err: ErrRuntimeProfileUnverified, before: func() {
+		state, readErr := durable.Read()
+		if readErr != nil || !state.RuntimeSessions["c1"].Pending || state.Tasks["task-1"].Status != space.OutcomeQueued {
+			t.Fatalf("session intent not durable before certification: state=%#v err=%v", state.RuntimeSessions["c1"], readErr)
+		}
+	}}
+	svc := NewService(durable, &fakeRuntime{}, certifier, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, _ = svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err := durable.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := store.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	state, err := reopened.Read()
+	if err != nil || !state.RuntimeSessions["c1"].Pending || state.Tasks["task-1"].Status != space.OutcomeFailed {
+		t.Fatalf("session reservation lost after reopen: mapping=%#v task=%#v err=%v", state.RuntimeSessions["c1"], state.Tasks["task-1"], err)
 	}
 }
 
