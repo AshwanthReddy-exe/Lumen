@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
+	"github.com/AshwanthReddy-exe/Lumen/internal/conversation"
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
 	"github.com/AshwanthReddy-exe/Lumen/internal/store"
@@ -445,13 +446,15 @@ func exists(path string) bool {
 }
 
 type Service struct {
-	cfg      Config
-	server   *control.Server
-	state    *store.Store
-	executor *executor
-	ready    chan struct{}
-	stop     chan struct{}
-	once     sync.Once
+	cfg            Config
+	server         *control.Server
+	state          *store.Store
+	executor       *executor
+	conversationMu sync.Mutex
+	conversation   *conversation.Service
+	ready          chan struct{}
+	stop           chan struct{}
+	once           sync.Once
 }
 
 func New(c Config) (*Service, error) {
@@ -533,6 +536,14 @@ func (s *Service) handle(ctx context.Context, q control.Request) control.Respons
 		return s.handleTaskCancel(ctx, q.Arguments)
 	case "approval resolve":
 		return s.handleApprovalResolve(ctx, q.Arguments)
+	case "conversation create":
+		return s.handleConversationCreate(ctx, q.Arguments)
+	case "conversation send":
+		return s.handleConversationSend(ctx, q.Arguments)
+	case "conversation show":
+		return s.handleConversationShow(ctx, q.Arguments)
+	case "preference set":
+		return s.handlePreferenceSet(ctx, q.Arguments)
 	default:
 		return control.Response{Error: "unsupported command"}
 	}

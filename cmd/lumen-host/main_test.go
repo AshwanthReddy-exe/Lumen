@@ -172,6 +172,23 @@ func TestCLIUsagePrecedesConfigurationFailure(t *testing.T) {
 	}
 }
 
+func TestPublicConversationArgumentsRejectRuntimeKnobs(t *testing.T) {
+	base := map[string]string{"request_id": "r1", "conversation_id": "c1", "surface_id": "web", "input": "hello"}
+	for _, key := range []string{"instructions", "session_id", "provider", "model", "runtime_profile_digest", "conversation_history"} {
+		args := map[string]string{}
+		for k, v := range base {
+			args[k] = v
+		}
+		args[key] = "caller-controlled"
+		if validPublicArguments("conversation send", args) {
+			t.Fatalf("conversation send accepted forbidden %q", key)
+		}
+	}
+	if !validPublicArguments("conversation send", base) {
+		t.Fatal("valid conversation send was rejected")
+	}
+}
+
 func TestCLIServeReportsActionableStartupCause(t *testing.T) {
 	bin := buildHostBinary(t)
 	dataDir := t.TempDir()

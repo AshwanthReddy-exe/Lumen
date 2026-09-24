@@ -10,7 +10,7 @@ func cloneState(s State) State {
 }
 
 func Apply(s State, c Command) Transition {
-	s = cloneState(s)
+	s = NormalizeState(cloneState(s))
 	id := commandID(c)
 	if id == "" {
 		return reject(s, c, "invalid_identifier")
@@ -35,6 +35,18 @@ func Apply(s State, c Command) Transition {
 	switch c.Type {
 	case CommandCreateSpace:
 		tr = create(s, c)
+	case CommandCreateConversation:
+		tr = createConversation(s, c)
+	case CommandSendConversation:
+		tr = sendConversation(s, c)
+	case CommandCompleteConversation:
+		tr = completeConversation(s, c)
+	case CommandSetPreference:
+		tr = setPreference(s, c)
+	case CommandBindRuntimeSession:
+		tr = bindRuntimeSession(s, c)
+	case CommandRegisterSurface:
+		tr = registerSurface(s, c)
 	case CommandPairNode:
 		tr = pair(s, c)
 	case CommandAdvertiseCapability:

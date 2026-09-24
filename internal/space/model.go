@@ -19,6 +19,12 @@ type CommandType string
 
 const (
 	CommandCreateSpace                CommandType = "create_space"
+	CommandCreateConversation         CommandType = "conversation.create"
+	CommandSendConversation           CommandType = "conversation.send"
+	CommandCompleteConversation       CommandType = "conversation.complete"
+	CommandSetPreference              CommandType = "preference.set"
+	CommandBindRuntimeSession         CommandType = "conversation.bind_session"
+	CommandRegisterSurface            CommandType = "surface.register"
 	CommandPairNode                   CommandType = "pair_node"
 	CommandAdvertiseCapability        CommandType = "advertise_capability"
 	CommandSetGrant                   CommandType = "set_grant"
@@ -72,23 +78,31 @@ const (
 )
 
 type State struct {
-	SchemaVersion    int                        `json:"schemaVersion"`
-	SpaceID          string                     `json:"spaceId,omitempty"`
-	OwnerID          string                     `json:"ownerId,omitempty"`
-	HostID           string                     `json:"hostId,omitempty"`
-	Epoch            int                        `json:"epoch,omitempty"`
-	Identities       []Identity                 `json:"identities,omitempty"`
-	Capabilities     []Capability               `json:"capabilities,omitempty"`
-	Audit            []AuditEvent               `json:"audit"`
-	Nodes            map[string]Node            `json:"nodes,omitempty"`
-	Advertisements   []CapabilityKey            `json:"advertisements,omitempty"`
-	Grants           map[string]Grant           `json:"grants,omitempty"`
-	Tasks            map[string]Task            `json:"tasks,omitempty"`
-	Approvals        map[string]Approval        `json:"approvals,omitempty"`
-	HostCreates      map[string]HostCreate      `json:"hostCreates,omitempty"`
-	RuntimeApprovals map[string]RuntimeApproval `json:"runtimeApprovals,omitempty"`
-	Commands         map[string]RecordedCommand `json:"commands,omitempty"`
-	HostRuns         map[string]HostRun         `json:"hostRuns,omitempty"`
+	SchemaVersion         int                              `json:"schemaVersion"`
+	SpaceID               string                           `json:"spaceId,omitempty"`
+	OwnerID               string                           `json:"ownerId,omitempty"`
+	HostID                string                           `json:"hostId,omitempty"`
+	Epoch                 int                              `json:"epoch,omitempty"`
+	Identities            []Identity                       `json:"identities,omitempty"`
+	Capabilities          []Capability                     `json:"capabilities,omitempty"`
+	Audit                 []AuditEvent                     `json:"audit"`
+	Nodes                 map[string]Node                  `json:"nodes,omitempty"`
+	Advertisements        []CapabilityKey                  `json:"advertisements,omitempty"`
+	Grants                map[string]Grant                 `json:"grants,omitempty"`
+	Tasks                 map[string]Task                  `json:"tasks,omitempty"`
+	Approvals             map[string]Approval              `json:"approvals,omitempty"`
+	HostCreates           map[string]HostCreate            `json:"hostCreates,omitempty"`
+	RuntimeApprovals      map[string]RuntimeApproval       `json:"runtimeApprovals,omitempty"`
+	Commands              map[string]RecordedCommand       `json:"commands,omitempty"`
+	HostRuns              map[string]HostRun               `json:"hostRuns,omitempty"`
+	Conversations         map[string]Conversation          `json:"conversations,omitempty"`
+	Messages              map[string][]Message             `json:"messages,omitempty"`
+	Personas              map[string]Persona               `json:"personas,omitempty"`
+	Surfaces              map[string]Surface               `json:"surfaces,omitempty"`
+	ContextRecords        map[string]ContextRecord         `json:"contextRecords,omitempty"`
+	RuntimeSessions       map[string]RuntimeSessionMapping `json:"runtimeSessions,omitempty"`
+	RuntimeProfiles       map[string]RuntimeProfile        `json:"runtimeProfiles,omitempty"`
+	RuntimeCertifications map[string]RuntimeCertification  `json:"runtimeCertifications,omitempty"`
 }
 type Identity struct {
 	ID   string       `json:"id"`
@@ -187,6 +201,12 @@ type Command struct {
 	Action                string          `json:"action,omitempty"`
 	ActionFingerprint     string          `json:"actionFingerprint,omitempty"`
 	TaskID                string          `json:"taskId,omitempty"`
+	ConversationID        string          `json:"conversationId,omitempty"`
+	SurfaceID             string          `json:"surfaceId,omitempty"`
+	PersonaID             string          `json:"personaId,omitempty"`
+	Content               string          `json:"content,omitempty"`
+	PreferenceName        string          `json:"preferenceName,omitempty"`
+	CreatedAt             int64           `json:"createdAt,omitempty"`
 	OriginNodeID          string          `json:"originNodeId,omitempty"`
 	TargetNodeID          string          `json:"targetNodeId,omitempty"`
 	Grant                 Grant           `json:"grant,omitempty"`
@@ -197,6 +217,8 @@ type Command struct {
 	RuntimeRunID          string          `json:"runtimeRunId,omitempty"`
 	RuntimeIdempotencyKey string          `json:"runtimeIdempotencyKey,omitempty"`
 	RuntimeProfileDigest  string          `json:"runtimeProfileDigest,omitempty"`
+	RuntimeIdentity       string          `json:"runtimeIdentity,omitempty"`
+	HermesSessionID       string          `json:"hermesSessionId,omitempty"`
 	DispatchedAt          int64           `json:"dispatchedAt,omitempty"`
 	ReconcileBy           int64           `json:"reconcileBy,omitempty"`
 	ObservedAt            int64           `json:"observedAt,omitempty"`
@@ -207,6 +229,7 @@ type Command struct {
 	DeliveryAttempt       int             `json:"deliveryAttempt,omitempty"`
 	Output                string          `json:"output,omitempty"`
 	OutputTruncated       bool            `json:"outputTruncated,omitempty"`
+	TerminalReason        string          `json:"terminalReason,omitempty"`
 }
 
 const MaxTaskOutputBytes = 8 << 10
