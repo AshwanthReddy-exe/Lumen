@@ -153,7 +153,7 @@ func ValidateState(state State) error {
 		}
 	}
 	for id, session := range state.RuntimeSessions {
-		if id != session.ConversationID || session.ConversationID == "" || session.RuntimeIdentity == "" || session.HermesSessionID == "" || session.PersonaDigest == "" || session.ProfileDigest == "" || session.HostEpoch <= 0 {
+		if id != session.ConversationID || session.ConversationID == "" || (session.Pending && session.RuntimeIdentity != "") || (!session.Pending && session.RuntimeIdentity == "") || session.HermesSessionID == "" || session.PersonaDigest == "" || session.ProfileDigest == "" || session.HostEpoch <= 0 {
 			return fmt.Errorf("invalid runtime session %q", id)
 		}
 		conversation, ok := state.Conversations[session.ConversationID]

@@ -63,11 +63,15 @@ func (f *fakeRuntime) Stop(context.Context, string) (hermes.Run, error) {
 }
 
 type fakeCertifier struct {
-	cert space.RuntimeCertification
-	err  error
+	cert   space.RuntimeCertification
+	err    error
+	before func()
 }
 
 func (f fakeCertifier) Certify(context.Context, space.State, space.RuntimeProfile) (space.RuntimeCertification, error) {
+	if f.before != nil {
+		f.before()
+	}
 	return f.cert, f.err
 }
 
@@ -266,6 +270,35 @@ func TestReplayedSendReportsDurableTaskOutcome(t *testing.T) {
 	replayed, err := svc.Send(context.Background(), req)
 	if err != nil || !replayed.Replayed || replayed.Receipt.Outcome != space.OutcomeUnknown || runtime.created != 1 {
 		t.Fatalf("replay hid durable outcome or redispatched: receipt=%#v err=%v creates=%d", replayed.Receipt, err, runtime.created)
+	}
+}
+
+func TestSessionIntentIsDurableBeforeCertificationIO(t *testing.T) {
+	store := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "hello"}}
+	certifier := fakeCertifier{cert: exactCertification(), before: func() {
+		mapping, ok := store.state.RuntimeSessions["c1"]
+		if !ok || !mapping.Pending || mapping.HermesSessionID != "lumen-session:c1" || mapping.ProfileDigest != space.DefaultRuntimeProfile().Digest {
+			t.Fatalf("certification began before durable session intent: %#v", mapping)
+		}
+	}}
+	svc := NewService(store, runtime, certifier, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err != nil || store.state.RuntimeSessions["c1"].Pending {
+		t.Fatalf("certified session did not bind: err=%v mapping=%#v", err, store.state.RuntimeSessions["c1"])
+	}
+}
+
+func TestRejectedSessionReservationTerminatesQueuedConversation(t *testing.T) {
+	state := conversationState()
+	profile := space.DefaultRuntimeProfile()
+	state.RuntimeSessions["c1"] = space.RuntimeSessionMapping{ConversationID: "c1", RuntimeIdentity: "hermes:test", HermesSessionID: "different-session", PersonaDigest: profile.PersonaDigest, ProfileDigest: profile.Digest, HostEpoch: 1}
+	store := &memoryStore{state: state}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed"}}
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err == nil || store.state.Tasks["task-1"].Status != space.OutcomeFailed || runtime.created != 0 {
+		t.Fatalf("rejected reservation stranded task: err=%v task=%q creates=%d", err, store.state.Tasks["task-1"].Status, runtime.created)
 	}
 }
 

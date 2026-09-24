@@ -23,6 +23,7 @@ const (
 	CommandSendConversation           CommandType = "conversation.send"
 	CommandCompleteConversation       CommandType = "conversation.complete"
 	CommandSetPreference              CommandType = "preference.set"
+	CommandReserveRuntimeSession      CommandType = "conversation.reserve_session"
 	CommandBindRuntimeSession         CommandType = "conversation.bind_session"
 	CommandRegisterSurface            CommandType = "surface.register"
 	CommandPairNode                   CommandType = "pair_node"

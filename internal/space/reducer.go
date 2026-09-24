@@ -231,6 +231,34 @@ func setPreference(s State, c Command) Transition {
 	return accepted(s, c, OutcomeApplied, id)
 }
 
+func reserveRuntimeSession(s State, c Command) Transition {
+	if reason := executionContext(s, c); reason != "" {
+		return reject(s, c, reason)
+	}
+	conversation, ok := s.Conversations[c.ConversationID]
+	if !ok {
+		return reject(s, c, "conversation_unknown")
+	}
+	profile, ok := profileByDigest(s.RuntimeProfiles, c.RuntimeProfileDigest)
+	if !ok || profile.PersonaDigest != s.Personas[conversation.PersonaID].Digest {
+		return reject(s, c, "runtime_profile_mismatch")
+	}
+	if c.HermesSessionID == "" {
+		return reject(s, c, "invalid_runtime_session")
+	}
+	if s.RuntimeSessions == nil {
+		s.RuntimeSessions = map[string]RuntimeSessionMapping{}
+	}
+	if existing, exists := s.RuntimeSessions[c.ConversationID]; exists {
+		if existing.HermesSessionID != c.HermesSessionID || existing.PersonaDigest != profile.PersonaDigest || existing.ProfileDigest != c.RuntimeProfileDigest || existing.HostEpoch != s.Epoch {
+			return reject(s, c, "runtime_session_mismatch")
+		}
+		return accepted(s, c, OutcomeApplied, c.ConversationID)
+	}
+	s.RuntimeSessions[c.ConversationID] = RuntimeSessionMapping{ConversationID: c.ConversationID, Pending: true, HermesSessionID: c.HermesSessionID, PersonaDigest: profile.PersonaDigest, ProfileDigest: c.RuntimeProfileDigest, HostEpoch: s.Epoch, LastProjectedSequence: conversation.NextSequence - 1}
+	return accepted(s, c, OutcomeApplied, c.ConversationID)
+}
+
 func bindRuntimeSession(s State, c Command) Transition {
 	if reason := executionContext(s, c); reason != "" {
 		return reject(s, c, reason)
@@ -249,7 +277,11 @@ func bindRuntimeSession(s State, c Command) Transition {
 	if s.RuntimeSessions == nil {
 		s.RuntimeSessions = map[string]RuntimeSessionMapping{}
 	}
-	if existing, exists := s.RuntimeSessions[c.ConversationID]; exists && (existing.RuntimeIdentity != c.RuntimeIdentity || existing.PersonaDigest != profile.PersonaDigest || existing.ProfileDigest != c.RuntimeProfileDigest || existing.HostEpoch != s.Epoch) {
+	existing, exists := s.RuntimeSessions[c.ConversationID]
+	if !exists {
+		return reject(s, c, "runtime_session_not_reserved")
+	}
+	if (!existing.Pending && existing.RuntimeIdentity != c.RuntimeIdentity) || existing.HermesSessionID != c.HermesSessionID || existing.PersonaDigest != profile.PersonaDigest || existing.ProfileDigest != c.RuntimeProfileDigest || existing.HostEpoch != s.Epoch {
 		return reject(s, c, "runtime_session_mismatch")
 	}
 	s.RuntimeSessions[c.ConversationID] = RuntimeSessionMapping{ConversationID: c.ConversationID, RuntimeIdentity: c.RuntimeIdentity, HermesSessionID: c.HermesSessionID, PersonaDigest: profile.PersonaDigest, ProfileDigest: c.RuntimeProfileDigest, HostEpoch: s.Epoch, LastProjectedSequence: conversation.NextSequence - 1}

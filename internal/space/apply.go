@@ -43,6 +43,8 @@ func Apply(s State, c Command) Transition {
 		tr = completeConversation(s, c)
 	case CommandSetPreference:
 		tr = setPreference(s, c)
+	case CommandReserveRuntimeSession:
+		tr = reserveRuntimeSession(s, c)
 	case CommandBindRuntimeSession:
 		tr = bindRuntimeSession(s, c)
 	case CommandRegisterSurface:

@@ -143,6 +143,15 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	if s.certifier == nil {
 		return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 	}
+	sessionID := "lumen-session:" + req.ConversationID
+	reserved, reserveErr := s.apply(space.Command{Type: space.CommandReserveRuntimeSession, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "reserve-session:" + req.RequestID, ConversationID: req.ConversationID, HermesSessionID: sessionID, RuntimeProfileDigest: profile.Digest})
+	if reserveErr != nil || reserved.Rejection != "" {
+		return s.fail(queued, state, taskID, errOrRejection(reserveErr, reserved.Rejection))
+	}
+	state, err = s.state.Read()
+	if err != nil {
+		return queued, err
+	}
 	cert, certErr := s.certifier.Certify(ctx, state, profile)
 	if certErr != nil || !certificationMatches(cert, profile, s.now()) {
 		return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
@@ -155,7 +164,6 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	if err != nil {
 		return s.fail(queued, state, taskID, err)
 	}
-	sessionID := "lumen-session:" + req.ConversationID
 	bound, err := s.apply(space.Command{Type: space.CommandBindRuntimeSession, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "session:" + req.RequestID, ConversationID: req.ConversationID, RuntimeIdentity: cert.RuntimeIdentity, HermesSessionID: sessionID, RuntimeProfileDigest: profile.Digest})
 	if err != nil || bound.Rejection != "" {
 		return queued, errOrRejection(err, bound.Rejection)

@@ -57,6 +57,24 @@ func TestConversationCreateAndSendPersistAtomicIntent(t *testing.T) {
 	}
 }
 
+func TestRuntimeSessionBindingRequiresDurableReservation(t *testing.T) {
+	s := conversationWithSend(t)
+	bind := Command{Type: CommandBindRuntimeSession, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "bind-1", ConversationID: "conversation-1", HermesSessionID: "lumen-session:conversation-1", RuntimeIdentity: "hermes:test", RuntimeProfileDigest: DefaultRuntimeProfile().Digest}
+	if tr := Apply(s, bind); tr.Rejection == "" {
+		t.Fatal("runtime session bound without durable reservation")
+	}
+	reserve := bind
+	reserve.Type, reserve.RequestID, reserve.RuntimeIdentity = CommandReserveRuntimeSession, "reserve-1", ""
+	reserved := Apply(s, reserve)
+	if reserved.Rejection != "" || !reserved.State.RuntimeSessions["conversation-1"].Pending {
+		t.Fatalf("reservation rejected: %#v", reserved)
+	}
+	bound := Apply(reserved.State, bind)
+	if bound.Rejection != "" || bound.State.RuntimeSessions["conversation-1"].Pending || bound.State.RuntimeSessions["conversation-1"].RuntimeIdentity != "hermes:test" {
+		t.Fatalf("reserved session did not bind: %#v", bound)
+	}
+}
+
 func TestConversationCompletionAppendsDeterministicAssistantOnce(t *testing.T) {
 	s := conversationWithSend(t)
 	completed := Apply(s, Command{
