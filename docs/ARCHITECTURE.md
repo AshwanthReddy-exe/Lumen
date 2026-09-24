@@ -151,6 +151,8 @@ Any active state may move to `cancelling`, `failed`, `paused`, `expired`, or `un
 
 The Go Host persists encrypted canonical state, create intent, exact task-to-runtime mapping, approvals, bounded terminal output, and reconciliation evidence before acknowledging the corresponding transition. On restart it resumes only durably mapped runs, never treats a historical receipt as redispatch authority, and records `unknown_outcome` when bounded reconciliation cannot prove completion. Cross-node reconciliation remains deferred to Block 3; the Block 2 Host-local contract is documented in [Phase 2](./PHASE-2-HOST-HERMES.md).
 
+Conversation tasks cannot use generic Host-run completion, cancellation, or runtime approvals because those paths do not validate chat event evidence or append a canonical assistant message. Until conversation-specific restart reconciliation and interruption are qualified, an interrupted conversation receives `unknown_outcome` and no assistant message.
+
 ## Hermes intelligence boundary
 
 Hermes is Lumen's deeply integrated native intelligence and capability platform. Lumen reuses rather than reimplements Hermes's agent loop, model and provider routing, context compression, built-in tools and toolsets, skills, MCP clients, browser and computer use, messaging gateways, voice orchestration, vision and image generation, schedules and loops, delegated agents, remote execution, plugins, and observability. Each surface still enters the Space through a versioned Lumen contract and the [documented Hermes API](https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration); Lumen may upgrade or replace Hermes without migrating Space authority.

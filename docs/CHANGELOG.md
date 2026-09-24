@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Prevented generic Host-run reconciliation, task completion, cancellation, and runtime approval from mutating conversation tasks; verified that Host restart leaves an interrupted chat run uncertain without appending an assistant message.
 - Scanned Hermes conversation events even after a terminal run status, rejected unknown or duplicate event payload fields and conflicting terminal evidence, and kept disconnected streams without terminal evidence uncertain. Added a redacted Host certification-invalidation record for forbidden events and verified session reservation through encrypted-store reopen.
 
 - Merged the existing Host-owned conversation nucleus into an isolated continuation branch and strengthened certificate binding, accepted-preference projection, reconciliation deadlines, durable pre-certification session reservation, unexpected-event rejection, and replayed task receipts with regression tests. The conversation path is not release-ready: real runtime certification, violation invalidation, and restart-aware reconciliation remain open review gates. Clarified the one-agent-across-devices direction and Future OS reference boundary in the canonical plan and decisions.

@@ -230,6 +230,43 @@ func TestCreateIntentRecoversToUnknownWithoutRetryAfterRestart(t *testing.T) {
 	}
 }
 
+func TestRestartDoesNotSendConversationRunThroughGenericConsumer(t *testing.T) {
+	s := executionService(t, &fakeRuntime{})
+	if _, err := s.state.MigrateState(); err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.state.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := func(command space.Command) {
+		command.SpaceID, command.HostID, command.Epoch = state.SpaceID, state.HostID, state.Epoch
+		tr, applyErr := s.ApplyCommand(command)
+		if applyErr != nil || tr.Rejection != "" {
+			t.Fatalf("conversation setup rejected: %#v %v", tr, applyErr)
+		}
+	}
+	apply(space.Command{Type: space.CommandRegisterSurface, ActorID: state.OwnerID, RequestID: "surface", SurfaceID: "web"})
+	apply(space.Command{Type: space.CommandCreateConversation, ActorID: state.OwnerID, RequestID: "create-chat", ConversationID: "chat", SurfaceID: "web", CreatedAt: 99})
+	apply(space.Command{Type: space.CommandSendConversation, ActorID: state.OwnerID, RequestID: "send-chat", ConversationID: "chat", SurfaceID: "web", TaskID: "chat-task", Content: "hello", RuntimeIdempotencyKey: "send-chat", CreatedAt: 100, ReconcileBy: 200})
+	apply(space.Command{Type: space.CommandDispatchHostRun, ActorID: state.HostID, RequestID: "dispatch-chat", TaskID: "chat-task", RuntimeRunID: "run-chat", RuntimeIdempotencyKey: "send-chat", RuntimeProfileDigest: space.DefaultRuntimeProfile().Digest, DispatchedAt: 100, ReconcileBy: 200})
+	cfg := s.cfg
+	s.Shutdown()
+	runtime := &fakeRuntime{statusDefault: hermes.Run{RunID: "run-chat", Status: "running"}, eventsBlock: make(chan struct{})}
+	restarted, err := NewWithRuntime(cfg, runtime, WithExecutionTiming(5*time.Millisecond, 35*time.Millisecond), WithClock(func() time.Time { return time.Unix(101, 0) }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Shutdown()
+	restarted.executor.consumerMu.Lock()
+	_, genericConsumerStarted := restarted.executor.consumers["chat-task"]
+	restarted.executor.consumerMu.Unlock()
+	state, err = restarted.state.Read()
+	if err != nil || genericConsumerStarted || state.Tasks["chat-task"].Status != space.OutcomeUnknown || len(state.Messages["chat"]) != 1 {
+		t.Fatalf("generic recovery consumed chat run: task=%#v messages=%d consumer=%v err=%v", state.Tasks["chat-task"], len(state.Messages["chat"]), genericConsumerStarted, err)
+	}
+}
+
 func TestCreateFailureIsDurablyFailedBeforeReply(t *testing.T) {
 	r := &fakeRuntime{createErr: fmt.Errorf("%w: invalid request", hermes.ErrCreateRejected)}
 	s := executionService(t, r)

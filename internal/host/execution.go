@@ -808,6 +808,9 @@ func (s *Service) recoverInFlight() {
 		cancel()
 	}
 	for taskID, run := range state.HostRuns {
+		if state.Tasks[taskID].CapabilityID == "conversation.chat/respond" {
+			continue
+		}
 		switch state.Tasks[taskID].Status {
 		case space.OutcomeUnknown, space.OutcomeAwaitingPermission, space.OutcomeDispatched, space.OutcomeRunning, space.OutcomeCancelling:
 			run := run

@@ -262,6 +262,9 @@ func complete(s State, c Command) Transition {
 	if !ok {
 		return reject(s, c, "task_unknown")
 	}
+	if t.CapabilityID == "conversation.chat/respond" {
+		return reject(s, c, "conversation_evidence_requires_host")
+	}
 	if c.ActorID != t.TargetNodeID {
 		return reject(s, c, "unauthorized_actor")
 	}

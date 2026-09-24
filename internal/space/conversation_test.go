@@ -104,6 +104,32 @@ func TestRuntimeCertificationInvalidationRequiresExactHostRun(t *testing.T) {
 	}
 }
 
+func TestGenericRunReconciliationCannotCompleteConversationTask(t *testing.T) {
+	s := conversationWithSend(t)
+	s.Nodes = map[string]Node{"owner": {ID: "owner", Status: "paired"}}
+	generic := Apply(s, Command{Type: CommandComplete, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "complete-generic-chat", TaskID: "task-1", Outcome: OutcomeCompleted})
+	if generic.Rejection == "" || generic.State.Tasks["task-1"].Status == OutcomeCompleted {
+		t.Fatalf("generic task completion bypassed conversation evidence: %#v", generic)
+	}
+	profile := DefaultRuntimeProfile()
+	dispatched := Apply(s, Command{Type: CommandDispatchHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "dispatch-chat", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: profile.Digest, DispatchedAt: 100, ReconcileBy: 200})
+	if dispatched.Rejection != "" {
+		t.Fatalf("dispatch rejected: %q", dispatched.Rejection)
+	}
+	cancel := Apply(dispatched.State, Command{Type: CommandRequestHostRunCancellation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "cancel-generic-chat", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeProfileDigest: profile.Digest, ObservedAt: 101})
+	if cancel.Rejection == "" || cancel.State.Tasks["task-1"].Status == OutcomeCancelling {
+		t.Fatalf("generic cancellation stranded conversation task: %#v", cancel)
+	}
+	approval := Apply(dispatched.State, Command{Type: CommandRequestRuntimeApproval, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "approval-generic-chat", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeProfileDigest: profile.Digest, RuntimeApprovalID: "approval-1", TargetNodeID: "host", ActionFingerprint: DigestText("hello"), ObservedAt: 101, ExpiresAt: 150})
+	if approval.Rejection == "" || approval.State.Tasks["task-1"].Status == OutcomeAwaitingPermission {
+		t.Fatalf("generic approval stranded conversation task: %#v", approval)
+	}
+	tr := Apply(dispatched.State, Command{Type: CommandReconcileHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "reconcile-chat", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeProfileDigest: profile.Digest, Evidence: EvidenceCompleted, Output: "unverified answer", ObservedAt: 101})
+	if tr.Rejection == "" || tr.State.Tasks["task-1"].Status == OutcomeCompleted || len(tr.State.Messages["conversation-1"]) != 1 {
+		t.Fatalf("generic reconciliation bypassed conversation evidence: %#v", tr)
+	}
+}
+
 func TestConversationCompletionAppendsDeterministicAssistantOnce(t *testing.T) {
 	s := conversationWithSend(t)
 	completed := Apply(s, Command{
