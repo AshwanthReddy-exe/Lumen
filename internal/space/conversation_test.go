@@ -79,7 +79,7 @@ func TestRuntimeCertificationInvalidationRequiresExactHostRun(t *testing.T) {
 	s := conversationWithSend(t)
 	reserve := Apply(s, Command{Type: CommandReserveRuntimeSession, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "reserve", ConversationID: "conversation-1", HermesSessionID: "session-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest})
 	bind := Apply(reserve.State, Command{Type: CommandBindRuntimeSession, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "bind", ConversationID: "conversation-1", HermesSessionID: "session-1", RuntimeIdentity: "hermes:test", RuntimeProfileDigest: DefaultRuntimeProfile().Digest})
-	dispatch := Apply(bind.State, Command{Type: CommandDispatchHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "dispatch", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest, DispatchedAt: 100, ReconcileBy: 200})
+	dispatch := Apply(bind.State, Command{Type: CommandDispatchHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "dispatch", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest, CertificationID: "cert-1", EndpointIdentity: "endpoint:test", DispatchedAt: 100, ReconcileBy: 200})
 	if reserve.Rejection != "" || bind.Rejection != "" || dispatch.Rejection != "" {
 		t.Fatalf("test setup rejected: reserve=%q bind=%q dispatch=%q", reserve.Rejection, bind.Rejection, dispatch.Rejection)
 	}
@@ -112,7 +112,7 @@ func TestGenericRunReconciliationCannotCompleteConversationTask(t *testing.T) {
 		t.Fatalf("generic task completion bypassed conversation evidence: %#v", generic)
 	}
 	profile := DefaultRuntimeProfile()
-	dispatched := Apply(s, Command{Type: CommandDispatchHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "dispatch-chat", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: profile.Digest, DispatchedAt: 100, ReconcileBy: 200})
+	dispatched := Apply(s, Command{Type: CommandDispatchHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "dispatch-chat", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: profile.Digest, CertificationID: "cert-1", EndpointIdentity: "endpoint:test", DispatchedAt: 100, ReconcileBy: 200})
 	if dispatched.Rejection != "" {
 		t.Fatalf("dispatch rejected: %q", dispatched.Rejection)
 	}
@@ -250,7 +250,7 @@ func TestConversationSendRequiresDispatchableDeadlineAndMatchingDispatch(t *test
 	if sent.Rejection != "" {
 		t.Fatalf("send rejected: %#v", sent)
 	}
-	dispatched := Apply(sent.State, Command{Type: CommandDispatchHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", TaskID: "task-1", RuntimeRunID: "runtime-run-1", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest, DispatchedAt: 100, ReconcileBy: 200, RequestID: "dispatch-1"})
+	dispatched := Apply(sent.State, Command{Type: CommandDispatchHostRun, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", TaskID: "task-1", RuntimeRunID: "runtime-run-1", RuntimeIdempotencyKey: "runtime-task-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest, CertificationID: "cert-1", EndpointIdentity: "endpoint:test", DispatchedAt: 100, ReconcileBy: 200, RequestID: "dispatch-1"})
 	if dispatched.Rejection != "" || dispatched.State.Tasks["task-1"].Status != OutcomeDispatched {
 		t.Fatalf("matching dispatch: %#v", dispatched)
 	}

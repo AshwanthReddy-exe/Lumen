@@ -75,6 +75,15 @@ type fakeCertifier struct {
 	before func()
 }
 
+type deadlineCheckingCertifier struct{ t *testing.T }
+
+func (d deadlineCheckingCertifier) Certify(ctx context.Context, _ space.State, _ space.RuntimeProfile) (space.RuntimeCertification, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		d.t.Fatal("recovery certification has no deadline")
+	}
+	return space.RuntimeCertification{}, ErrRuntimeProfileUnverified
+}
+
 func (f fakeCertifier) Certify(context.Context, space.State, space.RuntimeProfile) (space.RuntimeCertification, error) {
 	if f.before != nil {
 		f.before()
@@ -443,6 +452,84 @@ func TestSessionReservationSurvivesEncryptedStoreReopen(t *testing.T) {
 	state, err := reopened.Read()
 	if err != nil || !state.RuntimeSessions["c1"].Pending || state.Tasks["task-1"].Status != space.OutcomeFailed {
 		t.Fatalf("session reservation lost after reopen: mapping=%#v task=%#v err=%v", state.RuntimeSessions["c1"], state.Tasks["task-1"], err)
+	}
+}
+
+func TestRestartReconcilesOnlyDurablyMappedConversationRun(t *testing.T) {
+	state := conversationState()
+	apply := func(command space.Command) {
+		command.SpaceID, command.HostID, command.Epoch = state.SpaceID, state.HostID, state.Epoch
+		tr := space.Apply(state, command)
+		if tr.Rejection != "" {
+			t.Fatalf("setup rejected: %s", tr.Rejection)
+		}
+		state = tr.State
+	}
+	apply(space.Command{Type: space.CommandSendConversation, ActorID: "owner", RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Content: "hello", RuntimeIdempotencyKey: "send-1", CreatedAt: 100, ReconcileBy: 200})
+	apply(space.Command{Type: space.CommandReserveRuntimeSession, ActorID: "host", RequestID: "reserve-1", ConversationID: "c1", HermesSessionID: "lumen-session:c1", RuntimeProfileDigest: space.DefaultRuntimeProfile().Digest})
+	apply(space.Command{Type: space.CommandBindRuntimeSession, ActorID: "host", RequestID: "bind-1", ConversationID: "c1", HermesSessionID: "lumen-session:c1", RuntimeIdentity: "hermes:test", RuntimeProfileDigest: space.DefaultRuntimeProfile().Digest})
+	apply(space.Command{Type: space.CommandDispatchHostRun, ActorID: "host", RequestID: "dispatch-1", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeIdempotencyKey: "send-1", RuntimeProfileDigest: space.DefaultRuntimeProfile().Digest, CertificationID: "cert-1", EndpointIdentity: "endpoint:test", DispatchedAt: 100, ReconcileBy: 200})
+	store := &memoryStore{state: state}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "answer"}, events: []hermes.Event{{Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"answer"}`)}}}
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(101, 0) }))
+	if err := svc.ReconcilePending(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if store.state.Tasks["task-1"].Status != space.OutcomeCompleted || len(store.state.Messages["c1"]) != 2 || store.state.Messages["c1"][1].Content != "answer" || store.state.Messages["c1"][1].CreatedAt != 101 || runtime.created != 0 {
+		t.Fatalf("mapped run did not recover honestly: task=%#v messages=%#v creates=%d", store.state.Tasks["task-1"], store.state.Messages["c1"], runtime.created)
+	}
+	replayed, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err != nil || replayed.Receipt.Outcome != space.OutcomeCompleted || runtime.created != 0 {
+		t.Fatalf("replay redispatched recovered run: %#v %v creates=%d", replayed, err, runtime.created)
+	}
+	mismatchStore := &memoryStore{state: state}
+	mismatchRuntime := &fakeRuntime{run: hermes.Run{RunID: "other-run", Status: "completed", Output: "wrong"}}
+	if err := NewService(mismatchStore, mismatchRuntime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || mismatchStore.state.Tasks["task-1"].Status != space.OutcomeUnknown || len(mismatchStore.state.Messages["c1"]) != 1 || mismatchRuntime.created != 0 {
+		t.Fatalf("mismatched run recovered as success: task=%q messages=%d creates=%d err=%v", mismatchStore.state.Tasks["task-1"].Status, len(mismatchStore.state.Messages["c1"]), mismatchRuntime.created, err)
+	}
+	misbound := state
+	badMapping := state.HostRuns["task-1"]
+	badMapping.TaskID = "other-task"
+	misbound.HostRuns = map[string]space.HostRun{"task-1": badMapping}
+	misboundStore := &memoryStore{state: misbound}
+	if err := NewService(misboundStore, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || misboundStore.state.Tasks["task-1"].Status != space.OutcomeUnknown || len(misboundStore.state.Messages["c1"]) != 1 {
+		t.Fatalf("misbound run recovered as success: task=%q messages=%d err=%v", misboundStore.state.Tasks["task-1"].Status, len(misboundStore.state.Messages["c1"]), err)
+	}
+	changedEndpoint := exactCertification()
+	changedEndpoint.EndpointIdentity = "replacement-endpoint"
+	replacementStore := &memoryStore{state: state}
+	replacementRuntime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "wrong runtime"}}
+	if err := NewService(replacementStore, replacementRuntime, fakeCertifier{cert: changedEndpoint}, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || replacementStore.state.Tasks["task-1"].Status != space.OutcomeUnknown || len(replacementStore.state.Messages["c1"]) != 1 {
+		t.Fatalf("replacement endpoint supplied recovered answer: task=%q messages=%d err=%v", replacementStore.state.Tasks["task-1"].Status, len(replacementStore.state.Messages["c1"]), err)
+	}
+	deadlineStore := &memoryStore{state: state}
+	if err := NewService(deadlineStore, &fakeRuntime{}, deadlineCheckingCertifier{t}, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || deadlineStore.state.Tasks["task-1"].Status != space.OutcomeUnknown {
+		t.Fatalf("unavailable certification blocked recovery: task=%q err=%v", deadlineStore.state.Tasks["task-1"].Status, err)
+	}
+	violationStore := &memoryStore{state: state}
+	violationRuntime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "tool_call", Data: json.RawMessage(`{"tool":"shell"}`)}}}
+	if err := NewService(violationStore, violationRuntime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || violationStore.state.Tasks["task-1"].Status != space.OutcomeFailed || len(violationStore.state.Messages["c1"]) != 1 || violationRuntime.stopped != 1 || !space.RuntimeCertificationInvalidated(violationStore.state, space.RuntimeCertification{ID: "cert-1", RuntimeIdentity: "hermes:test", ProfileDigest: space.DefaultRuntimeProfile().Digest}) {
+		t.Fatalf("unsafe recovered run accepted: task=%q messages=%d stopped=%d err=%v", violationStore.state.Tasks["task-1"].Status, len(violationStore.state.Messages["c1"]), violationRuntime.stopped, err)
+	}
+	oversized := strings.Repeat("x", space.MaxChatMessageBytes+1)
+	oversizedData, _ := json.Marshal(map[string]string{"status": "completed", "output": oversized})
+	oversizedStore := &memoryStore{state: state}
+	oversizedRuntime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: oversized}, events: []hermes.Event{{Type: "completed", Data: oversizedData}}}
+	if err := NewService(oversizedStore, oversizedRuntime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || oversizedStore.state.Tasks["task-1"].Status != space.OutcomeUnknown || len(oversizedStore.state.Messages["c1"]) != 1 {
+		t.Fatalf("oversized output blocked recovery: task=%q messages=%d err=%v", oversizedStore.state.Tasks["task-1"].Status, len(oversizedStore.state.Messages["c1"]), err)
+	}
+}
+
+func TestRestartWithoutDurableRunMappingRemainsUnknown(t *testing.T) {
+	state := conversationState()
+	queued := space.Apply(state, space.Command{Type: space.CommandSendConversation, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.OwnerID, RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Content: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if queued.Rejection != "" {
+		t.Fatal(queued.Rejection)
+	}
+	store := &memoryStore{state: queued.State}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "unproven"}}
+	if err := NewService(store, runtime, nil, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || store.state.Tasks["task-1"].Status != space.OutcomeUnknown || len(store.state.Messages["c1"]) != 1 || runtime.created != 0 {
+		t.Fatalf("unmapped run was redispatched or completed: task=%q messages=%d creates=%d err=%v", store.state.Tasks["task-1"].Status, len(store.state.Messages["c1"]), runtime.created, err)
 	}
 }
 

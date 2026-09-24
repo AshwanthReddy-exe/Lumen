@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added conversation-specific Host restart reconciliation: durable run and certificate binding, fresh endpoint certification, bounded evidence checks, one canonical assistant append, truthful replay, and unknown outcomes for missing or unsafe evidence.
 - Prevented generic Host-run reconciliation, task completion, cancellation, and runtime approval from mutating conversation tasks; verified that Host restart leaves an interrupted chat run uncertain without appending an assistant message.
 - Scanned Hermes conversation events even after a terminal run status, rejected unknown or duplicate event payload fields and conflicting terminal evidence, and kept disconnected streams without terminal evidence uncertain. Added a redacted Host certification-invalidation record for forbidden events and verified session reservation through encrypted-store reopen.
 

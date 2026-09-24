@@ -321,6 +321,11 @@ func recover(s State, c Command) Transition {
 	}
 	for id, t := range s.Tasks {
 		if t.Status == OutcomeQueued || t.Status == OutcomeCreating || t.Status == OutcomeDispatched || t.Status == OutcomeRunning || t.Status == OutcomeCancelling {
+			if t.CapabilityID == "conversation.chat/respond" && (t.Status == OutcomeDispatched || t.Status == OutcomeRunning) {
+				if _, mapped := s.HostRuns[id]; mapped {
+					continue
+				}
+			}
 			t.Status = OutcomeUnknown
 			t.TerminalReason = "host_restarted"
 			s.Tasks[id] = t

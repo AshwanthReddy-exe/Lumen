@@ -142,6 +142,8 @@ type HostRun struct {
 	TaskID               string `json:"taskId"`
 	RuntimeRunID         string `json:"runtimeRunId"`
 	RuntimeProfileDigest string `json:"runtimeProfileDigest"`
+	CertificationID      string `json:"certificationId,omitempty"`
+	EndpointIdentity     string `json:"endpointIdentity,omitempty"`
 	HostEpoch            int    `json:"hostEpoch"`
 	DispatchedAt         int64  `json:"dispatchedAt"`
 	ReconcileBy          int64  `json:"reconcileBy"`
@@ -222,6 +224,7 @@ type Command struct {
 	RuntimeProfileDigest  string          `json:"runtimeProfileDigest,omitempty"`
 	RuntimeIdentity       string          `json:"runtimeIdentity,omitempty"`
 	CertificationID       string          `json:"certificationId,omitempty"`
+	EndpointIdentity      string          `json:"endpointIdentity,omitempty"`
 	HermesSessionID       string          `json:"hermesSessionId,omitempty"`
 	DispatchedAt          int64           `json:"dispatchedAt,omitempty"`
 	ReconcileBy           int64           `json:"reconcileBy,omitempty"`

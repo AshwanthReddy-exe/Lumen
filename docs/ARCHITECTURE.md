@@ -151,7 +151,7 @@ Any active state may move to `cancelling`, `failed`, `paused`, `expired`, or `un
 
 The Go Host persists encrypted canonical state, create intent, exact task-to-runtime mapping, approvals, bounded terminal output, and reconciliation evidence before acknowledging the corresponding transition. On restart it resumes only durably mapped runs, never treats a historical receipt as redispatch authority, and records `unknown_outcome` when bounded reconciliation cannot prove completion. Cross-node reconciliation remains deferred to Block 3; the Block 2 Host-local contract is documented in [Phase 2](./PHASE-2-HOST-HERMES.md).
 
-Conversation tasks cannot use generic Host-run completion, cancellation, or runtime approvals because those paths do not validate chat event evidence or append a canonical assistant message. Until conversation-specific restart reconciliation and interruption are qualified, an interrupted conversation receives `unknown_outcome` and no assistant message.
+Conversation tasks cannot use generic Host-run completion, cancellation, or runtime approvals because those paths do not validate chat event evidence or append a canonical assistant message. At Host restart, a conversation with a durable run mapping may complete only after fresh certification matches the persisted certificate ID, runtime identity, endpoint identity, and profile digest, followed by bounded status and event validation. Missing or mismatched evidence records `unknown_outcome` without redispatch. Conversation interruption remains a separate unqualified contract.
 
 ## Hermes intelligence boundary
 

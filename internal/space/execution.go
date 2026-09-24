@@ -41,6 +41,9 @@ func dispatchHostRun(s State, c Command) Transition {
 	if !ok {
 		return reject(s, c, "task_unknown")
 	}
+	if t.CapabilityID == "conversation.chat/respond" && (c.CertificationID == "" || c.EndpointIdentity == "") {
+		return reject(s, c, "runtime_certification_missing")
+	}
 	if t.HostEpoch != s.Epoch || (t.Status != OutcomeQueued && t.Status != OutcomeCreating) {
 		return reject(s, c, "invalid_task_state")
 	}
@@ -62,7 +65,7 @@ func dispatchHostRun(s State, c Command) Transition {
 			return reject(s, c, "runtime_run_id_collision")
 		}
 	}
-	s.HostRuns[c.TaskID] = HostRun{TaskID: c.TaskID, RuntimeRunID: c.RuntimeRunID, RuntimeProfileDigest: c.RuntimeProfileDigest, HostEpoch: s.Epoch, DispatchedAt: c.DispatchedAt, ReconcileBy: c.ReconcileBy}
+	s.HostRuns[c.TaskID] = HostRun{TaskID: c.TaskID, RuntimeRunID: c.RuntimeRunID, RuntimeProfileDigest: c.RuntimeProfileDigest, CertificationID: c.CertificationID, EndpointIdentity: c.EndpointIdentity, HostEpoch: s.Epoch, DispatchedAt: c.DispatchedAt, ReconcileBy: c.ReconcileBy}
 	delete(s.HostCreates, c.TaskID)
 	t.Status = OutcomeDispatched
 	s.Tasks[c.TaskID] = t

@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
@@ -183,9 +184,16 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 		}
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", createErr)
 	}
-	dispatched, err := s.apply(space.Command{Type: space.CommandDispatchHostRun, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "dispatch:" + req.RequestID, TaskID: taskID, RuntimeRunID: run.RunID, RuntimeIdempotencyKey: req.RequestID, RuntimeProfileDigest: profile.Digest, DispatchedAt: created, ReconcileBy: by})
+	dispatched, err := s.apply(space.Command{Type: space.CommandDispatchHostRun, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "dispatch:" + req.RequestID, TaskID: taskID, RuntimeRunID: run.RunID, RuntimeIdempotencyKey: req.RequestID, RuntimeProfileDigest: profile.Digest, CertificationID: cert.ID, EndpointIdentity: cert.EndpointIdentity, DispatchedAt: created, ReconcileBy: by})
 	if err != nil || dispatched.Rejection != "" {
 		return queued, errOrRejection(err, dispatched.Rejection)
+	}
+	return s.reconcileRun(ctx, queued, state, taskID, run, cert, profile, by)
+}
+
+func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, state space.State, taskID string, run hermes.Run, cert space.RuntimeCertification, profile space.RuntimeProfile, by int64) (space.Transition, error) {
+	if s.runtime == nil {
+		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("runtime unavailable for conversation reconciliation"))
 	}
 	reconcileCtx, cancel := context.WithTimeout(ctx, time.Unix(by, 0).Sub(s.now()))
 	defer cancel()
@@ -240,6 +248,10 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	}
 	switch status.Status {
 	case "completed", "succeeded", "success":
+		conversation, ok := state.Conversations[conversationForTask(state, taskID)]
+		if !ok || !utf8.ValidString(status.Output) || len(status.Output) > space.MaxChatMessageBytes || conversation.SizeBytes+len(status.Output) > space.MaxConversationBytes {
+			return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("runtime output exceeds conversation bounds"))
+		}
 		return s.complete(queued, state, taskID, space.OutcomeCompleted, status.Output, nil)
 	case "failed", "error", "cancelled", "canceled":
 		return s.complete(queued, state, taskID, space.OutcomeFailed, "", nil)
@@ -364,7 +376,7 @@ func (s *Service) fail(queued space.Transition, state space.State, taskID string
 }
 
 func (s *Service) complete(queued space.Transition, state space.State, taskID string, outcome space.Outcome, output string, cause error) (space.Transition, error) {
-	tr, err := s.apply(space.Command{Type: space.CommandCompleteConversation, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: fmt.Sprintf("complete:%s:%s", taskID, outcome), TaskID: taskID, Outcome: outcome, Output: output, TerminalReason: func() string {
+	tr, err := s.apply(space.Command{Type: space.CommandCompleteConversation, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: fmt.Sprintf("complete:%s:%s", taskID, outcome), TaskID: taskID, Outcome: outcome, Output: output, CreatedAt: s.now().Unix(), TerminalReason: func() string {
 		if cause != nil && errors.Is(cause, ErrRuntimeProfileUnverified) {
 			return "runtime_profile_unverified"
 		}
