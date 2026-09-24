@@ -108,7 +108,7 @@
 
 1. Write failing Python tests against a small fake plugin context for exact tool registration and broker request serialization.
 2. Implement the plugin only through Hermes's documented plugin interface (`ctx.register_tool`, supported hooks and bundled skills).
-3. Add a fail-closed `pre_tool_call` guard: while `lumen.chat.default/v1` is active, every non-Lumen tool is denied.
+3. Add a `pre_tool_call` block for defense in depth, and test its error path. Pinned Hermes `v2026.9.7` fails open when a callback raises; this hook cannot certify zero-tool chat.
 4. Make the onboarding skill explain immutable source pinning, requested access, pairing and restart, and require explicit owner confirmation before installation or enablement.
 5. Prove disabling or uninstalling the plugin cannot touch the Space store.
 6. Run the Python tests and commit `feat(hermes): add separate Lumen plugin`.
@@ -127,7 +127,7 @@
 **Steps:**
 
 1. Write failing tests for `lumen.chat.default/v1`, including zero tools/memory, one turn and bounded model, token and deadline policy.
-2. Bind certificates to endpoint identity, Hermes version, plugin commit, profile/config digests and expiry.
+2. Bind certificates to endpoint identity, Hermes version, qualified artifact/config digests and expiry. Do not accept plugin self-attestation: qualify a dedicated zero-tool runtime profile with negative tool and memory probes before enabling production certification.
 3. Require an exact fresh certificate before any Runs POST; a missing or mismatched certificate must yield durable `runtime_profile_unverified` with zero disclosed conversation bytes.
 4. Reject unexpected tool, memory or budget-expansion events, stop the run and invalidate the certificate.
 5. Extend doctor with independent store, conversation schema, Runs, plugin and profile readiness.

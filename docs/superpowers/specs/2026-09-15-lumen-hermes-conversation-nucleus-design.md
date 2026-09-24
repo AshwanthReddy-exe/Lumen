@@ -179,7 +179,7 @@ The default profile is `lumen.chat.default/v1`:
 
 The profile digest covers every field. The Host generates it; callers and the plugin cannot override it.
 
-Current upstream Hermes capability discovery does not attest the effective per-run toolset or memory behavior. Therefore the Lumen plugin supplies a versioned certification endpoint backed by its observed Hermes artifact/configuration and mandatory `pre_tool_call` guard. The certificate is useful evidence, not independent authority: the Host additionally rejects unexpected tool/memory events and keeps the conversation capability free of side effects.
+Current upstream Hermes capability discovery does not attest the effective per-run toolset or memory behavior. Inspection of pinned Hermes `v2026.9.7` (`2237be355906fbe6065ce1815711eee52b2d646e`) found that `pre_tool_call` callback exceptions are logged and ignored in `hermes_cli/plugins_dispatch.py`, and the tool executor also continues if hook dispatch raises. A plugin hook therefore cannot certify zero-tool execution. The Host must keep conversation content blocked until a dedicated runtime profile proves, through pinned artifact/configuration evidence and a real negative tool/memory probe, that no tools or memory can execute. The plugin may supply telemetry, but its self-reported certificate is insufficient. The Host additionally rejects unexpected tool/memory events and keeps the conversation capability free of side effects.
 
 Certification is bound to endpoint identity, Hermes version, plugin commit, profile digest, relevant configuration digest and expiry. A vanilla or mismatched Hermes endpoint can continue serving generic `agent.run/execute`, but it cannot serve `conversation.chat/respond`.
 
@@ -201,7 +201,7 @@ No `state.put`, raw SQL/store access, arbitrary node selection, unrestricted bro
 
 ### Hooks
 
-- A fail-closed `pre_tool_call` guard blocks any non-Lumen tool while the certified zero-tool conversation profile is active.
+- A `pre_tool_call` block may provide defense in depth, but it is not the zero-tool security boundary on pinned Hermes `v2026.9.7` because callback errors fail open.
 - Session hooks map Hermes surface correlation to opaque plugin session identity; they do not define canonical conversation identity.
 - LLM/tool observer hooks emit bounded redacted evidence for certification and reconciliation.
 - Hooks cannot accept memory or approvals and cannot expand the active capability.
