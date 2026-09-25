@@ -1,0 +1,205 @@
+#!/bin/sh
+# Reproducible release builder for Lumen.
+#
+# Builds the Host artifact for every supported target twice, proves the two
+# builds are byte-identical, and emits the integrity-pinned combined manifest.
+# It never writes a placeholder identity: a target whose digest is unresolved
+# fails the run instead of producing an unpinnable manifest.
+#
+# Usage:
+#   scripts/lumen-release --version 0.1.0-m1 \
+#       --hermes-image-ref ghcr.io/<owner>/lumen-hermes@sha256:<64 hex> \
+#       [--base-url https://github.com/<owner>/<repo>/releases/download/v<version>] \
+#       [--out-dir build/release] [--manifest deploy/manifest-v1.json] [--publish]
+set -eu
+
+repo_root=${LUMEN_REPO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
+out_dir=$repo_root/build/release
+manifest=$repo_root/deploy/manifest-v1.json
+version=
+hermes_image_ref=
+base_url=
+publish=0
+# The default target set is every platform the Host actually supports. Windows
+# and the planned iOS/Android application surfaces are not Host targets and are
+# deliberately absent rather than claimed.
+targets=${LUMEN_RELEASE_TARGETS:-'linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 android/arm64'}
+
+usage() {
+	cat >&2 <<'USAGE'
+usage: lumen-release --version VERSION --hermes-image-ref REF
+                     [--base-url URL] [--out-dir DIR] [--manifest PATH] [--publish]
+
+  --version           release version, for example 0.1.0-m1
+  --hermes-image-ref  digest-pinned container image, must end with @sha256:<64 hex>
+  --base-url          artifact download base URL; defaults to this repository's
+                      release download path for the given version
+  --out-dir           artifact output directory; defaults to build/release
+  --manifest          manifest output path; defaults to deploy/manifest-v1.json
+  --publish           publish a GitHub release and upload the built artifacts
+USAGE
+	exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--version) version=$2; shift 2 ;;
+		--hermes-image-ref) hermes_image_ref=$2; shift 2 ;;
+		--base-url) base_url=$2; shift 2 ;;
+		--out-dir) out_dir=$2; shift 2 ;;
+		--manifest) manifest=$2; shift 2 ;;
+		--publish) publish=1; shift ;;
+		-h|--help) usage ;;
+		*) printf 'lumen-release: unknown argument %s\n' "$1" >&2; usage ;;
+	esac
+done
+
+[ -n "$version" ] || { printf '%s\n' 'lumen-release: --version is required' >&2; usage; }
+case "$version" in
+	*[!0-9A-Za-z.+-]*|'') printf 'lumen-release: invalid version %s\n' "$version" >&2; exit 1 ;;
+esac
+[ -n "$hermes_image_ref" ] || { printf '%s\n' 'lumen-release: --hermes-image-ref is required' >&2; usage; }
+case "$hermes_image_ref" in
+	*@sha256:*) ;;
+	*) printf 'lumen-release: --hermes-image-ref must pin a digest\n' >&2; exit 1 ;;
+esac
+image_digest=$(printf '%s' "$hermes_image_ref" | sed 's/.*@//')
+case "$image_digest" in
+	sha256:*) ;;
+	*) printf 'lumen-release: image reference is not digest-pinned\n' >&2; exit 1 ;;
+esac
+image_hex=${image_digest#sha256:}
+[ "${#image_hex}" -eq 64 ] || { printf 'lumen-release: image digest must be sha256:<64 hex>\n' >&2; exit 1; }
+case "$image_hex" in
+	*[!0-9a-f]*) printf 'lumen-release: image digest is not lowercase hex\n' >&2; exit 1 ;;
+esac
+case "$image_hex" in
+	0000000000000000000000000000000000000000000000000000000000000000)
+		printf '%s\n' 'lumen-release: image digest is a placeholder' >&2; exit 1 ;;
+esac
+
+slug=${LUMEN_RELEASE_SLUG:-AshwanthReddy-exe/Lumen}
+if [ -z "$base_url" ]; then
+	base_url="https://github.com/$slug/releases/download/v$version"
+fi
+case "$base_url" in
+	https://*) ;;
+	*) printf 'lumen-release: --base-url must be https\n' >&2; exit 1 ;;
+esac
+
+command -v go >/dev/null 2>&1 || { printf '%s\n' 'lumen-release: Go is required' >&2; exit 1; }
+
+# Publishing a release must describe the committed source, so refuse a dirty
+# tree. Artifacts, the manifest, and the downloaded source archive are the only
+# paths this builder owns.
+if [ "$publish" -eq 1 ]; then
+	command -v git >/dev/null 2>&1 || { printf '%s\n' 'lumen-release: git is required to publish' >&2; exit 1; }
+	dirty=$(git -C "$repo_root" status --porcelain |
+		sed 's/^...//' |
+		grep -vE '^(build/|deploy/manifest-v1\.json$|hermes-source\.tar\.gz$)' || true)
+	if [ -n "$dirty" ]; then
+		printf 'lumen-release: refusing to publish from a dirty tree; commit or stash:\n%s\n' "$dirty" >&2
+		exit 1
+	fi
+fi
+
+# Portable size and SHA-256 helpers so the builder runs on any host OS.
+file_size() {
+	if stat -c '%s' "$1" >/dev/null 2>&1; then
+		stat -c '%s' "$1"
+	else
+		stat -f '%z' "$1"
+	fi
+}
+file_sha256() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | cut -d' ' -f1
+	else
+		shasum -a 256 "$1" | cut -d' ' -f1
+	fi
+}
+
+version_out=$out_dir/$version
+rm -rf -- "$version_out"
+mkdir -p -- "$version_out"
+
+cd "$repo_root"
+printf 'lumen-release: building %s\n' "$version"
+
+entries=
+for target in $targets; do
+	os=${target%%/*}
+	arch=${target##*/}
+	asset="lumen-host-$os-$arch"
+	first=$version_out/$asset
+	second=$version_out/.$asset.second
+
+	# -buildvcs=false keeps the artifact independent of VCS state. Go stamps the
+	# revision and a modified flag by default, which made two runs from the same
+	# commit differ whenever the working tree was dirty.
+	CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -buildvcs=false -ldflags='-s -w' -o "$first" ./cmd/lumen-host
+	CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -buildvcs=false -ldflags='-s -w' -o "$second" ./cmd/lumen-host
+
+	first_sha=$(file_sha256 "$first")
+	second_sha=$(file_sha256 "$second")
+	if [ "$first_sha" != "$second_sha" ]; then
+		printf 'lumen-release: %s is not reproducible (%s != %s)\n' "$target" "$first_sha" "$second_sha" >&2
+		exit 1
+	fi
+	rm -f -- "$second"
+
+	size=$(file_size "$first")
+	case "$size" in
+		0|'') printf 'lumen-release: %s produced an empty artifact\n' "$target" >&2; exit 1 ;;
+	esac
+	# Executable mode is recorded in the manifest for the installer to enforce.
+	# The android Termux target cannot use a filesystem mode on shared storage.
+	mode=448
+	[ "$os" = android ] && mode=493
+
+	entry=$(printf '{"name":"lumen","version":"%s","os":"%s","architecture":"%s","profile":"development","url":"%s/%s","size":%s,"sha256":"sha256:%s","contractVersion":1,"executableMode":%s,"ownership":"lumen"}' \
+		"$version" "$os" "$arch" "$base_url" "$asset" "$size" "$first_sha" "$mode")
+	entries="${entries:+$entries,}$entry"
+
+	image_entry=$(printf '{"name":"hermes","version":"%s","os":"%s","architecture":"%s","profile":"development","kind":"docker-image","imageRef":"%s","contractVersion":1,"ownership":"hermes"}' \
+		"$version" "$os" "$arch" "$hermes_image_ref")
+	entries="$entries,$image_entry"
+
+	printf 'lumen-release: %-16s %s bytes sha256:%s\n' "$target" "$size" "$first_sha"
+done
+
+mkdir -p -- "$(dirname -- "$manifest")"
+printf '{"schemaVersion":1,"topology":"combined","artifacts":[%s]}\n' "$entries" >"$manifest"
+printf 'lumen-release: wrote %s\n' "$manifest"
+
+if [ "$publish" -eq 1 ]; then
+	command -v gh >/dev/null 2>&1 || { printf '%s\n' 'lumen-release: gh is required to publish' >&2; exit 1; }
+	if gh release view "v$version" >/dev/null 2>&1; then
+		printf 'lumen-release: release v%s already exists\n' "$version" >&2
+		exit 1
+	fi
+	# Ship the installer and the manifest alongside the artifacts so the
+	# documented one-line install resolves from this same release.
+	cp -- "$repo_root/scripts/install.sh" "$version_out/install.sh"
+	cp -- "$manifest" "$version_out/manifest-v1.json"
+	notes=$version_out/RELEASE-NOTES.md
+	cat >"$notes" <<NOTES
+Lumen Milestone 1 foundation artifacts. This is an internal foundation release,
+not a product launch.
+
+Every asset is reproducible: \`scripts/lumen-release\` builds each target twice
+and refuses to publish unless both builds are byte-identical. Verify each
+download against the sizes and digests in \`manifest-v1.json\`.
+
+The Hermes runtime image is published to \`ghcr.io/ashwanthreddy-exe/lumen-hermes\`
+and pinned by digest in the manifest.
+
+Supported Host targets: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64,
+android/arm64 (Termux). Cross-machine external Runs evidence is not claimed.
+NOTES
+	gh release create "v$version" \
+		--title "v$version" \
+		--notes-file "$notes" \
+		"$version_out"/lumen-host-* "$version_out/install.sh" "$version_out/manifest-v1.json"
+	printf 'lumen-release: published v%s\n' "$version"
+fi

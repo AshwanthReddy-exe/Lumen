@@ -18,7 +18,11 @@ services:
       - -c
       - |
         import json
+        import os
+        import time
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        delay = float(os.environ.get("LUMEN_PROVIDER_DELAY_MS", "0")) / 1000.0
 
         class Provider(BaseHTTPRequestHandler):
             def log_message(self, *_):
@@ -41,6 +45,8 @@ services:
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 body = json.loads(self.rfile.read(length) or b"{}")
+                if delay > 0:
+                    time.sleep(delay)
                 response = {"id":"synthetic-chat","object":"chat.completion","created":0,"model":body.get("model","synthetic-model"),"choices":[{"index":0,"message":{"role":"assistant","content":"synthetic marker"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}
                 if body.get("stream"):
                     self.send_response(200)
@@ -61,6 +67,8 @@ services:
     read_only: true
     user: "65532:65532"
     restart: unless-stopped
+    environment:
+      LUMEN_PROVIDER_DELAY_MS: ${LUMEN_PROVIDER_DELAY_MS:-0}
     networks: [lumen-private]
   lumen-hermes:
     image: ${LUMEN_HERMES_BUILD_IMAGE:?set isolated Hermes build image}

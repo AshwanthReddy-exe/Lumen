@@ -126,10 +126,20 @@ export LUMEN_HERMES_BUILD_IMAGE="$project-lumen-hermes:milestone1"
 
 if [ -n "${LUMEN_HERMES_SOURCE_ARCHIVE:-}" ]; then
 	cp -- "$LUMEN_HERMES_SOURCE_ARCHIVE" "$archive"
+elif [ -s "$archive_target" ] && printf '%s  %s\n' 907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688 "$archive_target" | sha256sum -c - >/dev/null 2>&1; then
+	printf '%s\n' '=> reusing previously verified Hermes source archive'
+	cp -- "$archive_target" "$archive"
 else
-	curl -fsSL --retry 3 --connect-timeout 10 --max-time 120 \
-		-o "$archive" \
-		https://github.com/NousResearch/hermes-agent/archive/refs/tags/v2026.9.7.tar.gz
+	attempt=0
+	while [ "$attempt" -lt 5 ]; do
+		if curl -fsSL --connect-timeout 10 --max-time 120 -o "$archive" \
+			https://github.com/NousResearch/hermes-agent/archive/refs/tags/v2026.9.7.tar.gz; then
+			break
+		fi
+		attempt=$((attempt + 1))
+		[ "$attempt" -lt 5 ] || fail 'could not fetch the pinned Hermes source archive (GitHub rate limit?)'
+		sleep $((attempt * 15))
+	done
 fi
 printf '%s  %s\n' 907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688 "$archive" | sha256sum -c -
 if [ -e "$archive_target" ]; then

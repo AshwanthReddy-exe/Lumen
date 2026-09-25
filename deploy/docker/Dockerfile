@@ -1,9 +1,14 @@
-FROM golang:1.27.1 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.1 AS build
 WORKDIR /src
+# TARGETOS/TARGETARCH are supplied by the builder, so the image contains a Host
+# that actually runs on the architecture the image is built for. Hardcoding
+# amd64 produced a container whose entrypoint could not execute on arm64 hosts.
+ARG TARGETOS
+ARG TARGETARCH
 COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o /out/lumen-host ./cmd/lumen-host
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags='-s -w' -o /out/lumen-host ./cmd/lumen-host
 
 FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /out/lumen-host /usr/local/bin/lumen-host

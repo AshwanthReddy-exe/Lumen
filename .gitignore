@@ -25,3 +25,10 @@ local.properties
 .superpowers/
 graphify-out/
 .worktrees/
+.freebuff/
+
+# External reference material: read-only, never part of Lumen product history
+references/
+
+# Pinned upstream source archive used as a Docker build context input
+hermes-source.tar.gz

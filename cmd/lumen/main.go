@@ -88,6 +88,10 @@ func run(args []string) setup.Report {
 			return setupCommand(ctx)
 		case "doctor":
 			return doctorCommand(ctx)
+		case "update":
+			return updateCommand(ctx)
+		case "rollback":
+			return rollbackCommand(ctx)
 		}
 	}
 	if len(args) == 2 && args[0] == "service" {
@@ -324,6 +328,15 @@ func composeProjectForSetup(dataDir, configured string) string {
 }
 
 func loadDeployment(dataDir string) (deployment, error) {
+	lock, err := lockRelease(dataDir)
+	if err != nil {
+		return deployment{}, deploymentError{cause: errDeploymentUnavailable}
+	}
+	defer unlockRelease(lock)
+	return loadDeploymentLocked(dataDir)
+}
+
+func loadDeploymentLocked(dataDir string) (deployment, error) {
 	if dataDir == "" || !filepath.IsAbs(dataDir) || filepath.Clean(dataDir) != dataDir {
 		return deployment{}, deploymentError{cause: errDeploymentUnavailable}
 	}
@@ -338,7 +351,11 @@ func loadDeployment(dataDir string) (deployment, error) {
 	if binding.Supervisor == setup.SupervisorDocker && binding.ComposeProject == "" {
 		return deployment{}, deploymentError{cause: errDeploymentBinding}
 	}
-	if !durableEndpointEvidence(binding) || !durableReferenceEvidence(binding) || !verifyDurableArtifacts(binding) {
+	if err := recoverPendingRelease(dataDir, binding, j.Next() == setup.Validated); err != nil {
+		return deployment{}, deploymentError{cause: errDeploymentBinding}
+	}
+	digests, digestErr := effectiveArtifactDigests(binding, dataDir)
+	if digestErr != nil || !durableEndpointEvidence(binding) || !durableReferenceEvidence(binding) || !verifyDurableArtifacts(binding, digests) {
 		return deployment{}, deploymentError{cause: errDeploymentBinding}
 	}
 	cfg, err := host.ConfigFromFile(filepath.Join(dataDir, "lumen.json"))
@@ -429,20 +446,48 @@ func validDurableDigest(value string) bool {
 	return value != "sha256:"+strings.Repeat("0", sha256.Size*2)
 }
 
-func verifyDurableArtifacts(binding setup.JournalBinding) bool {
+// effectiveArtifactDigests resolves which artifact identities a bound
+// deployment must currently satisfy. The immutable binding owns profile,
+// topology, install paths, and image references; an explicit owner update may
+// advance only the digest, recorded in the release record beside the binding.
+// A record that does not describe the same deployment is refused rather than
+// silently ignored, so a tampered record fails the deployment closed.
+func effectiveArtifactDigests(binding setup.JournalBinding, dataDir string) (map[string]string, error) {
+	path := releaseRecordPath(dataDir)
+	if _, err := os.Lstat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return binding.ArtifactDigests, nil
+		}
+		return nil, err
+	}
+	record, err := setup.LoadReleaseRecord(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := setup.ReleaseMatchesBinding(record, binding); err != nil {
+		return nil, err
+	}
+	digests := make(map[string]string, len(record.Current))
+	for name, artifact := range record.Current {
+		digests[name] = artifact.Digest
+	}
+	return digests, nil
+}
+
+func verifyDurableArtifacts(binding setup.JournalBinding, digests map[string]string) bool {
 	names := artifactNames(binding.Topology)
-	if len(names) == 0 || len(binding.ArtifactPaths)+len(binding.ArtifactRefs) != len(names) || len(binding.ArtifactDigests) != len(names) {
+	if len(names) == 0 || len(binding.ArtifactPaths)+len(binding.ArtifactRefs) != len(names) || len(digests) != len(names) {
 		return false
 	}
 	for _, name := range names {
 		if ref, ok := binding.ArtifactRefs[name]; ok {
-			if _, pathOK := binding.ArtifactPaths[name]; pathOK || !validDurableImageRef(ref) || binding.ArtifactDigests[name] != durableImageDigest(ref) || dockerImageInspect(ref) != nil {
+			if _, pathOK := binding.ArtifactPaths[name]; pathOK || !validDurableImageRef(ref) || digests[name] != durableImageDigest(ref) || dockerImageInspect(ref) != nil {
 				return false
 			}
 			continue
 		}
 		path, ok := binding.ArtifactPaths[name]
-		want, digestOK := binding.ArtifactDigests[name]
+		want, digestOK := digests[name]
 		if !ok || !digestOK || path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path || !validDurableDigest(want) {
 			return false
 		}
