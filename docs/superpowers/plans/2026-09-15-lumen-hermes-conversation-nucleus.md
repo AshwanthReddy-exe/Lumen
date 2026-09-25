@@ -2,7 +2,7 @@
 
 > **For Codex:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` to execute this plan task by task.
 
-**Goal:** Make ordinary Lumen chat a Host-owned, personalized, canonical conversation backed by an unmodified Hermes runtime, with no implicit Hermes tools or memory.
+**Goal:** Make ordinary Lumen chat a Host-owned, personalized, canonical conversation backed by a dedicated, source-pinned Hermes runtime, with no implicit Hermes tools or memory.
 
 **Architecture:** The Go Host owns conversation state, persona, bounded context, runtime policy, certification and terminal outcomes. It calls Hermes through the existing Runs adapter. A separately versioned native Hermes plugin calls a dedicated Host broker through an owner-restricted Unix socket (or pinned mTLS remotely); it never reads the Space store or grants authority. The first deployment proof uses an existing co-located Hermes installation, and the combined-container path reuses the identical contracts.
 
@@ -12,7 +12,7 @@
 
 ## Execution constraints
 
-- Do not fork or patch Hermes.
+- Keep the general-purpose Hermes runtime separate. The dedicated chat runtime uses only the reviewed, source-pinned isolation patch recorded in D-058.
 - Keep schema, persistence, migration and authority edits serialized under one implementer.
 - Use tests first for every behavior change and capture the failing test before implementation.
 - Use the standard library or existing dependencies unless a concrete requirement proves otherwise.

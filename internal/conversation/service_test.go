@@ -355,6 +355,8 @@ func TestCertificationRequiresCompleteBindingAndUntamperedProfile(t *testing.T) 
 		t.Fatal("complete certification rejected")
 	}
 	for name, change := range map[string]func(*space.RuntimeCertification){
+		"artifact": func(c *space.RuntimeCertification) { c.ArtifactDigest = "" },
+		"process":  func(c *space.RuntimeCertification) { c.ProcessIdentity = "" },
 		"version":  func(c *space.RuntimeCertification) { c.HermesVersion = "" },
 		"plugin":   func(c *space.RuntimeCertification) { c.PluginIdentity = "" },
 		"commit":   func(c *space.RuntimeCertification) { c.PluginCommit = "" },
@@ -694,5 +696,5 @@ func conversationState() space.State {
 
 func exactCertification() space.RuntimeCertification {
 	p := space.DefaultRuntimeProfile()
-	return space.RuntimeCertification{ID: "cert-1", RuntimeIdentity: "hermes:test", EndpointIdentity: "endpoint:test", HermesVersion: "v1", PluginIdentity: "lumen-plugin", PluginCommit: "commit", ConfigDigest: space.DigestText("config"), Evidence: "verified", ProfileDigest: p.Digest, EffectiveToolsets: []string{}, MemoryRead: false, MemoryWrite: false, Limits: space.RuntimeProfileLimits{Version: 1, MaxTurns: p.MaxTurns, MaxMessages: p.MaxMessages, MaxContextBytes: p.MaxContextBytes, MaxInputTokens: p.MaxInputTokens, MaxOutputTokens: p.MaxOutputTokens, MaxTotalTokens: p.MaxTotalTokens, DeadlineSeconds: p.DeadlineSeconds}, ExpiresAt: 1000}
+	return space.RuntimeCertification{ID: "cert-1", RuntimeIdentity: "hermes:test", EndpointIdentity: "endpoint:test", ArtifactDigest: space.DigestText("patched-artifact"), ProcessIdentity: "process:test", HermesVersion: "v1", PluginIdentity: "lumen-plugin", PluginCommit: "commit", ConfigDigest: space.DigestText("config"), Evidence: "verified", ProfileDigest: p.Digest, EffectiveToolsets: []string{}, MemoryRead: false, MemoryWrite: false, Limits: space.RuntimeProfileLimits{Version: 1, MaxTurns: p.MaxTurns, MaxMessages: p.MaxMessages, MaxContextBytes: p.MaxContextBytes, MaxInputTokens: p.MaxInputTokens, MaxOutputTokens: p.MaxOutputTokens, MaxTotalTokens: p.MaxTotalTokens, DeadlineSeconds: p.DeadlineSeconds}, ExpiresAt: 1000}
 }

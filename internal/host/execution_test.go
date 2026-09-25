@@ -58,7 +58,7 @@ func (f fixedConversationCertifier) Certify(context.Context, space.State, space.
 
 func testConversationCertification() space.RuntimeCertification {
 	p := space.DefaultRuntimeProfile()
-	return space.RuntimeCertification{ID: "cert-1", RuntimeIdentity: "hermes:test", EndpointIdentity: "endpoint:test", HermesVersion: "v1", PluginIdentity: "lumen-plugin", PluginCommit: "commit", ConfigDigest: space.DigestText("config"), Evidence: "verified", ProfileDigest: p.Digest, EffectiveToolsets: []string{}, Limits: space.RuntimeProfileLimits{Version: 1, MaxTurns: p.MaxTurns, MaxMessages: p.MaxMessages, MaxContextBytes: p.MaxContextBytes, MaxInputTokens: p.MaxInputTokens, MaxOutputTokens: p.MaxOutputTokens, MaxTotalTokens: p.MaxTotalTokens, DeadlineSeconds: p.DeadlineSeconds}, ExpiresAt: 1000}
+	return space.RuntimeCertification{ID: "cert-1", RuntimeIdentity: "hermes:test", EndpointIdentity: "endpoint:test", ArtifactDigest: space.DigestText("patched-artifact"), ProcessIdentity: "process:test", HermesVersion: "v1", PluginIdentity: "lumen-plugin", PluginCommit: "commit", ConfigDigest: space.DigestText("config"), Evidence: "verified", ProfileDigest: p.Digest, EffectiveToolsets: []string{}, Limits: space.RuntimeProfileLimits{Version: 1, MaxTurns: p.MaxTurns, MaxMessages: p.MaxMessages, MaxContextBytes: p.MaxContextBytes, MaxInputTokens: p.MaxInputTokens, MaxOutputTokens: p.MaxOutputTokens, MaxTotalTokens: p.MaxTotalTokens, DeadlineSeconds: p.DeadlineSeconds}, ExpiresAt: 1000}
 }
 
 func (f *fakeRuntime) Capabilities(context.Context) (hermes.Capabilities, error) {

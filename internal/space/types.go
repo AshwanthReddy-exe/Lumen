@@ -93,7 +93,7 @@ type ContextRecord struct {
 }
 
 type RuntimeSessionMapping struct {
-	ConversationID        string `json:"conversationId"`
+	ConversationID string `json:"conversationId"`
 	// Pending reserves the session before runtime certification can perform I/O.
 	Pending               bool   `json:"pending,omitempty"`
 	RuntimeIdentity       string `json:"runtimeIdentity"`
@@ -139,6 +139,8 @@ type RuntimeCertification struct {
 	ID                string               `json:"id"`
 	RuntimeIdentity   string               `json:"runtimeIdentity"`
 	EndpointIdentity  string               `json:"endpointIdentity"`
+	ArtifactDigest    string               `json:"artifactDigest,omitempty"`
+	ProcessIdentity   string               `json:"processIdentity,omitempty"`
 	HermesVersion     string               `json:"hermesVersion"`
 	PluginIdentity    string               `json:"pluginIdentity"`
 	PluginCommit      string               `json:"pluginCommit"`
