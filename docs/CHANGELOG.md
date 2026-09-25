@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Added a pinned-Hermes chat configuration candidate and a preflight for resolved ordinary API toolsets and constructed agent memory/tool state. Live Runs, room policy overrides, session memory, and artifact/process binding remain qualification gates.
+- Added a pinned-Hermes dedicated chat configuration, source patch, and disposable live Runs probe. The patch rejects model tool calls before execution, denies room dispatch, and skips context and memory; the config disables auxiliary title generation. Synthetic negative probes pass, while deployed artifact/process binding and Host certification remain open.
 - Verified pinned Hermes `v2026.9.7` plugin hooks fail open on callback exceptions and corrected the zero-tool conversation plan: production certification now requires a dedicated qualified runtime profile and negative tool/memory probes; chat stays blocked meanwhile.
 - Added conversation-specific Host restart reconciliation: durable run and certificate binding, fresh endpoint certification, bounded evidence checks, one canonical assistant append, truthful replay, and unknown outcomes for missing or unsafe evidence.
 - Prevented generic Host-run reconciliation, task completion, cancellation, and runtime approval from mutating conversation tasks; verified that Host restart leaves an interrupted chat run uncertain without appending an assistant message.

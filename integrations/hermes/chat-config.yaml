@@ -8,3 +8,6 @@ memory:
   provider: ""
 context:
   engine: compressor
+auxiliary:
+  title_generation:
+    enabled: false
