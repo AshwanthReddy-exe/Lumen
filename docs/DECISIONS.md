@@ -50,6 +50,8 @@
 | D-051 | Keep canonical conversations, context records, and memory proposals in the Host. | Hermes sessions and personas are replaceable mappings; `ContextRecord` projection is filtered before serialization; `MemoryProposal` is untrusted until Host validation, retention, scope, and required confirmation. |
 | D-052 | Use explicit Milestone 1 `combined` Docker and `external` independently managed Hermes topologies. | Combined owns both artifacts and services; external owns only Lumen Host lifecycle and observes the remote endpoint. Both preserve the same task contract, and M1 stays active until both topology evidence gates pass. [Design](./superpowers/specs/2026-09-11-milestone-1-dual-topology-design.md) |
 
+| D-053 | Keep the setup binding immutable and record an explicit owner release generation beside it. | `lumen update` and `lumen rollback` may advance or restore only the installed artifact digest, recorded in an owner-only release record; profile, topology, install paths, and pinned image references stay bound, and a record that disagrees with the binding fails the deployment closed instead of being ignored. An arbitrary container-image generation is reported as `image_update_requires_deployment` rather than silently swapped. |
+
 ## Superseded
 
 | ID | Former decision | Replaced by |

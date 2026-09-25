@@ -8,9 +8,9 @@ The product north star is a Jarvis-like personal intelligence Space: the user ca
 
 ## Current execution lock
 
-**Milestone 1 is the only active implementation milestone.** The durable Go Space authority, encrypted store, authenticated local control boundary, Host-to-Hermes Runs execution, dual-topology public setup, and durable doctor/service paths exist. The combined gate passed twice clean on Azure Ubuntu 22.04 amd64 and survived a real reboot. External setup against an independently supervised, pinned Hermes runtime passed authenticated mutual-TLS adoption, Host-only lifecycle control, doctor, canonical-state preservation, and a real reboot on that same VPS; the automated external journey also passed twice clean with an isolated compatibility endpoint. The release manifest is still not distributable, live deployment artifact replacement/rollback is absent, and real cross-machine external Runs behavior remains unproven. Node transport, web UI, messaging continuity, voice, canonical conversations, and device capabilities are not implemented. M1 therefore remains active.
+**Milestone 1 is the only active implementation milestone.** The durable Go Space authority, encrypted store, authenticated local control boundary, Host-to-Hermes Runs execution, dual-topology public setup, and durable doctor/service paths exist. The combined gate passed twice clean on Azure Ubuntu 22.04 amd64 and survived a real reboot. External setup against an independently supervised, pinned Hermes runtime passed authenticated mutual-TLS adoption, Host-only lifecycle control, doctor, canonical-state preservation, and a real reboot on that same VPS; the automated external journey also passed twice clean with an isolated compatibility endpoint. The release manifest is still not distributable, the live deployment artifact replacement/rollback path has not been exercised on a real machine and does not cover container-image generations, and real cross-machine external Runs behavior remains unproven. Node transport, web UI, messaging continuity, voice, canonical conversations, and device capabilities are not implemented. M1 therefore remains active.
 
-The current setup branch must be integrated and verified before product-surface implementation begins. Physical Android, Mac, or iPhone completion is not a prerequisite unless it proves the active milestone's contract.
+`lumen update` and `lumen rollback` advance or restore one integrity-pinned artifact generation under the immutable setup binding; see [the foundation gate](./PHASE-2-HOST-HERMES.md). The current setup branch must be integrated and verified before product-surface implementation begins. Physical Android, Mac, or iPhone completion is not a prerequisite unless it proves the active milestone's contract.
 
 ## Evidence format
 
@@ -22,7 +22,7 @@ Every release check records the date, commit, build and dependency versions, top
 | --- | --- | --- |
 | Space authority and encrypted persistence | Implemented and covered by Go tests | Preserve while adding conversations, memory, and node protocol |
 | Host-to-Hermes run execution | Development adapter and recovery path implemented; the pinned combined runtime completed the configured synthetic task | Real pinned-runtime exact deny/cancel/lost-stream probes and cross-machine external Runs evidence |
-| Setup and public lifecycle | Combined and external Docker journeys pass; real Azure reboot, doctor, state preservation, and Host-only external lifecycle are recorded | Publish distributable artifacts and prove live replacement/rollback |
+| Setup and public lifecycle | Combined and external Docker journeys pass; real Azure reboot, doctor, state preservation, and Host-only external lifecycle are recorded; a public `lumen update`/`lumen rollback` generation path exists with automated tests | Publish distributable artifacts and prove live replacement/rollback on a real machine |
 | Distribution | Official Hermes `v2026.9.7` source archive and container recipe are pinned and locally build-verified; release manifest remains a fixture | Reproducible Lumen artifact plus distributable combined manifest |
 | Conversations and memory | Not implemented | Canonical conversation and inspectable-memory nucleus |
 | Node fabric and remote capabilities | Domain fixtures only | Authenticated transport plus one restricted capability |
@@ -61,7 +61,7 @@ macOS and Termux remain supported deployment targets, but physical platform evid
 
 **Exit:** both topology gates pass; the combined Docker reference and independently managed external endpoint pass real configured-runtime, artifact checksum, reboot, rollback, recovery, and canonical-state checks; no unresolved Critical or Important finding remains; and evidence is recorded in the format above. Until artifact checksum, real-machine, reboot, and rollback evidence exists, M1 remains active. The exit unlocks M2's feature registry, conversation, and memory nucleus and does not claim node transport, messaging, voice, managed hosting, or earned autonomy. See [the foundation gate](./PHASE-2-HOST-HERMES.md).
 
-The combined Azure machine proof and same-VPS external lifecycle/reboot proof are recorded in [the foundation gate](./PHASE-2-HOST-HERMES.md). They do not substitute for a distributable manifest, a public live artifact replacement path, or cross-machine external Runs evidence.
+The combined Azure machine proof and same-VPS external lifecycle/reboot proof are recorded in [the foundation gate](./PHASE-2-HOST-HERMES.md). A public `lumen update`/`lumen rollback` path now exists and is covered by automated tests, but it has not been exercised on a real machine, does not yet replace container-image generations, and does not substitute for a distributable manifest or cross-machine external Runs evidence.
 
 ## Milestone 2 — Feature registry, conversation, and memory nucleus
 
