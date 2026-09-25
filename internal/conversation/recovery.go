@@ -48,7 +48,7 @@ func (s *Service) ReconcilePending(ctx context.Context) error {
 		} else {
 			reconcileCtx, cancel := context.WithTimeout(ctx, time.Unix(run.ReconcileBy, 0).Sub(s.now()))
 			liveCert, certifyErr := s.certifier.Certify(reconcileCtx, state, profile)
-			if certifyErr != nil || reconcileCtx.Err() != nil || !certificationMatches(liveCert, profile, s.now()) || liveCert.ID != run.CertificationID || liveCert.RuntimeIdentity != session.RuntimeIdentity || liveCert.EndpointIdentity != run.EndpointIdentity {
+			if certifyErr != nil || reconcileCtx.Err() != nil || !certificationMatches(liveCert, profile, s.now()) || liveCert.ID != run.CertificationID || liveCert.RuntimeIdentity != session.RuntimeIdentity || liveCert.EndpointIdentity != run.EndpointIdentity || !s.endpointMatches(reconcileCtx, liveCert) {
 				_, resultErr = s.complete(space.Transition{}, state, taskID, space.OutcomeUnknown, "", errors.New("conversation recovery runtime binding unverified"))
 			} else {
 				_, resultErr = s.reconcileRun(reconcileCtx, space.Transition{}, state, taskID, hermes.Run{RunID: run.RuntimeRunID}, liveCert, profile, run.ReconcileBy)

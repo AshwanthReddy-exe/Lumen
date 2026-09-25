@@ -18,7 +18,7 @@ func (s *Service) conversationAPI() (*conversation.Service, error) {
 	if _, err := s.state.MigrateState(); err != nil {
 		return nil, err
 	}
-	s.conversation = conversation.NewService(s.state, s.executor.runtime, s.executor.options.certifier)
+	s.conversation = conversation.NewService(s.state, s.executor.options.conversationRuntime, s.executor.options.certifier)
 	return s.conversation, nil
 }
 

@@ -183,7 +183,7 @@ Current upstream Hermes capability discovery does not attest the effective per-r
 
 Certification is bound to endpoint identity, Hermes version, plugin commit, profile digest, relevant configuration digest and expiry. A vanilla or mismatched Hermes endpoint can continue serving generic `agent.run/execute`, but it cannot serve `conversation.chat/respond`.
 
-If an upstream Hermes release cannot reliably enforce the zero-tool profile through supported configuration and fail-closed hooks, that release is incompatible. Lumen does not patch it or weaken the profile.
+If an upstream Hermes release cannot reliably enforce the zero-tool profile through supported configuration and fail-closed hooks, that release is incompatible for chat without a separately pinned and reviewed isolation patch. [D-054](../../DECISIONS.md) records that narrow exception for `v2026.9.7`; the Host still requires deployed artifact, process, configuration, and endpoint binding before issuing a certificate. The general-purpose runtime cannot serve chat merely because it implements the Runs API.
 
 ## Hermes plugin contract
 

@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/AshwanthReddy-exe/Lumen/internal/conversation"
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
 	"github.com/AshwanthReddy-exe/Lumen/internal/store"
@@ -40,6 +41,13 @@ type fakeRuntime struct {
 	approvalErrors    []error
 	beforeApproval    func()
 	eventsBlock       <-chan struct{}
+}
+
+func (f *fakeRuntime) VerifiedEndpointIdentity(context.Context) (string, error) {
+	return "endpoint:test", nil
+}
+func (f *fakeRuntime) VerifiedConversationEndpointIdentity(ctx context.Context) (string, error) {
+	return f.VerifiedEndpointIdentity(ctx)
 }
 
 type fixedConversationCertifier struct{ cert space.RuntimeCertification }
@@ -264,7 +272,7 @@ func TestRestartDoesNotSendConversationRunThroughGenericConsumer(t *testing.T) {
 	cfg := s.cfg
 	s.Shutdown()
 	runtime := &fakeRuntime{statusDefault: hermes.Run{RunID: "run-chat", Status: "running"}, eventsBlock: make(chan struct{})}
-	restarted, err := NewWithRuntime(cfg, runtime, WithExecutionTiming(5*time.Millisecond, 35*time.Millisecond), WithClock(func() time.Time { return time.Unix(101, 0) }))
+	restarted, err := NewWithRuntime(cfg, runtime, WithExecutionTiming(5*time.Millisecond, 35*time.Millisecond), WithClock(func() time.Time { return time.Unix(101, 0) }), WithConversationCertifier(fixedConversationCertifier{cert: testConversationCertification()}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +312,7 @@ func TestRestartCompletesVerifiedConversationRunWithoutRedispatch(t *testing.T) 
 	cfg := s.cfg
 	s.Shutdown()
 	runtime := &fakeRuntime{statusDefault: hermes.Run{RunID: "run-chat", Status: "completed", Output: "verified"}, events: []hermes.Event{{Type: "completed", Data: []byte(`{"status":"completed","output":"verified"}`)}}}
-	restarted, err := NewWithRuntime(cfg, runtime, WithExecutionTiming(5*time.Millisecond, 35*time.Millisecond), WithClock(func() time.Time { return time.Unix(101, 0) }), WithConversationCertifier(fixedConversationCertifier{cert: testConversationCertification()}))
+	restarted, err := NewWithRuntime(cfg, runtime, WithExecutionTiming(5*time.Millisecond, 35*time.Millisecond), WithClock(func() time.Time { return time.Unix(101, 0) }), WithConversationCertifier(fixedConversationCertifier{cert: testConversationCertification()}), WithConversationRuntime(runtime))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,6 +320,19 @@ func TestRestartCompletesVerifiedConversationRunWithoutRedispatch(t *testing.T) 
 	state, err = restarted.state.Read()
 	if err != nil || state.Tasks["chat-task"].Status != space.OutcomeCompleted || len(state.Messages["chat"]) != 2 || state.Messages["chat"][1].Content != "verified" || runtime.created != 0 {
 		t.Fatalf("verified chat did not recover: task=%#v messages=%#v creates=%d err=%v", state.Tasks["chat-task"], state.Messages["chat"], runtime.created, err)
+	}
+}
+
+func TestConversationCannotUseGeneralRuntimeWithCertificate(t *testing.T) {
+	general := &fakeRuntime{}
+	s := executionService(t, general)
+	s.executor.options.certifier = fixedConversationCertifier{cert: testConversationCertification()}
+	if _, err := s.ConversationCreate(context.Background(), conversation.CreateRequest{RequestID: "create-chat", ConversationID: "chat", SurfaceID: "web", CreatedAt: 100}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.ConversationSend(context.Background(), conversation.SendRequest{RequestID: "send-chat", ConversationID: "chat", SurfaceID: "web", Input: "hello", CreatedAt: 100, ReconcileBy: 130})
+	if !errors.Is(err, conversation.ErrRuntimeProfileUnverified) || general.created != 0 {
+		t.Fatalf("general runtime served certified chat: err=%v creates=%d", err, general.created)
 	}
 }
 

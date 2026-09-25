@@ -156,7 +156,7 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 		return queued, err
 	}
 	cert, certErr := s.certifier.Certify(ctx, state, profile)
-	if certErr != nil || !certificationMatches(cert, profile, s.now()) || space.RuntimeCertificationInvalidated(state, cert) {
+	if certErr != nil || !certificationMatches(cert, profile, s.now()) || space.RuntimeCertificationInvalidated(state, cert) || !s.endpointMatches(ctx, cert) {
 		return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 	}
 	persona, err := CompilePersona(state, req.ConversationID)
@@ -398,6 +398,17 @@ func publicOverrides(instructions, session, provider, model, profile string) boo
 func certificationMatches(cert space.RuntimeCertification, profile space.RuntimeProfile, now time.Time) bool {
 	limits := cert.Limits
 	return cert.ID != "" && cert.RuntimeIdentity != "" && cert.EndpointIdentity != "" && cert.HermesVersion != "" && cert.PluginIdentity != "" && cert.PluginCommit != "" && cert.ConfigDigest != "" && cert.Evidence != "" && profile.Digest == space.RuntimeProfileDigest(profile) && len(profile.AllowedFeatureSet) == 0 && !profile.MemoryRead && !profile.MemoryWrite && cert.ProfileDigest == profile.Digest && len(cert.EffectiveToolsets) == 0 && !cert.MemoryRead && !cert.MemoryWrite && cert.ExpiresAt > now.Unix() && limits.Version == 1 && limits.MaxTurns == profile.MaxTurns && limits.MaxMessages == profile.MaxMessages && limits.MaxContextBytes == profile.MaxContextBytes && limits.MaxInputTokens == profile.MaxInputTokens && limits.MaxOutputTokens == profile.MaxOutputTokens && limits.MaxTotalTokens == profile.MaxTotalTokens && limits.DeadlineSeconds == profile.DeadlineSeconds
+}
+
+func (s *Service) endpointMatches(ctx context.Context, cert space.RuntimeCertification) bool {
+	observer, ok := s.runtime.(interface {
+		VerifiedConversationEndpointIdentity(context.Context) (string, error)
+	})
+	if !ok {
+		return false
+	}
+	identity, err := observer.VerifiedConversationEndpointIdentity(ctx)
+	return err == nil && identity == cert.EndpointIdentity
 }
 
 func errOrRejection(err error, rejection string) error {

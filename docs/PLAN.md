@@ -24,7 +24,7 @@ For each step, acceptance requires a clean-install journey, negative and restart
 
 The conversation nucleus now has test-backed certificate binding, preference projection, deadline rejection, durable session reservation, forbidden-event invalidation, and bounded restart reconciliation. Independent security review of restart reconciliation passed. Pinned Hermes `v2026.9.7` fails open when a `pre_tool_call` plugin callback raises, so the plugin cannot be the zero-tool chat authority. A dedicated patched runtime passes disposable synthetic negative probes for forced tool calls, room route admission, context/memory disclosure, session replay, and auxiliary title calls. The conversation gate remains **open** until artifact/process/configuration/endpoint binding supports a production Host certifier, and the two-client, Host-restart, and Hermes-restart journeys pass on intended deployments. No product-surface milestone is complete merely because package tests pass.
 
-A [disposable chat-profile preflight and live probe](./evidence/HERMES-CHAT-PREFLIGHT-2026-09-25.md) check the patched pinned Hermes process. These checks qualify only the disposable local execution path; they do not bind a deployed runtime to a Host certificate. The Host continues to deny production conversation dispatch.
+[Disposable source and container chat-profile probes](./evidence/HERMES-CHAT-PREFLIGHT-2026-09-25.md) check the patched pinned Hermes process. The Host now has a separate conversation-runtime slot, so a certificate alone cannot route chat through the general-purpose Hermes adapter. These checks do not bind a deployed runtime to a Host certificate. The Host continues to deny production conversation dispatch.
 
 ## Current execution lock
 
@@ -46,7 +46,7 @@ Every release check records the date, commit, build and dependency versions, top
 | Host-to-Hermes run execution | Development adapter and recovery path implemented; the pinned combined runtime completed the configured synthetic task | Real pinned-runtime exact deny/cancel/lost-stream probes and cross-machine external Runs evidence |
 | Setup and public lifecycle | Combined and external Docker journeys pass; real Azure reboot, doctor, state preservation, and Host-only external lifecycle are recorded | Publish distributable artifacts and prove live replacement/rollback |
 | Distribution | Official Hermes `v2026.9.7` source archive and container recipe are pinned and locally build-verified; release manifest remains a fixture | Reproducible Lumen artifact plus distributable combined manifest |
-| Conversations and memory | Host-owned state and restart reconciliation are implemented; a disposable patched Hermes chat profile passes negative probes, but production chat remains blocked | Bind the deployed artifact, process, config, and endpoint to a Host certifier; prove two-client continuity |
+| Conversations and memory | Host-owned state and restart reconciliation are implemented; a separate chat-runtime seam and disposable patched source/container probes pass, but production chat remains blocked | Bind the deployed artifact, process, config, and endpoint to a Host certifier; prove two-client continuity |
 | Node fabric and remote capabilities | Domain fixtures only | Authenticated transport plus one restricted capability |
 | Product surfaces | Disabled Android shell only | Responsive web conversation surface |
 | Jarvis voice and presence | Not implemented | Local activation, streaming speech, barge-in, and handoff |

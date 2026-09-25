@@ -28,6 +28,7 @@ func (m *memoryStore) Update(fn func(space.State) space.Transition) (space.Trans
 
 type fakeRuntime struct {
 	created      int
+	endpoint     string
 	stopped      int
 	before       func()
 	beforeEvents func()
@@ -36,6 +37,17 @@ type fakeRuntime struct {
 	events       []hermes.Event
 	eventsErr    error
 	req          hermes.CreateRunRequest
+}
+
+func (f *fakeRuntime) VerifiedEndpointIdentity(context.Context) (string, error) {
+	if f.endpoint != "" {
+		return f.endpoint, nil
+	}
+	return "endpoint:test", nil
+}
+
+func (f *fakeRuntime) VerifiedConversationEndpointIdentity(ctx context.Context) (string, error) {
+	return f.VerifiedEndpointIdentity(ctx)
 }
 
 func (f *fakeRuntime) Capabilities(context.Context) (hermes.Capabilities, error) {
@@ -193,6 +205,16 @@ func TestSendPersistsBeforeIOAndFailsClosedWithoutExactCertification(t *testing.
 	}
 	if runtime.created != 1 || len(store.state.Messages["c1"]) != 2 || store.state.Messages["c1"][1].Content != "hello" {
 		t.Fatalf("certified completion not reconciled: creates=%d messages=%#v", runtime.created, store.state.Messages["c1"])
+	}
+}
+
+func TestCertifiedChatRejectsMismatchedAdapterEndpoint(t *testing.T) {
+	state := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{endpoint: "endpoint:general", run: hermes.Run{RunID: "run-1"}}
+	svc := NewService(state, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if !errors.Is(err, ErrRuntimeProfileUnverified) || runtime.created != 0 || state.state.Tasks["task-1"].Status != space.OutcomeFailed {
+		t.Fatalf("mismatched endpoint used for chat: err=%v creates=%d task=%s", err, runtime.created, state.state.Tasks["task-1"].Status)
 	}
 }
 
@@ -501,6 +523,11 @@ func TestRestartReconcilesOnlyDurablyMappedConversationRun(t *testing.T) {
 	replacementRuntime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "wrong runtime"}}
 	if err := NewService(replacementStore, replacementRuntime, fakeCertifier{cert: changedEndpoint}, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || replacementStore.state.Tasks["task-1"].Status != space.OutcomeUnknown || len(replacementStore.state.Messages["c1"]) != 1 {
 		t.Fatalf("replacement endpoint supplied recovered answer: task=%q messages=%d err=%v", replacementStore.state.Tasks["task-1"].Status, len(replacementStore.state.Messages["c1"]), err)
+	}
+	wrongAdapterStore := &memoryStore{state: state}
+	wrongAdapter := &fakeRuntime{endpoint: "endpoint:general", run: hermes.Run{RunID: "run-1", Status: "completed", Output: "wrong adapter"}}
+	if err := NewService(wrongAdapterStore, wrongAdapter, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || wrongAdapterStore.state.Tasks["task-1"].Status != space.OutcomeUnknown || len(wrongAdapterStore.state.Messages["c1"]) != 1 {
+		t.Fatalf("wrong adapter supplied recovered answer: task=%q messages=%d err=%v", wrongAdapterStore.state.Tasks["task-1"].Status, len(wrongAdapterStore.state.Messages["c1"]), err)
 	}
 	deadlineStore := &memoryStore{state: state}
 	if err := NewService(deadlineStore, &fakeRuntime{}, deadlineCheckingCertifier{t}, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || deadlineStore.state.Tasks["task-1"].Status != space.OutcomeUnknown {
