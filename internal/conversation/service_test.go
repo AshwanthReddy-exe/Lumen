@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"reflect"
 	"strings"
@@ -116,6 +117,43 @@ func TestPublicConversationRequestsRejectRuntimeKnobs(t *testing.T) {
 		if !errors.Is(err, ErrPublicRuntimeOverride) {
 			t.Fatalf("%s: err=%v, want %v", name, err, ErrPublicRuntimeOverride)
 		}
+	}
+}
+
+func TestConversationLogsShowStageWithoutLoggingPrivateContent(t *testing.T) {
+	var output strings.Builder
+	state := &memoryStore{state: conversationState()}
+	svc := NewService(state, &fakeRuntime{}, nil, WithLogger(slog.New(slog.NewJSONHandler(&output, nil))), WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "manual-test", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "private live log sentinel", CreatedAt: 100, ReconcileBy: 200})
+	if !errors.Is(err, ErrRuntimeProfileUnverified) {
+		t.Fatalf("unverified runtime was not blocked: %v", err)
+	}
+	logs := output.String()
+	if !strings.Contains(logs, `"event":"intent_persisted"`) || !strings.Contains(logs, `"event":"runtime_blocked"`) {
+		t.Fatalf("missing conversation stages: %s", logs)
+	}
+	if strings.Contains(logs, "private live log sentinel") {
+		t.Fatal("conversation content appeared in logs")
+	}
+}
+
+func TestConversationLogsTraceHermesRoundTripWithoutContent(t *testing.T) {
+	var output strings.Builder
+	state := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "private response sentinel"}, events: []hermes.Event{{Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"private response sentinel"}`)}}}
+	svc := NewService(state, runtime, fakeCertifier{cert: exactCertification()}, WithLogger(slog.New(slog.NewJSONHandler(&output, nil))), WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "round-trip", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "private request sentinel", CreatedAt: 100, ReconcileBy: 200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	logs := output.String()
+	for _, event := range []string{"intent_persisted", "certification_started", "context_projected", "hermes_request_started", "hermes_request_accepted", "hermes_evidence_received", "terminal_persisted"} {
+		if !strings.Contains(logs, `"event":"`+event+`"`) {
+			t.Errorf("missing %s stage: %s", event, logs)
+		}
+	}
+	if strings.Contains(logs, "private request sentinel") || strings.Contains(logs, "private response sentinel") {
+		t.Fatal("private conversation text appeared in logs")
 	}
 }
 

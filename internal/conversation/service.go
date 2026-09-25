@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -32,6 +33,14 @@ type Certifier interface {
 
 type Option func(*Service)
 
+func WithLogger(logger *slog.Logger) Option {
+	return func(s *Service) {
+		if logger != nil {
+			s.logger = logger
+		}
+	}
+}
+
 func WithClock(now func() time.Time) Option {
 	return func(s *Service) {
 		if now != nil {
@@ -44,11 +53,12 @@ type Service struct {
 	state     StateStore
 	runtime   hermes.Adapter
 	certifier Certifier
+	logger    *slog.Logger
 	now       func() time.Time
 }
 
 func NewService(state StateStore, runtime hermes.Adapter, certifier Certifier, options ...Option) *Service {
-	s := &Service{state: state, runtime: runtime, certifier: certifier, now: time.Now}
+	s := &Service{state: state, runtime: runtime, certifier: certifier, logger: slog.Default(), now: time.Now}
 	for _, option := range options {
 		if option != nil {
 			option(s)
@@ -145,8 +155,10 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 			return queued, errors.New("replayed conversation task is missing")
 		}
 		queued.Receipt.Outcome = task.Status
+		s.logger.Info("lumen_conversation", "event", "intent_replayed", "outcome", task.Status)
 		return queued, nil
 	}
+	s.logger.Info("lumen_conversation", "event", "intent_persisted", "input_bytes", len(req.Input))
 	state, err = s.state.Read()
 	if err != nil {
 		return queued, err
@@ -156,6 +168,7 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 		return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 	}
 	if s.certifier == nil {
+		s.logger.Warn("lumen_conversation", "event", "runtime_blocked", "reason", "runtime_profile_unverified")
 		return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 	}
 	sessionID := "lumen-session:" + req.ConversationID
@@ -167,8 +180,10 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	if err != nil {
 		return queued, err
 	}
+	s.logger.Info("lumen_conversation", "event", "certification_started", "profile", profile.ID)
 	cert, certErr := s.certifier.Certify(ctx, state, profile)
 	if certErr != nil || !certificationMatches(cert, profile, s.now()) || space.RuntimeCertificationInvalidated(state, cert) || !s.endpointMatches(ctx, cert) {
+		s.logger.Warn("lumen_conversation", "event", "runtime_blocked", "reason", "runtime_profile_unverified")
 		return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 	}
 	persona, err := CompilePersona(state, req.ConversationID)
@@ -179,23 +194,29 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	if err != nil {
 		return s.fail(queued, state, taskID, err)
 	}
+	s.logger.Info("lumen_conversation", "event", "context_projected", "history_messages", len(projection.Messages), "context_bytes", len(projection.Context), "instructions_bytes", len(projection.Instructions))
 	bound, err := s.apply(space.Command{Type: space.CommandBindRuntimeSession, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "session:" + req.RequestID, ConversationID: req.ConversationID, RuntimeIdentity: cert.RuntimeIdentity, HermesSessionID: sessionID, RuntimeProfileDigest: profile.Digest})
 	if err != nil || bound.Rejection != "" {
 		return queued, errOrRejection(err, bound.Rejection)
 	}
 	if s.runtime == nil {
+		s.logger.Warn("lumen_conversation", "event", "runtime_blocked", "reason", "runtime_profile_unverified")
 		return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 	}
+	s.logger.Info("lumen_conversation", "event", "hermes_request_started", "input_bytes", len(projection.Input), "history_messages", len(projection.Messages), "context_bytes", len(projection.Context), "profile", profile.ID)
 	run, createErr := s.runtime.CreateRun(ctx, hermes.CreateRunRequest{Input: projection.Input, Instructions: projection.Instructions, SessionID: sessionID, ConversationHistory: mustJSON(projection.Messages)}, req.RequestID)
 	if createErr != nil || run.RunID == "" {
 		if createErr == nil {
 			createErr = errors.New("Hermes create returned no run ID")
 		}
 		if errors.Is(createErr, hermes.ErrCreateRejected) {
+			s.logger.Warn("lumen_conversation", "event", "hermes_request_rejected", "error_class", "create_rejected")
 			return s.fail(queued, state, taskID, createErr)
 		}
+		s.logger.Warn("lumen_conversation", "event", "hermes_request_uncertain", "error_class", "create_ambiguous")
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", createErr)
 	}
+	s.logger.Info("lumen_conversation", "event", "hermes_request_accepted")
 	dispatched, err := s.apply(space.Command{Type: space.CommandDispatchHostRun, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "dispatch:" + req.RequestID, TaskID: taskID, RuntimeRunID: run.RunID, RuntimeIdempotencyKey: req.RequestID, RuntimeProfileDigest: profile.Digest, CertificationID: cert.ID, EndpointIdentity: cert.EndpointIdentity, DispatchedAt: created, ReconcileBy: by})
 	if err != nil || dispatched.Rejection != "" {
 		return queued, errOrRejection(err, dispatched.Rejection)
@@ -220,6 +241,7 @@ func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, sta
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", statusErr)
 	}
 	events, eventsErr := s.runtime.Events(reconcileCtx, run.RunID)
+	s.logger.Info("lumen_conversation", "event", "hermes_evidence_received", "status_class", terminalOutcome(status.Status), "events", len(events))
 	for _, event := range events {
 		if !allowedChatEvent(event) {
 			invalidated, invalidateErr := s.apply(space.Command{Type: space.CommandInvalidateRuntimeCertification, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: space.RuntimeCertificationInvalidationID(cert), CertificationID: cert.ID, RuntimeIdentity: cert.RuntimeIdentity, RuntimeProfileDigest: profile.Digest, TaskID: taskID, RuntimeRunID: run.RunID})
@@ -443,8 +465,18 @@ func (s *Service) complete(queued space.Transition, state space.State, taskID st
 		return tr, errors.Join(cause, err)
 	}
 	if tr.Rejection != "" {
+		s.logger.Error("lumen_conversation", "event", "terminal_persistence_failed", "reason", "state_rejected")
 		return tr, errors.Join(cause, errors.New(tr.Rejection))
 	}
+	s.logger.Info("lumen_conversation", "event", "terminal_persisted", "outcome", outcome, "output_bytes", len(output), "reason", func() string {
+		if errors.Is(cause, ErrRuntimeProfileUnverified) {
+			return "runtime_profile_unverified"
+		}
+		if cause != nil {
+			return "runtime_error"
+		}
+		return ""
+	}())
 	return tr, cause
 }
 

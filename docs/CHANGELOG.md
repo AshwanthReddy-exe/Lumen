@@ -1,6 +1,7 @@
 # Changelog
 
 - Added owner-controlled `memory save|list|delete` Host commands. Canonical encrypted Space records are idempotent, bounded, inspectable, and filtered into future conversation context; deleting a record removes it from later projections. Production Hermes chat certification and runtime-proposed memory remain open.
+- Added redacted structured conversation stage logs for durable intent, certification, context projection, Hermes submission, runtime evidence, and terminal persistence. Request and response text, memory payloads, credentials, and caller IDs are omitted.
 
 ## Unreleased
 
