@@ -81,6 +81,55 @@ func TestUnsupportedStateSchemaIsRejectedWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestMigrateV1ToV2PreservesStateAndIsIdempotent(t *testing.T) {
+	s, statePath, _ := testStore(t)
+	if err := s.Initialize(testState()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SchemaVersion != 2 || got.SpaceID != "space" || got.OwnerID != "owner" || got.HostID != "host" {
+		t.Fatalf("migration changed authority: %#v", got)
+	}
+	if err := s.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	read, err := s.Read()
+	if err != nil || read.SchemaVersion != 2 {
+		t.Fatalf("migrated state unreadable: %#v %v", read, err)
+	}
+
+	s.hooks.Rename = func(string, string) error { return errors.New("injected migration replacement failure") }
+	if err := os.Remove(statePath); err != nil {
+		t.Fatal(err)
+	}
+	// Recreate a v1 file through a fresh store so the failed replacement has
+	// an old authoritative file to preserve.
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := New(statePath, filepath.Join(filepath.Dir(statePath), "state.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if err := reopened.Initialize(testState()); err != nil {
+		t.Fatal(err)
+	}
+	reopened.hooks.Rename = func(string, string) error { return errors.New("injected migration replacement failure") }
+	if err := reopened.Migrate(); err == nil {
+		t.Fatal("expected migration replacement failure")
+	}
+	if preserved, err := reopened.Read(); err != nil || preserved.SchemaVersion != 1 || preserved.SpaceID != "space" {
+		t.Fatalf("v1 state not preserved after failed migration: %#v %v", preserved, err)
+	}
+}
+
 func TestUpdatePersistsTransitionAndUsesFreshNonce(t *testing.T) {
 	s, statePath, _ := testStore(t)
 	if err := s.Initialize(testState()); err != nil {

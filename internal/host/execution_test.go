@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/AshwanthReddy-exe/Lumen/internal/conversation"
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
 	"github.com/AshwanthReddy-exe/Lumen/internal/store"
@@ -40,6 +41,24 @@ type fakeRuntime struct {
 	approvalErrors    []error
 	beforeApproval    func()
 	eventsBlock       <-chan struct{}
+}
+
+func (f *fakeRuntime) VerifiedEndpointIdentity(context.Context) (string, error) {
+	return "endpoint:test", nil
+}
+func (f *fakeRuntime) VerifiedConversationEndpointIdentity(ctx context.Context) (string, error) {
+	return f.VerifiedEndpointIdentity(ctx)
+}
+
+type fixedConversationCertifier struct{ cert space.RuntimeCertification }
+
+func (f fixedConversationCertifier) Certify(context.Context, space.State, space.RuntimeProfile) (space.RuntimeCertification, error) {
+	return f.cert, nil
+}
+
+func testConversationCertification() space.RuntimeCertification {
+	p := space.DefaultRuntimeProfile()
+	return space.RuntimeCertification{ID: "cert-1", RuntimeIdentity: "hermes:test", EndpointIdentity: "endpoint:test", ArtifactDigest: space.DigestText("patched-artifact"), ProcessIdentity: "process:test", HermesVersion: "v1", PluginIdentity: "lumen-plugin", PluginCommit: "commit", ConfigDigest: space.DigestText("config"), Evidence: "verified", ProfileDigest: p.Digest, EffectiveToolsets: []string{}, Limits: space.RuntimeProfileLimits{Version: 1, MaxTurns: p.MaxTurns, MaxMessages: p.MaxMessages, MaxContextBytes: p.MaxContextBytes, MaxInputTokens: p.MaxInputTokens, MaxOutputTokens: p.MaxOutputTokens, MaxTotalTokens: p.MaxTotalTokens, DeadlineSeconds: p.DeadlineSeconds}, ExpiresAt: 1000}
 }
 
 func (f *fakeRuntime) Capabilities(context.Context) (hermes.Capabilities, error) {
@@ -227,6 +246,93 @@ func TestCreateIntentRecoversToUnknownWithoutRetryAfterRestart(t *testing.T) {
 	}
 	if r.created != 0 {
 		t.Fatalf("restarted service retried create %d times", r.created)
+	}
+}
+
+func TestRestartDoesNotSendConversationRunThroughGenericConsumer(t *testing.T) {
+	s := executionService(t, &fakeRuntime{})
+	if _, err := s.state.MigrateState(); err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.state.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := func(command space.Command) {
+		command.SpaceID, command.HostID, command.Epoch = state.SpaceID, state.HostID, state.Epoch
+		tr, applyErr := s.ApplyCommand(command)
+		if applyErr != nil || tr.Rejection != "" {
+			t.Fatalf("conversation setup rejected: %#v %v", tr, applyErr)
+		}
+	}
+	apply(space.Command{Type: space.CommandRegisterSurface, ActorID: state.OwnerID, RequestID: "surface", SurfaceID: "web"})
+	apply(space.Command{Type: space.CommandCreateConversation, ActorID: state.OwnerID, RequestID: "create-chat", ConversationID: "chat", SurfaceID: "web", CreatedAt: 99})
+	apply(space.Command{Type: space.CommandSendConversation, ActorID: state.OwnerID, RequestID: "send-chat", ConversationID: "chat", SurfaceID: "web", TaskID: "chat-task", Content: "hello", RuntimeIdempotencyKey: "send-chat", CreatedAt: 100, ReconcileBy: 200})
+	apply(space.Command{Type: space.CommandDispatchHostRun, ActorID: state.HostID, RequestID: "dispatch-chat", TaskID: "chat-task", RuntimeRunID: "run-chat", RuntimeIdempotencyKey: "send-chat", RuntimeProfileDigest: space.DefaultRuntimeProfile().Digest, CertificationID: "cert-1", EndpointIdentity: "endpoint:test", DispatchedAt: 100, ReconcileBy: 200})
+	cfg := s.cfg
+	s.Shutdown()
+	runtime := &fakeRuntime{statusDefault: hermes.Run{RunID: "run-chat", Status: "running"}, eventsBlock: make(chan struct{})}
+	restarted, err := NewWithRuntime(cfg, runtime, WithExecutionTiming(5*time.Millisecond, 35*time.Millisecond), WithClock(func() time.Time { return time.Unix(101, 0) }), WithConversationCertifier(fixedConversationCertifier{cert: testConversationCertification()}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Shutdown()
+	restarted.executor.consumerMu.Lock()
+	_, genericConsumerStarted := restarted.executor.consumers["chat-task"]
+	restarted.executor.consumerMu.Unlock()
+	state, err = restarted.state.Read()
+	if err != nil || genericConsumerStarted || state.Tasks["chat-task"].Status != space.OutcomeUnknown || len(state.Messages["chat"]) != 1 {
+		t.Fatalf("generic recovery consumed chat run: task=%#v messages=%d consumer=%v err=%v", state.Tasks["chat-task"], len(state.Messages["chat"]), genericConsumerStarted, err)
+	}
+}
+
+func TestRestartCompletesVerifiedConversationRunWithoutRedispatch(t *testing.T) {
+	s := executionService(t, &fakeRuntime{})
+	if _, err := s.state.MigrateState(); err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.state.Read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := func(command space.Command) {
+		command.SpaceID, command.HostID, command.Epoch = state.SpaceID, state.HostID, state.Epoch
+		tr, applyErr := s.ApplyCommand(command)
+		if applyErr != nil || tr.Rejection != "" {
+			t.Fatalf("conversation setup rejected: %s %v", tr.Rejection, applyErr)
+		}
+	}
+	profile := space.DefaultRuntimeProfile()
+	apply(space.Command{Type: space.CommandRegisterSurface, ActorID: state.OwnerID, RequestID: "surface", SurfaceID: "web"})
+	apply(space.Command{Type: space.CommandCreateConversation, ActorID: state.OwnerID, RequestID: "create-chat", ConversationID: "chat", SurfaceID: "web", CreatedAt: 99})
+	apply(space.Command{Type: space.CommandSendConversation, ActorID: state.OwnerID, RequestID: "send-chat", ConversationID: "chat", SurfaceID: "web", TaskID: "chat-task", Content: "hello", RuntimeIdempotencyKey: "send-chat", CreatedAt: 100, ReconcileBy: 200})
+	apply(space.Command{Type: space.CommandReserveRuntimeSession, ActorID: state.HostID, RequestID: "reserve-chat", ConversationID: "chat", HermesSessionID: "lumen-session:chat", RuntimeProfileDigest: profile.Digest})
+	apply(space.Command{Type: space.CommandBindRuntimeSession, ActorID: state.HostID, RequestID: "bind-chat", ConversationID: "chat", HermesSessionID: "lumen-session:chat", RuntimeIdentity: "hermes:test", RuntimeProfileDigest: profile.Digest})
+	apply(space.Command{Type: space.CommandDispatchHostRun, ActorID: state.HostID, RequestID: "dispatch-chat", TaskID: "chat-task", RuntimeRunID: "run-chat", RuntimeIdempotencyKey: "send-chat", RuntimeProfileDigest: profile.Digest, CertificationID: "cert-1", EndpointIdentity: "endpoint:test", DispatchedAt: 100, ReconcileBy: 200})
+	cfg := s.cfg
+	s.Shutdown()
+	runtime := &fakeRuntime{statusDefault: hermes.Run{RunID: "run-chat", Status: "completed", Output: "verified"}, events: []hermes.Event{{Type: "completed", Data: []byte(`{"status":"completed","output":"verified"}`)}}}
+	restarted, err := NewWithRuntime(cfg, runtime, WithExecutionTiming(5*time.Millisecond, 35*time.Millisecond), WithClock(func() time.Time { return time.Unix(101, 0) }), WithConversationCertifier(fixedConversationCertifier{cert: testConversationCertification()}), WithConversationRuntime(runtime))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Shutdown()
+	state, err = restarted.state.Read()
+	if err != nil || state.Tasks["chat-task"].Status != space.OutcomeCompleted || len(state.Messages["chat"]) != 2 || state.Messages["chat"][1].Content != "verified" || runtime.created != 0 {
+		t.Fatalf("verified chat did not recover: task=%#v messages=%#v creates=%d err=%v", state.Tasks["chat-task"], state.Messages["chat"], runtime.created, err)
+	}
+}
+
+func TestConversationCannotUseGeneralRuntimeWithCertificate(t *testing.T) {
+	general := &fakeRuntime{}
+	s := executionService(t, general)
+	s.executor.options.certifier = fixedConversationCertifier{cert: testConversationCertification()}
+	if _, err := s.ConversationCreate(context.Background(), conversation.CreateRequest{RequestID: "create-chat", ConversationID: "chat", SurfaceID: "web", CreatedAt: 100}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.ConversationSend(context.Background(), conversation.SendRequest{RequestID: "send-chat", ConversationID: "chat", SurfaceID: "web", Input: "hello", CreatedAt: 100, ReconcileBy: 130})
+	if !errors.Is(err, conversation.ErrRuntimeProfileUnverified) || general.created != 0 {
+		t.Fatalf("general runtime served certified chat: err=%v creates=%d", err, general.created)
 	}
 }
 

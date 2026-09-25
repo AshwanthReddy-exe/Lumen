@@ -177,6 +177,42 @@ func (s *Store) Read() (space.State, error) {
 	return s.read()
 }
 
+// Migrate upgrades the active state through the pure Space migration and
+// replaces it using the same verified atomic commit path as normal updates.
+// A v2 state is left unchanged, making repeated calls idempotent.
+func (s *Store) Migrate() error {
+	_, err := s.MigrateState()
+	return err
+}
+
+// MigrateState performs Migrate and returns the resulting canonical state.
+func (s *Store) MigrateState() (space.State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return space.State{}, errors.New("store is closed")
+	}
+	state, err := s.read()
+	if err != nil {
+		return space.State{}, err
+	}
+	migrated, err := space.MigrateV1ToV2(state)
+	if err != nil {
+		return space.State{}, err
+	}
+	if migrated.SchemaVersion == state.SchemaVersion {
+		return migrated, nil
+	}
+	key, err := s.loadKey()
+	if err != nil {
+		return space.State{}, err
+	}
+	if err := s.commit(key, migrated, true); err != nil {
+		return space.State{}, err
+	}
+	return migrated, nil
+}
+
 func (s *Store) Update(fn func(space.State) space.Transition) (space.Transition, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -355,6 +391,14 @@ func (s *Store) commit(key []byte, state space.State, preserve bool) error {
 		return err
 	}
 	if backupMade {
+		// Verify the replacement while the prior version is still retained. If
+		// reopening fails, rollback keeps the old file authoritative.
+		if _, verifyErr := s.read(); verifyErr != nil {
+			if rollbackErr := s.rollback(backupName, recoveryName, syncDir); rollbackErr != nil {
+				return fmt.Errorf("replacement verification failed: %w; rollback failed: %v", verifyErr, rollbackErr)
+			}
+			return verifyErr
+		}
 		// The replacement is already the durable authority. Cleanup is
 		// non-authoritative: retain recovery material if removal fails and still
 		// report the committed transition honestly.
@@ -576,10 +620,10 @@ func randomName() string {
 }
 
 func validateState(state space.State) error {
-	if state.SchemaVersion != FormatVersion {
+	if state.SchemaVersion != space.StateSchemaVersionV1 && state.SchemaVersion != space.StateSchemaVersionV2 {
 		return fmt.Errorf("unsupported state schema version %d", state.SchemaVersion)
 	}
-	return nil
+	return space.ValidateState(state)
 }
 
 func rootLstat(root *os.Root, name string) (os.FileInfo, error) { return root.Lstat(name) }

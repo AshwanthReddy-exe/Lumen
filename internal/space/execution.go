@@ -41,6 +41,9 @@ func dispatchHostRun(s State, c Command) Transition {
 	if !ok {
 		return reject(s, c, "task_unknown")
 	}
+	if t.CapabilityID == "conversation.chat/respond" && (c.CertificationID == "" || c.EndpointIdentity == "") {
+		return reject(s, c, "runtime_certification_missing")
+	}
 	if t.HostEpoch != s.Epoch || (t.Status != OutcomeQueued && t.Status != OutcomeCreating) {
 		return reject(s, c, "invalid_task_state")
 	}
@@ -62,7 +65,7 @@ func dispatchHostRun(s State, c Command) Transition {
 			return reject(s, c, "runtime_run_id_collision")
 		}
 	}
-	s.HostRuns[c.TaskID] = HostRun{TaskID: c.TaskID, RuntimeRunID: c.RuntimeRunID, RuntimeProfileDigest: c.RuntimeProfileDigest, HostEpoch: s.Epoch, DispatchedAt: c.DispatchedAt, ReconcileBy: c.ReconcileBy}
+	s.HostRuns[c.TaskID] = HostRun{TaskID: c.TaskID, RuntimeRunID: c.RuntimeRunID, RuntimeProfileDigest: c.RuntimeProfileDigest, CertificationID: c.CertificationID, EndpointIdentity: c.EndpointIdentity, HostEpoch: s.Epoch, DispatchedAt: c.DispatchedAt, ReconcileBy: c.ReconcileBy}
 	delete(s.HostCreates, c.TaskID)
 	t.Status = OutcomeDispatched
 	s.Tasks[c.TaskID] = t
@@ -111,6 +114,9 @@ func requestRuntimeApproval(s State, c Command) Transition {
 	if reason != "" {
 		return reject(s, c, reason)
 	}
+	if task.CapabilityID == "conversation.chat/respond" {
+		return reject(s, c, "conversation_approval_unavailable")
+	}
 	if task.Status != OutcomeRunning && task.Status != OutcomeDispatched {
 		return reject(s, c, "invalid_task_state")
 	}
@@ -154,6 +160,9 @@ func resolveRuntimeApproval(s State, c Command) Transition {
 	if !ok || task.Status != OutcomeAwaitingPermission {
 		return reject(s, c, "approval_not_required")
 	}
+	if task.CapabilityID == "conversation.chat/respond" {
+		return reject(s, c, "conversation_approval_unavailable")
+	}
 	if approval.Decision != "" && approval.Decision != c.Decision {
 		return reject(s, c, "runtime_approval_decision_mismatch")
 	}
@@ -174,6 +183,9 @@ func recordRuntimeApproval(s State, c Command) Transition {
 	run, runOK := s.HostRuns[c.TaskID]
 	if !ok || !runOK || approval.TaskID != c.TaskID || approval.RuntimeRunID != c.RuntimeRunID || run.RuntimeProfileDigest != c.RuntimeProfileDigest || approval.Decision != c.Decision || approval.TargetNodeID != c.TargetNodeID || approval.ActionFingerprint != c.ActionFingerprint {
 		return reject(s, c, "runtime_approval_mismatch")
+	}
+	if s.Tasks[c.TaskID].CapabilityID == "conversation.chat/respond" {
+		return reject(s, c, "conversation_approval_unavailable")
 	}
 	if c.DeliveryState != "sending" && c.DeliveryState != "delivered" && c.DeliveryState != "uncertain" {
 		return reject(s, c, "invalid_runtime_approval_delivery")
@@ -222,6 +234,9 @@ func reconcileHostRun(s State, c Command) Transition {
 	r, t, reason := runMapping(s, c)
 	if reason != "" {
 		return reject(s, c, reason)
+	}
+	if t.CapabilityID == "conversation.chat/respond" {
+		return reject(s, c, "conversation_evidence_requires_host")
 	}
 	if c.ObservedAt < r.DispatchedAt {
 		return reject(s, c, "invalid_timestamp")
@@ -308,6 +323,9 @@ func cancelHostRun(s State, c Command) Transition {
 	_, t, reason := runMapping(s, c)
 	if reason != "" {
 		return reject(s, c, reason)
+	}
+	if t.CapabilityID == "conversation.chat/respond" {
+		return reject(s, c, "conversation_cancellation_unavailable")
 	}
 	if c.ObservedAt <= 0 {
 		return reject(s, c, "invalid_timestamp")

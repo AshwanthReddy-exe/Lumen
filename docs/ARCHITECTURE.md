@@ -24,7 +24,7 @@ V1 has one active headless Host process. The same service artifact may run on Li
 
 ## Current implementation status
 
-The repository currently implements the Go Space authority, encrypted durable storage, owner-restricted local control, Host-local task execution and recovery, and a versioned Hermes Runs adapter. The public setup, doctor, and service experience is not yet complete. Canonical conversations and product memory, authenticated node transport, remote node execution, restricted file capabilities, web and messaging surfaces, and the Jarvis voice experience described below are target architecture, not shipped behavior. Phase-specific evidence is tracked in [PLAN.md](./PLAN.md); architecture must not be read as an implementation claim.
+The repository currently implements the Go Space authority, encrypted durable storage, owner-restricted local control, Host-local task execution and recovery, a versioned Hermes Runs adapter, and public setup, doctor, and service paths for combined and external topologies. The conversation nucleus has canonical records and a Host chat path, but its review, real runtime certification, and restart continuity gates remain open. Product memory, authenticated node transport, remote node execution, restricted file capabilities, web and messaging surfaces, and the Jarvis voice experience described below are target architecture, not shipped behavior. Phase-specific evidence is tracked in [PLAN.md](./PLAN.md); architecture must not be read as an implementation claim.
 
 ## Component responsibilities
 
@@ -133,6 +133,12 @@ State-changing capability contracts also declare authority, validation point, id
 
 All surfaces map into Host-owned `Conversation`, `Message`, `Participant`, and `Surface` records. Hermes runtime sessions are replaceable execution mappings, not conversation authority. A runtime outage, upgrade, or replacement cannot erase canonical history.
 
+Owner-saved `user.memory/v1` records reside in encrypted canonical `ContextRecords`. The owner control path saves, lists, and deletes them through idempotent Space commands. Conversation projection filters for accepted, private, intact, unexpired owner records; preferences take priority, then newer memories, under the certified context byte budget. Deleted records are absent from future projections. These records are data, never executable instructions. Hermes has no direct store API.
+
+For zero-tool conversation runs, the Host examines the complete bounded runtime event evidence before accepting an assistant message. Unknown or conflicting evidence cannot establish completion. An observed forbidden event invalidates the exact runtime certification through a durable, redacted Host audit record; subsequent sends must obtain a different qualified certification.
+
+On pinned Hermes `v2026.9.7`, plugin `pre_tool_call` callbacks fail open on exceptions. A plugin veto therefore cannot establish zero-tool isolation. The dedicated chat process uses a source-pinned patch that rejects model tool calls before execution, rejects room dispatch, and skips Hermes context and memory; its configuration also disables auxiliary title requests. The Host has a separate conversation-runtime slot and cannot fall back to its general-purpose Hermes adapter. In the development profile, a Docker certifier checks a locally qualified image, exact config digest, running process, read-only mount, restricted environment, loopback binding, and live authenticated health before conversation dispatch. The Host rechecks the exact certificate and endpoint after private-context projection. This does not yet bind the subsequent request connection to the certified process or qualify a production deployment. Disposable source, container, and native macOS Host journeys use synthetic content only. Real classified content remains outside this development check; a plugin hook may add defense in depth.
+
 Runtimes may propose memory, but only the Host validates and persists canonical records. Low-risk memory may be accepted automatically under an inspectable retention policy; sensitive or consequential durable memory requires confirmation. Records carry scope, provenance, classification, retention, expiry, confidence, and a digest; users can inspect why a record exists and edit, export, or delete it within their authorized scope. Deletion excludes it from future context projections and follows the documented durable deletion and backup policy.
 
 The Host stores canonical Space context as typed records and append-only events, not one unbounded prompt. Context namespaces include user preferences, projects, devices, tasks, schedules, and capability-specific memory. Each synchronized record carries origin node, version, timestamp, classification, retention, and content digest.
@@ -148,6 +154,8 @@ The target durable entities are `Space`, `Identity`, `Conversation`, `Message`, 
 Any active state may move to `cancelling`, `failed`, `paused`, `expired`, or `unknown_outcome`. Local tasks begin at `running` and later enter `synchronizing`. Transitions are compare-and-set and idempotent; uncertainty is never reported as success.
 
 The Go Host persists encrypted canonical state, create intent, exact task-to-runtime mapping, approvals, bounded terminal output, and reconciliation evidence before acknowledging the corresponding transition. On restart it resumes only durably mapped runs, never treats a historical receipt as redispatch authority, and records `unknown_outcome` when bounded reconciliation cannot prove completion. Cross-node reconciliation remains deferred to Block 3; the Block 2 Host-local contract is documented in [Phase 2](./PHASE-2-HOST-HERMES.md).
+
+Conversation tasks cannot use generic Host-run completion, cancellation, or runtime approvals because those paths do not validate chat event evidence or append a canonical assistant message. At Host restart, a conversation with a durable run mapping may complete only after fresh certification matches the persisted certificate ID, runtime identity, endpoint identity, and profile digest, followed by bounded status and event validation. Missing or mismatched evidence records `unknown_outcome` without redispatch. Conversation interruption remains a separate unqualified contract.
 
 ## Hermes intelligence boundary
 
@@ -211,6 +219,8 @@ Platform features use narrow adapters. For example, Apple Reminders may be imple
 ## Product and interoperability boundary
 
 Lumen's application, managed service, product experience, Space Authority implementation, and commercial distribution are proprietary paid products. Interoperability must not depend on access to those internals. The node pairing and transport protocol, capability manifests and invocation contracts, runtime event contract, conversation ingress and delivery adapter contract, context retrieval and memory-proposal contract, provider/model constraint contract, public SDK, conformance fixtures, and compatibility/version policy are public specifications.
+
+The first bounded node transport proof is `node.status/read`: the Host signs a one-minute, action-bound invocation, sends it over verified HTTPS, and accepts only a node-signed receipt matching the task, target, epoch, and request digest. The Host rechecks its current grant before recording completion; the node rechecks local permission for every request. This read-only proof does not establish pairing or general remote execution; those require owner-confirmed durable keys, replay-safe write receipts, and reconnect recovery.
 
 Managed and paid self-hosted deployments use the same protocols and encrypted Space export format. A public protocol enables independent nodes and integrations; it does not allow them to bypass entitlement, pairing, grants, approval, local permission, or Host authority.
 

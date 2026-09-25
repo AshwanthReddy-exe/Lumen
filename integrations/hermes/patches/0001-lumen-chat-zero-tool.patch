@@ -1,0 +1,101 @@
+diff --git a/agent/turn_tool_round.py b/agent/turn_tool_round.py
+index daa009a..4f06654 100644
+--- a/agent/turn_tool_round.py
++++ b/agent/turn_tool_round.py
+@@ -10,6 +10,7 @@ from __future__ import annotations
+ from contextlib import suppress
+ from dataclasses import dataclass
+ import logging
++import os
+ from typing import Any, Dict, Optional, Tuple
+ 
+ from agent.message_metadata import append_message
+@@ -63,6 +64,9 @@ def run_tool_round(
+             truncated_tool_call_retries=truncated_tool_call_retries, result=result,
+         )
+ 
++    if os.environ.get("LUMEN_CHAT_ZERO_TOOL") == "1" and assistant_message.tool_calls:
++        raise ValueError("Lumen chat rejected a model tool call")
++
+     if not agent.quiet_mode:
+         agent._vprint(f"{agent.log_prefix}🔧 Processing {len(assistant_message.tool_calls)} tool call(s)...")
+ 
+diff --git a/gateway/platforms/api_server.py b/gateway/platforms/api_server.py
+index 8bd6ed5..53ad57a 100644
+--- a/gateway/platforms/api_server.py
++++ b/gateway/platforms/api_server.py
+@@ -2120,7 +2120,10 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+             gateway_session_key=gateway_session_key, session_id=session_id)
+         user_config = _load_gateway_config()
+         enabled_toolsets = sorted(_get_platform_tools(user_config, "api_server"))
+-        max_iterations = _current_max_iterations()
++        lumen_chat = os.environ.get("LUMEN_CHAT_ZERO_TOOL") == "1"
++        max_iterations = 1 if lumen_chat else _current_max_iterations()
++        if lumen_chat and (enabled_toolsets or room_dispatch is not None):
++            raise ValueError("Lumen chat requires an empty toolset and no room dispatch")
+         if room_dispatch is not None:
+             from gateway.hosted_room_execution_policy import RoomExecutionPolicy
+             policy = RoomExecutionPolicy.from_mapping(room_execution_policy or {})
+@@ -2133,6 +2136,7 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+         agent_kwargs = {
+             "model": model, **runtime_kwargs, **_checkpoint_agent_kwargs(user_config),
+             "max_iterations": max_iterations, "quiet_mode": True, "verbose_logging": False,
++            "skip_context_files": lumen_chat, "skip_memory": lumen_chat,
+             "ephemeral_system_prompt": ephemeral_system_prompt or None,
+             "enabled_toolsets": enabled_toolsets, "session_id": session_id,
+             "platform": "api_server",
+diff --git a/gateway/platforms/api_server_room_dispatch.py b/gateway/platforms/api_server_room_dispatch.py
+index 44f6ed9..0a6e404 100644
+--- a/gateway/platforms/api_server_room_dispatch.py
++++ b/gateway/platforms/api_server_room_dispatch.py
+@@ -3,6 +3,7 @@
+ import asyncio
+ import hashlib
+ import hmac
++import os
+ import time
+ from typing import Any
+ 
+@@ -64,7 +65,15 @@ async def _normalize_room_dispatch(
+     self, request: "web.Request", body: Any, *, _api_server) -> tuple[Any, "web.Response | None"]:
+     """Validate and normalize a scoped RoomLink dispatch request."""
+     _openai_error, room_token = _api_server._openai_error, self._room_grant_token(request)
++    if os.environ.get("LUMEN_CHAT_ZERO_TOOL") == "1" and room_token:
++        return body, _json_error(
++            _openai_error, "Room dispatch is disabled for Lumen chat.",
++            code="invalid_room_dispatch", status=403)
+     if not room_token:
++        if isinstance(body, dict) and ("hosted_room_dispatch" in body or "_room_execution_policy" in body):
++            return body, _json_error(
++                _openai_error, "Room dispatch requires a room grant.",
++                code="invalid_room_dispatch", status=403)
+         return body, None
+     if not isinstance(body, dict) or set(body) - {"input", "hosted_room_dispatch"}:
+         return body, _json_error(
+diff --git a/gateway/platforms/api_server_runs.py b/gateway/platforms/api_server_runs.py
+index a72a000..673c3a5 100644
+--- a/gateway/platforms/api_server_runs.py
++++ b/gateway/platforms/api_server_runs.py
+@@ -200,6 +200,9 @@ def _run_idempotency_scope(self, request: "web.Request", *, _api_server) -> str:
+ 
+ 
+ def _check_run_auth(self, request: "web.Request", *, permission: str, _api_server) -> "web.Response | None":
++    if os.environ.get("LUMEN_CHAT_ZERO_TOOL") == "1" and self._room_grant_token(request):
++        return _json_error(_api_server._openai_error, "Room dispatch is disabled for Lumen chat.",
++                           code="invalid_room_dispatch", status=403)
+     if not self._room_grant_token(request):
+         return self._check_auth(request)
+     try:
+@@ -572,7 +575,11 @@ async def _execute_run(self, run: _RunLaunch, *, _api_server) -> None:
+             None, lambda: _run_agent_sync(self, run, agent, approval_notify, _api_server=_api_server))
+         if not isinstance(result, dict):
+             result = {}
+-        if run_id in self._stopping_run_ids and result.get("interrupted") is True:
++        messages = result.get("messages")
++        if (os.environ.get("LUMEN_CHAT_ZERO_TOOL") == "1" and isinstance(messages, list)
++                and any(isinstance(message, dict) and message.get("tool_calls") for message in messages)):
++            _finish("failed", error="Lumen chat rejected a model tool call")
++        elif run_id in self._stopping_run_ids and result.get("interrupted") is True:
+             _finish("cancelled")
+         elif result.get("failed"):
+             # Non-retryable client errors (401/400) return failed=True rather than raising.

@@ -116,6 +116,18 @@ func TestCLIProcessLifecycleAndBoundary(t *testing.T) {
 			t.Fatalf("status was not stable JSON: %q (err=%v)", out, err)
 		}
 	}
+	if out, code := runHost(t, bin, cfg, "memory", "save", "--request_id", "save-fact", "--memory_id", "fact-1", "--text", "I use Lumen"); code != 0 {
+		t.Fatalf("memory save: code=%d output=%q", code, out)
+	}
+	if out, code := runHost(t, bin, cfg, "memory", "list"); code != 0 || !strings.Contains(out, "I use Lumen") {
+		t.Fatalf("memory list: code=%d output=%q", code, out)
+	}
+	if out, code := runHost(t, bin, cfg, "memory", "delete", "--request_id", "delete-fact", "--memory_id", "fact-1"); code != 0 {
+		t.Fatalf("memory delete: code=%d output=%q", code, out)
+	}
+	if out, code := runHost(t, bin, cfg, "memory", "list"); code != 0 || strings.Contains(out, "I use Lumen") {
+		t.Fatalf("deleted memory listed: code=%d output=%q", code, out)
+	}
 	conn, err := net.Dial("unix", filepath.Join(runtimeDir, "s"))
 	if err != nil {
 		t.Fatal(err)
@@ -169,6 +181,35 @@ func TestCLIUsagePrecedesConfigurationFailure(t *testing.T) {
 	t.Setenv("LUMEN_DATA_DIR", "")
 	if code := run([]string{"serve", "extra"}); code != 2 {
 		t.Fatalf("code=%d, want usage exit 2", code)
+	}
+}
+
+func TestPublicConversationArgumentsRejectRuntimeKnobs(t *testing.T) {
+	base := map[string]string{"request_id": "r1", "conversation_id": "c1", "surface_id": "web", "input": "hello"}
+	for _, key := range []string{"instructions", "session_id", "provider", "model", "runtime_profile_digest", "conversation_history"} {
+		args := map[string]string{}
+		for k, v := range base {
+			args[k] = v
+		}
+		args[key] = "caller-controlled"
+		if validPublicArguments("conversation send", args) {
+			t.Fatalf("conversation send accepted forbidden %q", key)
+		}
+	}
+	if !validPublicArguments("conversation send", base) {
+		t.Fatal("valid conversation send was rejected")
+	}
+}
+
+func TestPublicMemoryArgumentsAreScoped(t *testing.T) {
+	if !validPublicArguments("memory save", map[string]string{"request_id": "save", "memory_id": "fact-1", "text": "hello"}) {
+		t.Fatal("valid memory save rejected")
+	}
+	if validPublicArguments("memory save", map[string]string{"request_id": "save", "memory_id": "fact-1", "text": "hello", "actor_id": "host"}) {
+		t.Fatal("caller supplied authority accepted")
+	}
+	if !validPublicArguments("memory list", map[string]string{}) || !validPublicArguments("memory delete", map[string]string{"request_id": "delete", "memory_id": "fact-1"}) {
+		t.Fatal("memory list or delete rejected")
 	}
 }
 

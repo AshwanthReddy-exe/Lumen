@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
+	"github.com/AshwanthReddy-exe/Lumen/internal/conversation"
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/space"
 	"github.com/AshwanthReddy-exe/Lumen/internal/store"
@@ -32,9 +33,11 @@ var errRuntimeUnavailable = errors.New("Hermes runtime unavailable")
 var ErrCreateAmbiguous = hermes.ErrCreateAmbiguous
 
 type executionOptions struct {
-	now             func() time.Time
-	pollInterval    time.Duration
-	reconcileWindow time.Duration
+	now                 func() time.Time
+	pollInterval        time.Duration
+	reconcileWindow     time.Duration
+	certifier           conversation.Certifier
+	conversationRuntime hermes.Adapter
 }
 
 type ExecutionOption func(*executionOptions)
@@ -56,6 +59,14 @@ func WithExecutionTiming(pollInterval, reconcileWindow time.Duration) ExecutionO
 			o.reconcileWindow = reconcileWindow
 		}
 	}
+}
+
+func WithConversationCertifier(certifier conversation.Certifier) ExecutionOption {
+	return func(o *executionOptions) { o.certifier = certifier }
+}
+
+func WithConversationRuntime(runtime hermes.Adapter) ExecutionOption {
+	return func(o *executionOptions) { o.conversationRuntime = runtime }
 }
 
 type ExecuteRequest struct {
@@ -158,6 +169,21 @@ func (a *configuredAdapter) get() (*hermes.Client, error) {
 		return nil, a.err
 	}
 	return a.client, nil
+}
+
+func (a *configuredAdapter) VerifiedEndpointIdentity(ctx context.Context) (string, error) {
+	client, err := a.get()
+	if err != nil {
+		return "", err
+	}
+	return client.VerifiedEndpointIdentity(ctx)
+}
+func (a *configuredAdapter) VerifiedConversationEndpointIdentity(ctx context.Context) (string, error) {
+	client, err := a.get()
+	if err != nil {
+		return "", err
+	}
+	return client.VerifiedConversationEndpointIdentity(ctx)
 }
 func (a *configuredAdapter) Capabilities(ctx context.Context) (hermes.Capabilities, error) {
 	c, err := a.get()
@@ -425,6 +451,10 @@ func NewWithRuntime(c Config, runtime hermes.Adapter, options ...ExecutionOption
 	s := &Service{cfg: c, state: state, ready: make(chan struct{}), stop: make(chan struct{})}
 	s.executor = newExecutor(s, runtime, opts)
 	s.recoverInFlight()
+	if err := conversation.NewService(state, opts.conversationRuntime, opts.certifier, conversation.WithClock(opts.now)).ReconcilePending(context.Background()); err != nil {
+		s.Shutdown()
+		return nil, fmt.Errorf("conversation recovery: %w", err)
+	}
 	return s, nil
 }
 
@@ -808,6 +838,9 @@ func (s *Service) recoverInFlight() {
 		cancel()
 	}
 	for taskID, run := range state.HostRuns {
+		if state.Tasks[taskID].CapabilityID == "conversation.chat/respond" {
+			continue
+		}
 		switch state.Tasks[taskID].Status {
 		case space.OutcomeUnknown, space.OutcomeAwaitingPermission, space.OutcomeDispatched, space.OutcomeRunning, space.OutcomeCancelling:
 			run := run
