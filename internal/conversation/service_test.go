@@ -168,6 +168,36 @@ func TestConversationLogsTraceHermesRoundTripWithoutContent(t *testing.T) {
 	}
 }
 
+func TestPinnedHermesChatEventsAcceptTextAndTerminalOnly(t *testing.T) {
+	delta := hermes.Event{Data: json.RawMessage(`{"event":"message.delta","run_id":"run-1","timestamp":1.25,"delta":"private text"}`)}
+	reasoning := hermes.Event{Data: json.RawMessage(`{"event":"reasoning.available","run_id":"run-1","timestamp":1.75,"text":"private reasoning"}`)}
+	terminal := hermes.Event{Data: json.RawMessage(`{"event":"run.completed","run_id":"run-1","timestamp":2.5,"output":"answer","usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`)}
+	if !allowedChatEvent(delta, "run-1") || !allowedChatEvent(reasoning, "run-1") || !allowedChatEvent(terminal, "run-1") {
+		t.Fatal("pinned Hermes text or terminal event rejected")
+	}
+	if status, output, terminalEvent := conversationEvent(terminal); !terminalEvent || status != "completed" || output != "answer" {
+		t.Fatalf("terminal event not recognized: %q %q %v", status, output, terminalEvent)
+	}
+	for name, event := range map[string]hermes.Event{
+		"tool":  {Data: json.RawMessage(`{"event":"tool.started","run_id":"run-1","timestamp":1,"tool":"terminal"}`)},
+		"extra": {Data: json.RawMessage(`{"event":"message.delta","run_id":"run-1","timestamp":1,"delta":"text","tool":"terminal"}`)},
+	} {
+		if allowedChatEvent(event, "run-1") {
+			t.Fatalf("%s event accepted", name)
+		}
+	}
+}
+
+func TestPinnedHermesChatRejectsTerminalEvidenceForAnotherRun(t *testing.T) {
+	state := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "answer"}, events: []hermes.Event{{Data: json.RawMessage(`{"event":"run.completed","run_id":"run-2","timestamp":2.5,"output":"answer"}`)}}}
+	svc := NewService(state, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if !errors.Is(err, ErrRuntimeProfileUnverified) || len(state.state.Messages["c1"]) != 1 || state.state.Tasks["task-1"].Status != space.OutcomeFailed {
+		t.Fatalf("other run's evidence completed chat: err=%v messages=%#v task=%#v", err, state.state.Messages["c1"], state.state.Tasks["task-1"])
+	}
+}
+
 func TestProjectionIsBoundedDeterministicAndSelectsAcceptedPreferences(t *testing.T) {
 	s := conversationState()
 	s.ContextRecords["accepted"] = space.ContextRecord{ID: "accepted", Namespace: "user.preferences/v1", SchemaVersion: 1, Provenance: "owner", Classification: "private", AcceptedAt: 1, Digest: space.DigestText(`{"preferred_name":"Ada"}`), Payload: json.RawMessage(`{"preferred_name":"Ada"}`)}
@@ -519,13 +549,13 @@ func TestConflictingTerminalEvidenceCannotCompleteConversation(t *testing.T) {
 }
 
 func TestDuplicateEventKeyCannotHideToolEvidence(t *testing.T) {
-	if allowedChatEvent(hermes.Event{Type: "completed", Data: json.RawMessage(`{"status":"tool_call","status":"completed","output":"unsafe"}`)}) {
+	if allowedChatEvent(hermes.Event{Type: "completed", Data: json.RawMessage(`{"status":"tool_call","status":"completed","output":"unsafe"}`)}, "run-1") {
 		t.Fatal("duplicate status hid tool evidence")
 	}
 }
 
 func TestEventTypeCannotContradictPayloadStatus(t *testing.T) {
-	if allowedChatEvent(hermes.Event{Type: "failed", Data: json.RawMessage(`{"status":"completed","output":"unsafe"}`)}) {
+	if allowedChatEvent(hermes.Event{Type: "failed", Data: json.RawMessage(`{"status":"completed","output":"unsafe"}`)}, "run-1") {
 		t.Fatal("terminal type contradicted by payload status")
 	}
 }

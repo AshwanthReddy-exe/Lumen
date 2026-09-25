@@ -109,6 +109,14 @@ The combined Azure machine proof and same-VPS external lifecycle/reboot proof ar
 
 **Exit:** conversation and memory survive Host and Hermes restarts; runtime replacement does not lose canonical history; deletion affects future context; unauthorized providers receive no classified context.
 
+**Local synthetic checks completed (2026-09-26):**
+
+- [x] Qualify the pinned patched Hermes image with negative tool probes and record its image ID and exact chat-config digest.
+- [x] Bind a development-only Host chat adapter to a dedicated read-only Docker container, its qualified image/config, restricted launch environment, loopback port, bearer credential, and live health response; reject changed evidence before dispatch.
+- [x] Run native macOS Host conversation through separate CLI client processes, Host restart, Hermes restart, and owner memory save/delete; verify projected memory changes and canonical history through the synthetic provider.
+
+**Still open:** real provider and owner manual chat, request-bound production process attestation, isolated deployment across supported platforms, independent review of the final binding, plugin and web experience, and the full Milestone 2 exit. These local development checks do not authorize real classified content.
+
 ## Milestone 3 — Secure node fabric
 
 **Current implementation:** a bounded `node.status/read` invocation now travels over verified HTTPS with a Host Ed25519 signature and a request-bound node-signed receipt. The Host checks the current Space grant before dispatch and before persisting completion; the node checks current local permission. This proves one read-only network path in tests. Device-generated pairing identity, owner confirmation, durable key binding, reconnect, and general capability transport remain open, so this is not yet the Milestone 3 exit.

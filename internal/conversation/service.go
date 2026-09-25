@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -249,7 +251,7 @@ func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, sta
 	events, eventsErr := s.runtime.Events(reconcileCtx, run.RunID)
 	s.logger.Info("lumen_conversation", "event", "hermes_evidence_received", "status_class", terminalOutcome(status.Status), "events", len(events))
 	for _, event := range events {
-		if !allowedChatEvent(event) {
+		if !allowedChatEvent(event, run.RunID) {
 			invalidated, invalidateErr := s.apply(space.Command{Type: space.CommandInvalidateRuntimeCertification, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: space.RuntimeCertificationInvalidationID(cert), CertificationID: cert.ID, RuntimeIdentity: cert.RuntimeIdentity, RuntimeProfileDigest: profile.Digest, TaskID: taskID, RuntimeRunID: run.RunID})
 			_, _ = s.runtime.Stop(ctx, run.RunID)
 			if invalidateErr != nil || invalidated.Rejection != "" {
@@ -300,7 +302,11 @@ func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, sta
 	}
 }
 
-func allowedChatEvent(event hermes.Event) bool {
+func allowedChatEvent(event hermes.Event, expectedRunID string) bool {
+	if event.Type == "" {
+		_, runID, _, ok := pinnedChatEvent(event)
+		return ok && runID == expectedRunID
+	}
 	if !allowedChatStatus(event.Type) {
 		return false
 	}
@@ -349,6 +355,113 @@ func allowedChatEvent(event hermes.Event) bool {
 		}
 	}
 	return true
+}
+
+// pinnedChatEvent validates the pinned Hermes Runs payload, whose SSE frames
+// carry the event name in JSON rather than an SSE event: line.
+func pinnedChatEvent(event hermes.Event) (name, runID, output string, valid bool) {
+	decoder := json.NewDecoder(bytes.NewReader(event.Data))
+	decoder.UseNumber()
+	start, err := decoder.Token()
+	if err != nil || start != json.Delim('{') {
+		return
+	}
+	seen := map[string]bool{}
+	for decoder.More() {
+		key, err := decoder.Token()
+		field, ok := key.(string)
+		if err != nil || !ok || seen[field] {
+			return "", "", "", false
+		}
+		seen[field] = true
+		switch field {
+		case "event":
+			if decoder.Decode(&name) != nil {
+				return "", "", "", false
+			}
+		case "run_id":
+			if decoder.Decode(&runID) != nil {
+				return "", "", "", false
+			}
+		case "timestamp":
+			var timestamp json.Number
+			if decoder.Decode(&timestamp) != nil {
+				return "", "", "", false
+			}
+			value, err := strconv.ParseFloat(string(timestamp), 64)
+			if err != nil || value <= 0 || math.IsInf(value, 0) {
+				return "", "", "", false
+			}
+		case "delta", "error", "output", "text":
+			var value string
+			if decoder.Decode(&value) != nil {
+				return "", "", "", false
+			}
+			if field == "output" {
+				output = value
+			}
+		case "usage":
+			var raw json.RawMessage
+			if decoder.Decode(&raw) != nil || !validChatUsage(raw) {
+				return "", "", "", false
+			}
+		default:
+			return "", "", "", false
+		}
+	}
+	end, err := decoder.Token()
+	if err != nil || end != json.Delim('}') {
+		return "", "", "", false
+	}
+	var extra any
+	if decoder.Decode(&extra) != io.EOF || runID == "" || !seen["timestamp"] || (event.Type != "" && event.Type != name) {
+		return "", "", "", false
+	}
+	switch name {
+	case "message.delta":
+		valid = seen["delta"] && !seen["output"] && !seen["error"] && !seen["usage"] && !seen["text"]
+	case "reasoning.available":
+		valid = seen["text"] && !seen["delta"] && !seen["output"] && !seen["error"] && !seen["usage"]
+	case "run.completed":
+		valid = seen["output"] && !seen["delta"] && !seen["error"] && !seen["text"]
+	case "run.failed":
+		valid = !seen["delta"] && !seen["output"] && !seen["usage"] && !seen["text"]
+	case "run.created", "run.started", "run.running", "run.progress", "run.cancelled":
+		valid = !seen["delta"] && !seen["output"] && !seen["error"] && !seen["usage"] && !seen["text"]
+	}
+	return
+}
+
+func validChatUsage(raw json.RawMessage) bool {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	start, err := decoder.Token()
+	if err != nil || start != json.Delim('{') {
+		return false
+	}
+	seen := map[string]bool{}
+	for decoder.More() {
+		key, err := decoder.Token()
+		name, ok := key.(string)
+		if err != nil || !ok || seen[name] || (name != "input_tokens" && name != "output_tokens" && name != "total_tokens") {
+			return false
+		}
+		seen[name] = true
+		var number json.Number
+		if decoder.Decode(&number) != nil {
+			return false
+		}
+		value, err := strconv.ParseUint(string(number), 10, 64)
+		if err != nil || value > 1<<40 {
+			return false
+		}
+	}
+	end, err := decoder.Token()
+	if err != nil || end != json.Delim('}') {
+		return false
+	}
+	var extra any
+	return decoder.Decode(&extra) == io.EOF
 }
 
 func terminalOutcome(status string) space.Outcome {
@@ -528,6 +641,14 @@ func isTerminalStatus(status string) bool {
 }
 
 func conversationEvent(event hermes.Event) (string, string, bool) {
+	if event.Type == "" {
+		name, _, output, ok := pinnedChatEvent(event)
+		if !ok {
+			return "", "", false
+		}
+		status := strings.TrimPrefix(name, "run.")
+		return status, output, isTerminalStatus(status)
+	}
 	status := event.Type
 	if dot := strings.LastIndexByte(status, '.'); dot >= 0 {
 		status = status[dot+1:]

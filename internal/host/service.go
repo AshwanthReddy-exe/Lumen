@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -28,6 +29,10 @@ type Config struct {
 	HermesBearerPath                     string
 	HermesCAPath, HermesClientCertPath   string
 	HermesClientKeyPath, HermesServerPin string
+	ChatBaseURL, ChatBearerPath          string
+	ChatContainerID, ChatConfigPath      string
+	ChatProbePath                        string
+	ChatProviderURL                      string
 }
 
 var (
@@ -57,7 +62,7 @@ func LoadConfig() (Config, error) {
 	if bearer == "" {
 		bearer = filepath.Join(d, "hermes.token")
 	}
-	return Config{DataDir: d, SocketPath: s, CredentialPath: c, HermesBaseURL: os.Getenv("LUMEN_HERMES_BASE_URL"), HermesProfile: p, HermesBearerPath: bearer, HermesCAPath: os.Getenv("LUMEN_HERMES_CA_FILE"), HermesClientCertPath: os.Getenv("LUMEN_HERMES_CLIENT_CERT_FILE"), HermesClientKeyPath: os.Getenv("LUMEN_HERMES_CLIENT_KEY_FILE"), HermesServerPin: os.Getenv("LUMEN_HERMES_SERVER_CERT_PIN")}, nil
+	return Config{DataDir: d, SocketPath: s, CredentialPath: c, HermesBaseURL: os.Getenv("LUMEN_HERMES_BASE_URL"), HermesProfile: p, HermesBearerPath: bearer, HermesCAPath: os.Getenv("LUMEN_HERMES_CA_FILE"), HermesClientCertPath: os.Getenv("LUMEN_HERMES_CLIENT_CERT_FILE"), HermesClientKeyPath: os.Getenv("LUMEN_HERMES_CLIENT_KEY_FILE"), HermesServerPin: os.Getenv("LUMEN_HERMES_SERVER_CERT_PIN"), ChatBaseURL: os.Getenv("LUMEN_CHAT_BASE_URL"), ChatBearerPath: os.Getenv("LUMEN_CHAT_BEARER_FILE"), ChatContainerID: os.Getenv("LUMEN_CHAT_CONTAINER_ID"), ChatConfigPath: os.Getenv("LUMEN_CHAT_CONFIG_FILE"), ChatProbePath: os.Getenv("LUMEN_CHAT_PROBE_FILE"), ChatProviderURL: os.Getenv("LUMEN_CHAT_PROVIDER_URL")}, nil
 }
 
 // ConfigFromFile loads the non-secret settings emitted by lumen setup.
@@ -122,6 +127,31 @@ func (c Config) valid() error {
 	}
 	if c.HermesProfile != "" && c.HermesProfile != hermes.ProfileDevelopment && c.HermesProfile != hermes.ProfileHardened && c.HermesProfile != "personal-alpha" {
 		return errors.New("invalid Hermes profile")
+	}
+	chatFields := []string{c.ChatBaseURL, c.ChatBearerPath, c.ChatContainerID, c.ChatConfigPath, c.ChatProbePath, c.ChatProviderURL}
+	configured := 0
+	for _, field := range chatFields {
+		if field != "" {
+			configured++
+		}
+	}
+	if configured > 0 {
+		if configured != len(chatFields) || c.HermesProfile != hermes.ProfileDevelopment || !dockerIDPattern.MatchString(c.ChatContainerID) {
+			return errors.New("incomplete or unsupported local chat configuration")
+		}
+		for _, path := range []string{c.ChatBearerPath, c.ChatConfigPath, c.ChatProbePath} {
+			if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+				return errors.New("local chat paths must be absolute and clean")
+			}
+		}
+		u, err := url.Parse(c.ChatBaseURL)
+		if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			return errors.New("local chat endpoint must be explicit loopback HTTP")
+		}
+		port, err := strconv.Atoi(u.Port())
+		if err != nil || port < 1 || port > 65535 {
+			return errors.New("invalid local chat endpoint port")
+		}
 	}
 	return nil
 }
@@ -461,6 +491,15 @@ func New(c Config) (*Service, error) {
 	runtime, err := configuredRuntime(c)
 	if err != nil {
 		return nil, fmt.Errorf("Hermes configuration unavailable: %w", err)
+	}
+	if c.ChatBaseURL != "" {
+		chatConfig := c
+		chatConfig.HermesBaseURL, chatConfig.HermesBearerPath, chatConfig.HermesProfile = c.ChatBaseURL, c.ChatBearerPath, hermes.ProfileDevelopment
+		chat, err := configuredRuntime(chatConfig)
+		if err != nil {
+			return nil, fmt.Errorf("Hermes chat configuration unavailable: %w", err)
+		}
+		return NewWithRuntime(c, runtime, WithConversationRuntime(chat), WithConversationCertifier(newDockerChatCertifier(c, chat)))
 	}
 	return NewWithRuntime(c, runtime)
 }

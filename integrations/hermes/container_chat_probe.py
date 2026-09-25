@@ -1,6 +1,7 @@
 """Probe a disposable dedicated chat container against a synthetic model."""
 
 import argparse
+import hashlib
 from http.server import ThreadingHTTPServer
 from http.client import RemoteDisconnected
 import json
@@ -26,6 +27,7 @@ def probe(image):
     container = ""
     try:
         config = Path(__file__).with_name("chat-config.yaml").resolve()
+        config_digest = "sha256:" + hashlib.sha256(config.read_bytes()).hexdigest()
         container = docker("run", "--detach", "--rm", "--read-only", "--user", "65532:65532",
                            "--add-host", "host.docker.internal:host-gateway",
                            "--tmpfs", "/var/lib/hermes:rw,uid=65532,gid=65532,mode=0700",
@@ -83,7 +85,7 @@ def probe(image):
         time.sleep(0.5)
         if len(observed) != 4 or any(body.get("tools") for body in observed):
             raise AssertionError("container made unexpected model requests or advertised tools")
-        return {"status": "container_probe_passed", "imageId": image_id,
+        return {"status": "container_probe_passed", "imageId": image_id, "configDigest": config_digest,
                 "providerCalls": len(observed), "rejectedToolCalls": 3}
     finally:
         if container:

@@ -8,6 +8,7 @@
 
 ## Unreleased
 
+- Added a development-only dedicated Docker chat certifier, strict pinned Runs event parsing, and a native macOS synthetic journey covering chat across Host and Hermes restarts plus owner memory save/delete. Probe evidence now includes the exact chat-config digest. Production request-bound attestation and real-provider acceptance remain open.
 - Added a first capability-scoped cross-node status path: signed, expiring Host invocation over verified HTTPS; node-side local permission check; signed receipt bound to the exact request; and Host grant recheck before canonical task completion. Tests cover two endpoints, wrong signature/target/epoch/capability, expiry, revocation, and strict wire decoding. Pairing and general node execution remain open.
 - Bound conversation runtime certification to the configured endpoint origin and verified peer identity together, so sharing a TLS certificate cannot redirect certified chat to another address.
 - Split the Host's conversation runtime from its general-purpose Hermes adapter, bind certificates to the selected adapter's verified endpoint, and test mismatched routing. A local patched-container probe passes against the pinned arm64 image and synthetic Runs; production deployment and Host certification remain open.
