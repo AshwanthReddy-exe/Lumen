@@ -4,6 +4,8 @@
 
 Lumen ships complete capability journeys, not collections of platform features. Each milestone must give the user a useful end-to-end outcome across real trust boundaries and pass acceptance, negative, recovery, privacy, and operational checks before the next milestone becomes active.
 
+**Product release gate:** finish and verify the core Hermes-backed conversation, cross-node capability, continuity, and permission journeys before packaging Lumen as a user-facing release for desktop or mobile operating systems. Existing `v0.1.0-m1` artifacts are foundation evidence, not a claim that the product journey is complete. App distribution follows functional acceptance on the intended devices.
+
 The product north star is a Jarvis-like personal intelligence Space: the user can speak naturally from any supported surface, continue one relationship and inspectable memory, and safely act across permitted devices and services. Hermes supplies the intelligence and existing agent subsystems; Lumen owns the Space, authority, continuity, product experience, and commercial service.
 
 ## One-agent delivery sequence
@@ -104,6 +106,8 @@ The combined Azure machine proof and same-VPS external lifecycle/reboot proof ar
 **Exit:** conversation and memory survive Host and Hermes restarts; runtime replacement does not lose canonical history; deletion affects future context; unauthorized providers receive no classified context.
 
 ## Milestone 3 — Secure node fabric
+
+**Current implementation:** a bounded `node.status/read` invocation now travels over verified HTTPS with a Host Ed25519 signature and a request-bound node-signed receipt. The Host checks the current Space grant before dispatch and before persisting completion; the node checks current local permission. This proves one read-only network path in tests. Device-generated pairing identity, owner confirmation, durable key binding, reconnect, and general capability transport remain open, so this is not yet the Milestone 3 exit.
 
 **Journey:** pair a generic node, see its live abilities, disconnect and reconnect it, invoke a harmless capability, then revoke it.
 

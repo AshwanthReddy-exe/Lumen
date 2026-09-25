@@ -218,6 +218,8 @@ Platform features use narrow adapters. For example, Apple Reminders may be imple
 
 Lumen's application, managed service, product experience, Space Authority implementation, and commercial distribution are proprietary paid products. Interoperability must not depend on access to those internals. The node pairing and transport protocol, capability manifests and invocation contracts, runtime event contract, conversation ingress and delivery adapter contract, context retrieval and memory-proposal contract, provider/model constraint contract, public SDK, conformance fixtures, and compatibility/version policy are public specifications.
 
+The first bounded node transport proof is `node.status/read`: the Host signs a one-minute, action-bound invocation, sends it over verified HTTPS, and accepts only a node-signed receipt matching the task, target, epoch, and request digest. The Host rechecks its current grant before recording completion; the node rechecks local permission for every request. This read-only proof does not establish pairing or general remote execution; those require owner-confirmed durable keys, replay-safe write receipts, and reconnect recovery.
+
 Managed and paid self-hosted deployments use the same protocols and encrypted Space export format. A public protocol enables independent nodes and integrations; it does not allow them to bypass entitlement, pairing, grants, approval, local permission, or Host authority.
 
 ## Target code boundaries
