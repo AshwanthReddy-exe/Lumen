@@ -88,6 +88,17 @@ type fakeCertifier struct {
 	before func()
 }
 
+type changingProcessCertifier struct{ calls int }
+
+func (c *changingProcessCertifier) Certify(context.Context, space.State, space.RuntimeProfile) (space.RuntimeCertification, error) {
+	c.calls++
+	cert := exactCertification()
+	if c.calls > 1 {
+		cert.ProcessIdentity = "restarted-process"
+	}
+	return cert, nil
+}
+
 type deadlineCheckingCertifier struct{ t *testing.T }
 
 func (d deadlineCheckingCertifier) Certify(ctx context.Context, _ space.State, _ space.RuntimeProfile) (space.RuntimeCertification, error) {
@@ -295,6 +306,17 @@ func TestCertifiedChatRejectsMismatchedAdapterEndpoint(t *testing.T) {
 	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
 	if !errors.Is(err, ErrRuntimeProfileUnverified) || runtime.created != 0 || state.state.Tasks["task-1"].Status != space.OutcomeFailed {
 		t.Fatalf("mismatched endpoint used for chat: err=%v creates=%d task=%s", err, runtime.created, state.state.Tasks["task-1"].Status)
+	}
+}
+
+func TestCertifiedChatRejectsChangedProcessCertificationBeforeDispatch(t *testing.T) {
+	state := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1"}}
+	certifier := &changingProcessCertifier{}
+	svc := NewService(state, runtime, certifier, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "private context", CreatedAt: 100, ReconcileBy: 200})
+	if !errors.Is(err, ErrRuntimeProfileUnverified) || runtime.created != 0 || state.state.Tasks["task-1"].Status != space.OutcomeFailed {
+		t.Fatalf("changed process received chat: err=%v creates=%d task=%s", err, runtime.created, state.state.Tasks["task-1"].Status)
 	}
 }
 

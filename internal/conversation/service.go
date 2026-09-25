@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -195,6 +196,11 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 		return s.fail(queued, state, taskID, err)
 	}
 	s.logger.Info("lumen_conversation", "event", "context_projected", "history_messages", len(projection.Messages), "context_bytes", len(projection.Context), "instructions_bytes", len(projection.Instructions))
+	fresh, freshErr := s.certifier.Certify(ctx, state, profile)
+	if freshErr != nil || !reflect.DeepEqual(fresh, cert) || !certificationMatches(fresh, profile, s.now()) || !s.endpointMatches(ctx, fresh) {
+		s.logger.Warn("lumen_conversation", "event", "runtime_blocked", "reason", "runtime_profile_unverified")
+		return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
+	}
 	bound, err := s.apply(space.Command{Type: space.CommandBindRuntimeSession, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "session:" + req.RequestID, ConversationID: req.ConversationID, RuntimeIdentity: cert.RuntimeIdentity, HermesSessionID: sessionID, RuntimeProfileDigest: profile.Digest})
 	if err != nil || bound.Rejection != "" {
 		return queued, errOrRejection(err, bound.Rejection)
