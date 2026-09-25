@@ -89,6 +89,20 @@ esac
 
 command -v go >/dev/null 2>&1 || { printf '%s\n' 'lumen-release: Go is required' >&2; exit 1; }
 
+# Publishing a release must describe the committed source, so refuse a dirty
+# tree. Artifacts, the manifest, and the downloaded source archive are the only
+# paths this builder owns.
+if [ "$publish" -eq 1 ]; then
+	command -v git >/dev/null 2>&1 || { printf '%s\n' 'lumen-release: git is required to publish' >&2; exit 1; }
+	dirty=$(git -C "$repo_root" status --porcelain |
+		sed 's/^...//' |
+		grep -vE '^(build/|deploy/manifest-v1\.json$|hermes-source\.tar\.gz$)' || true)
+	if [ -n "$dirty" ]; then
+		printf 'lumen-release: refusing to publish from a dirty tree; commit or stash:\n%s\n' "$dirty" >&2
+		exit 1
+	fi
+fi
+
 # Portable size and SHA-256 helpers so the builder runs on any host OS.
 file_size() {
 	if stat -c '%s' "$1" >/dev/null 2>&1; then
@@ -120,8 +134,11 @@ for target in $targets; do
 	first=$version_out/$asset
 	second=$version_out/.$asset.second
 
-	CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags='-s -w' -o "$first" ./cmd/lumen-host
-	CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags='-s -w' -o "$second" ./cmd/lumen-host
+	# -buildvcs=false keeps the artifact independent of VCS state. Go stamps the
+	# revision and a modified flag by default, which made two runs from the same
+	# commit differ whenever the working tree was dirty.
+	CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -buildvcs=false -ldflags='-s -w' -o "$first" ./cmd/lumen-host
+	CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -buildvcs=false -ldflags='-s -w' -o "$second" ./cmd/lumen-host
 
 	first_sha=$(file_sha256 "$first")
 	second_sha=$(file_sha256 "$second")
@@ -157,14 +174,32 @@ printf 'lumen-release: wrote %s\n' "$manifest"
 
 if [ "$publish" -eq 1 ]; then
 	command -v gh >/dev/null 2>&1 || { printf '%s\n' 'lumen-release: gh is required to publish' >&2; exit 1; }
-	gh release view "v$version" >/dev/null 2>&1 && {
+	if gh release view "v$version" >/dev/null 2>&1; then
 		printf 'lumen-release: release v%s already exists\n' "$version" >&2
 		exit 1
-	}
+	fi
+	# Ship the installer and the manifest alongside the artifacts so the
+	# documented one-line install resolves from this same release.
+	cp -- "$repo_root/scripts/install.sh" "$version_out/install.sh"
+	cp -- "$manifest" "$version_out/manifest-v1.json"
+	notes=$version_out/RELEASE-NOTES.md
+	cat >"$notes" <<NOTES
+Lumen Milestone 1 foundation artifacts. This is an internal foundation release,
+not a product launch.
+
+Every asset is reproducible: \`scripts/lumen-release\` builds each target twice
+and refuses to publish unless both builds are byte-identical. Verify each
+download against the sizes and digests in \`manifest-v1.json\`.
+
+The Hermes runtime image is published to \`ghcr.io/ashwanthreddy-exe/lumen-hermes\`
+and pinned by digest in the manifest.
+
+Supported Host targets: linux/amd64, linux/arm64, darwin/amd64, darwin/arm64,
+android/arm64 (Termux). Cross-machine external Runs evidence is not claimed.
+NOTES
 	gh release create "v$version" \
 		--title "v$version" \
-		--prerelease \
-		--notes "Milestone 1 foundation artifacts. Verify every asset against deploy/manifest-v1.json before use." \
-		"$version_out"/lumen-host-*
+		--notes-file "$notes" \
+		"$version_out"/lumen-host-* "$version_out/install.sh" "$version_out/manifest-v1.json"
 	printf 'lumen-release: published v%s\n' "$version"
 fi
