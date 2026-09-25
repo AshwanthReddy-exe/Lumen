@@ -36,6 +36,14 @@ On 2026-09-14 IST / 2026-09-13 UTC, the combined gate passed twice clean on Azur
 
 The external proof used a separate Host-only Compose project and independently supervised Hermes `0.21.1` behind pinned mutual TLS. Host lifecycle commands did not change Hermes or its TLS gateway. A real reboot preserved all service identities and canonical state, and doctor returned `ready`. `mise run milestone1-external-check` supplies a repeatable isolated-endpoint lifecycle check. This same-VPS evidence proves ownership separation, not a second-machine deployment or the still-open distributable/live-update gate.
 
+## macOS provisioning
+
+Run the Host directly on darwin rather than in a container. The control socket is the operator channel and must hold an enforceable `0600` mode, but a host-shared bind mount on Docker Desktop for macOS fails `chmod` on a socket with `EINVAL`, so the containerized Host refuses to start instead of weakening that invariant. The combined container topology is therefore a Linux deployment; on macOS keep the pinned Hermes gateway containerized and the Host native.
+
+`mise run milestone1-macos-check` runs that journey end to end against the pinned Hermes gateway: a configured synthetic task completes with durable output, a denied approval fails closed as `failed` with `approval_denied` and no dispatched run, and an explicit cancellation stops an in-flight run to a terminal `cancelled`. The synthetic provider honors `LUMEN_PROVIDER_DELAY_MS`; the gate defaults it to 3000 ms so the cancellation race is deterministic instead of accidental.
+
+For manual development the native Host lifecycle is `scripts/lumen-mac-host start|status|stop|logs`, with `scripts/lumen-mac-test` for a bounded policy-approved Host-to-Hermes round trip.
+
 ## Android Termux provisioning
 
 With an authorized Android device connected over ADB, run `scripts/push-termux-host` from the repository root. It runs the Phase 2 gate, configures USB-only `adb reverse` access from device-local port 8642 to the Mac Hermes gateway, and copies the verified ARM64 PIE binary plus installer bundle to `/sdcard/Download/lumen`. For an explicit development-only run, it also stages the existing Mac Hermes bearer token and a development `host.env`; the installer immediately moves both into Termux-private storage and deletes the shared copies. It never copies Host state. Do not use this development handoff for hardened or release evidence.
