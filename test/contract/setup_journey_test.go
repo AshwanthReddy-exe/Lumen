@@ -223,3 +223,57 @@ func TestLinuxSetupJourneyUsesLiveHostNodeForApproval(t *testing.T) {
 		t.Fatal("Linux journey approval must not hardcode the Host node ID")
 	}
 }
+
+func TestMacOSJourneyScriptContract(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scriptPath := filepath.Join(root, "scripts", "lumen-macos-check")
+	b, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read macOS journey script: %v", err)
+	}
+	script := string(b)
+	if info, err := os.Stat(scriptPath); err != nil || info.Mode()&0111 == 0 {
+		t.Fatalf("macOS journey script must be executable: %v", err)
+	}
+	if !strings.HasPrefix(script, "#!/bin/sh\n") || !strings.Contains(script, "set -eu") {
+		t.Fatal("macOS journey script must use POSIX shell fail-fast mode")
+	}
+	for _, checkpoint := range []string{
+		"private state", "native Host build", "pinned Hermes gateway",
+		"native Host start", "configured synthetic task", "denial contract", "cancellation contract",
+	} {
+		if !strings.Contains(script, checkpoint) {
+			t.Errorf("missing journey checkpoint %q", checkpoint)
+		}
+	}
+	for _, required := range []string{
+		`[ "$(uname -s)" = Darwin ]`,
+		"LUMEN_MACOS_CHECK_WORK_ROOT", "HOME is required", "mktemp -d",
+		"LUMEN_PROVIDER_DELAY_MS", "LUMEN_HERMES_PROFILE=development",
+		"v2026.9.7.tar.gz",
+		"907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688",
+		"shasum -a 256 -c", "reusing previously verified Hermes source archive",
+		"compose up -d lumen-provider lumen-hermes",
+		"trap cleanup EXIT", "--volumes", "LUMEN_HERMES_BUILD_IMAGE",
+		"approval_denied", ".task.output // empty", "cancelled",
+		"task cancel", "preserved work directory",
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("missing required journey operation %q", required)
+		}
+	}
+	// The control socket is the operator channel and requires an enforceable mode,
+	// so this journey must run the Host natively rather than in a container.
+	for _, forbidden := range []string{
+		"compose exec -T lumen-host",
+		"up -d lumen-provider lumen-hermes lumen-host",
+		"LUMEN_HERMES_PROFILE=hardened",
+	} {
+		if strings.Contains(script, forbidden) {
+			t.Errorf("macOS journey must not run %q when the Host owns a peer-visible control socket", forbidden)
+		}
+	}
+}

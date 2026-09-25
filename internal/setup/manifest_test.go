@@ -23,15 +23,55 @@ func TestLoadManifestAndSelect(t *testing.T) {
 	}
 }
 
-func TestCheckedInManifestRejectsUnreleasedFixture(t *testing.T) {
+// TestCheckedInManifestIsDistributable replaces the former fixture-rejection
+// check. The checked-in manifest must now be a real, integrity-pinned
+// distribution: every artifact resolves to a published identity, so a placeholder
+// or unresolvable entry fails the build rather than shipping silently.
+func TestCheckedInManifestIsDistributable(t *testing.T) {
 	f, err := os.Open(filepath.Join("..", "..", "deploy", "manifest-v1.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
 	m, err := LoadManifest(f)
-	if err == nil {
-		t.Fatalf("accepted unreleased fixture: %#v", m)
+	if err != nil {
+		t.Fatalf("checked-in manifest is not loadable: %v", err)
+	}
+	if m.Topology != TopologyCombined {
+		t.Fatalf("checked-in manifest topology = %q", m.Topology)
+	}
+	version := m.Artifacts[0].Version
+	for _, target := range []struct{ osName, arch string }{
+		{"linux", "amd64"}, {"linux", "arm64"},
+		{"darwin", "amd64"}, {"darwin", "arm64"},
+		{"android", "arm64"},
+	} {
+		lumen, err := m.Select("lumen", target.osName, target.arch, Development)
+		if err != nil {
+			t.Fatalf("missing lumen artifact for %s/%s: %v", target.osName, target.arch, err)
+		}
+		if lumen.Version != version {
+			t.Fatalf("mixed versions: %q and %q", version, lumen.Version)
+		}
+		if !validDigest(lumen.SHA256) || lumen.Size <= 0 {
+			t.Fatalf("unpinned lumen artifact for %s/%s", target.osName, target.arch)
+		}
+		if !strings.HasPrefix(lumen.URL, "https://") || strings.Contains(lumen.URL, "example.invalid") {
+			t.Fatalf("unresolvable lumen URL for %s/%s: %q", target.osName, target.arch, lumen.URL)
+		}
+		if !strings.Contains(lumen.URL, "/releases/download/v"+version+"/") {
+			t.Fatalf("lumen URL is not version-pinned for %s/%s: %q", target.osName, target.arch, lumen.URL)
+		}
+		hermes, err := m.Select("hermes", target.osName, target.arch, Development)
+		if err != nil {
+			t.Fatalf("missing hermes artifact for %s/%s: %v", target.osName, target.arch, err)
+		}
+		if hermes.Kind != ArtifactDockerImage || !validPinnedImageRef(hermes.ImageRef) {
+			t.Fatalf("hermes artifact for %s/%s is not a pinned image: %#v", target.osName, target.arch, hermes)
+		}
+		if strings.Contains(hermes.ImageRef, "127.0.0.1") || strings.Contains(hermes.ImageRef, "localhost") {
+			t.Fatalf("hermes image for %s/%s is a loopback registry and is not distributable: %q", target.osName, target.arch, hermes.ImageRef)
+		}
 	}
 }
 

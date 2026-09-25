@@ -54,7 +54,7 @@ func TestCombinedSetupUsesPinnedDockerImageWithoutExecutablePath(t *testing.T) {
 	if binding.ArtifactDigests["hermes"] != "sha256:"+strings.Repeat("a", 64) {
 		t.Fatalf("persisted image digest = %q", binding.ArtifactDigests["hermes"])
 	}
-	if !verifyDurableArtifacts(binding) {
+	if !verifyDurableArtifacts(binding, binding.ArtifactDigests) {
 		t.Fatal("durable image binding was not accepted")
 	}
 }

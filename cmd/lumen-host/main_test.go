@@ -186,6 +186,36 @@ func TestCLIServeReportsActionableStartupCause(t *testing.T) {
 	}
 }
 
+func TestCLIControlFailureReportsUnderlyingCause(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix control socket")
+	}
+	bin := buildHostBinary(t)
+	dataDir := t.TempDir()
+	socket := filepath.Join(dataDir, "absent.sock")
+	credential := filepath.Join(dataDir, "operator.credential")
+	if err := control.WriteCredential(credential, bytes.Repeat([]byte{7}, control.CredentialSize)); err != nil {
+		t.Fatal(err)
+	}
+	out, code := runHost(t, bin, []string{
+		"LUMEN_DATA_DIR=" + dataDir,
+		"LUMEN_SOCKET_PATH=" + socket,
+		"LUMEN_OPERATOR_CREDENTIAL_FILE=" + credential,
+		"LUMEN_HERMES_BASE_URL=http://127.0.0.1:8642",
+		"LUMEN_HERMES_PROFILE=development",
+		"LUMEN_HERMES_BEARER_FILE=" + filepath.Join(dataDir, "hermes.token"),
+	}, "status")
+	if code != 3 {
+		t.Fatalf("status: code=%d output=%q", code, out)
+	}
+	if !strings.Contains(out, "host unavailable:") {
+		t.Fatalf("control failure lost its label: %q", out)
+	}
+	if !strings.Contains(out, socket) {
+		t.Fatalf("control failure hid its cause from the operator: %q", out)
+	}
+}
+
 func TestCLIDoctorReportsDeploymentProfileWithoutRunningHost(t *testing.T) {
 	bin := buildHostBinary(t)
 	dataDir := t.TempDir()

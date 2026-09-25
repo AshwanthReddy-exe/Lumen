@@ -1,0 +1,267 @@
+#!/bin/sh
+# Native macOS journey: a Host running directly on darwin against the pinned
+# Hermes gateway. The combined container topology is Linux-only, because the
+# control socket requires an enforceable 0600 mode that a host-shared bind mount
+# cannot provide (see deploy/README.md).
+set -eu
+
+repo_root=${LUMEN_REPO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
+compose_file=$repo_root/deploy/docker/compose.yaml
+compose_override=$repo_root/deploy/docker/compose.milestone1.yaml
+project=${COMPOSE_PROJECT_NAME:-lumen-macos-check-$$}
+# Private state must live under $HOME: /tmp and /var are symlinks, and the Host
+# refuses symlinked private paths.
+work_root=${LUMEN_MACOS_CHECK_WORK_ROOT:-${HOME:?HOME is required}/.local/state}
+mkdir -p "$work_root"
+chmod 700 "$work_root"
+work_dir=$(mktemp -d "$work_root/lumen-macos-check.XXXXXX")
+data_dir=$work_dir/lumen-data
+secret_dir=$work_dir/secrets
+cli=$work_dir/lumen
+host_artifact=$work_dir/lumen-host
+archive=$work_dir/hermes-source.tar.gz
+archive_target=$repo_root/hermes-source.tar.gz
+archive_copied=0
+compose_ready=0
+host_pid=
+api_key=
+hermes_host_port=${LUMEN_HERMES_HOST_PORT:-28652}
+provider_delay_ms=${LUMEN_PROVIDER_DELAY_MS:-3000}
+
+cd "$repo_root"
+
+compose() {
+	docker compose -p "$project" -f "$compose_file" -f "$compose_override" "$@"
+}
+
+redact() {
+	sed -E \
+		-e 's/[Bb]earer[[:space:]]+[A-Za-z0-9._-]+/[Bearer REDACTED]/g' \
+		-e "s/${api_key:-__unset__}/REDACTED/g" |
+		grep -v 'hermes\.token'
+}
+
+cleanup() {
+	status=$?
+	if [ -n "$host_pid" ]; then
+		kill "$host_pid" 2>/dev/null || :
+	fi
+	if [ "$status" -ne 0 ] && [ "$compose_ready" -eq 1 ]; then
+		printf '%s\n' '--- redacted macOS journey logs ---' >&2
+		if ! compose logs --no-color 2>&1 | redact >&2; then
+			:
+		fi
+		printf '%s\n' '--- end redacted logs ---' >&2
+	fi
+	if [ "$compose_ready" -eq 1 ]; then
+		if ! compose down --volumes --remove-orphans >/dev/null 2>&1; then
+			:
+		fi
+	fi
+	if [ "$archive_copied" -eq 1 ]; then
+		if ! rm -f -- "$archive_target"; then
+			:
+		fi
+	fi
+	if ! rm -rf -- "$work_dir"; then
+		:
+	fi
+	exit "$status"
+}
+trap cleanup EXIT
+
+fail() {
+	printf 'lumen-macos-check: %s\n' "$1" >&2
+	exit 1
+}
+
+[ "$(uname -s)" = Darwin ] || fail 'macOS is required for this journey'
+command -v docker >/dev/null 2>&1 || fail 'Docker is required'
+docker compose version >/dev/null 2>&1 || fail 'Docker Compose is required'
+docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
+command -v go >/dev/null 2>&1 || fail 'Go is required'
+command -v curl >/dev/null 2>&1 || fail 'curl is required'
+command -v jq >/dev/null 2>&1 || fail 'jq is required'
+command -v zsh >/dev/null 2>&1 || fail 'zsh is required'
+command -v shasum >/dev/null 2>&1 || fail 'shasum is required'
+
+printf '%s\n' '=> private state'
+mkdir -m 700 "$data_dir" "$secret_dir"
+api_key=${LUMEN_HERMES_API_SERVER_KEY:-lumen-macos-check-api-key-20260925}
+test "${#api_key}" -ge 16 || fail 'synthetic API server key must be at least 16 characters'
+(umask 077
+	printf '%s\n' "$api_key" >"$secret_dir/hermes.token")
+chmod 600 "$secret_dir/hermes.token"
+
+export LUMEN_DATA_DIR="$data_dir"
+export LUMEN_SOCKET_PATH="$data_dir/host.sock"
+export LUMEN_OPERATOR_CREDENTIAL_FILE="$data_dir/operator.credential"
+export LUMEN_HERMES_BEARER_FILE="$secret_dir/hermes.token"
+export LUMEN_HERMES_PROFILE=development
+export LUMEN_HERMES_BASE_URL="http://127.0.0.1:$hermes_host_port"
+export LUMEN_HERMES_API_SERVER_KEY="$api_key"
+export LUMEN_HERMES_CONTAINER_BASE_URL=http://127.0.0.1:8642
+export LUMEN_HERMES_HOST_PORT="$hermes_host_port"
+export LUMEN_HERMES_TOKEN_SOURCE="$secret_dir/hermes.token"
+export LUMEN_HERMES_CA_SOURCE="$secret_dir/hermes.token"
+export LUMEN_HERMES_CLIENT_CERT_SOURCE="$secret_dir/hermes.token"
+export LUMEN_HERMES_CLIENT_KEY_SOURCE="$secret_dir/hermes.token"
+export LUMEN_PROVIDER_DELAY_MS="$provider_delay_ms"
+export HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
+export HERMES_SOURCE_ARCHIVE_SHA256=907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688
+export COMPOSE_PROJECT_NAME="$project"
+export COMPOSE_FILE=deploy/docker/compose.yaml:deploy/docker/compose.milestone1.yaml
+export COMPOSE_PARALLEL_LIMIT=1
+export LUMEN_HERMES_BUILD_IMAGE="$project-lumen-hermes:milestone1"
+
+if [ -n "${LUMEN_HERMES_SOURCE_ARCHIVE:-}" ]; then
+	cp -- "$LUMEN_HERMES_SOURCE_ARCHIVE" "$archive"
+elif [ -s "$archive_target" ] && printf '%s  %s\n' "$HERMES_SOURCE_ARCHIVE_SHA256" "$archive_target" | shasum -a 256 -c - >/dev/null 2>&1; then
+	printf '%s\n' '=> reusing previously verified Hermes source archive'
+	cp -- "$archive_target" "$archive"
+else
+	attempt=0
+	while [ "$attempt" -lt 5 ]; do
+		if curl -fsSL --connect-timeout 10 --max-time 120 -o "$archive" \
+			https://github.com/NousResearch/hermes-agent/archive/refs/tags/v2026.9.7.tar.gz; then
+			break
+		fi
+		attempt=$((attempt + 1))
+		[ "$attempt" -lt 5 ] || fail 'could not fetch the pinned Hermes source archive (GitHub rate limit?)'
+		sleep $((attempt * 15))
+	done
+fi
+printf '%s  %s\n' "$HERMES_SOURCE_ARCHIVE_SHA256" "$archive" | shasum -a 256 -c - >/dev/null
+if [ -e "$archive_target" ]; then
+	printf '%s  %s\n' "$HERMES_SOURCE_ARCHIVE_SHA256" "$archive_target" | shasum -a 256 -c - >/dev/null
+else
+	cp -- "$archive" "$archive_target"
+	archive_copied=1
+fi
+
+printf '%s\n' '=> native Host build'
+go build -trimpath -ldflags='-s -w' -o "$cli" ./cmd/lumen
+go build -trimpath -ldflags='-s -w' -o "$host_artifact" ./cmd/lumen-host
+chmod 700 "$cli" "$host_artifact"
+
+printf '%s\n' '=> pinned Hermes gateway'
+compose config >/dev/null
+compose_ready=1
+compose build lumen-hermes-init lumen-provider lumen-hermes
+compose up -d lumen-provider lumen-hermes >/dev/null
+
+wait_for_hermes() {
+	i=0
+	while [ "$i" -lt 120 ]; do
+		if curl -fsS -m 3 -o /dev/null -H "Authorization: Bearer $api_key" \
+			"$LUMEN_HERMES_BASE_URL/v1/capabilities" >/dev/null 2>&1; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 1
+	done
+	return 1
+}
+
+wait_for_hermes || fail 'pinned Hermes gateway did not become ready'
+
+printf '%s\n' '=> native Host start'
+umask 077
+"$host_artifact" init
+"$host_artifact" serve >"$work_dir/host.log" 2>&1 &
+host_pid=$!
+
+wait_for_host() {
+	i=0
+	while [ "$i" -lt 60 ]; do
+		if "$host_artifact" status >"$work_dir/host-status.json" 2>"$work_dir/host-status.err"; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 1
+	done
+	redact <"$work_dir/host-status.err" >&2
+	return 1
+}
+
+wait_for_host || fail 'native Host did not become ready'
+host_node_id=$(jq -r '.active_host_id // .host_id // empty' "$work_dir/host-status.json")
+[ -n "$host_node_id" ] || fail 'live Host status did not expose a node ID'
+
+printf '%s\n' '=> configured synthetic task'
+export LUMEN_BINARY="$host_artifact"
+export LUMEN_TEST_TIMEOUT_SECONDS=${LUMEN_TEST_TIMEOUT_SECONDS:-180}
+journey_output=$(zsh scripts/lumen-mac-test 2>&1) || {
+	printf '%s\n' "$journey_output" | redact >&2
+	fail 'macOS task journey did not reach a proven terminal result'
+}
+printf '%s\n' "$journey_output" | redact
+printf '%s\n' "$journey_output" | grep -q 'synthetic marker' || fail 'task output did not match the pinned gateway response'
+
+probe_suffix="$(date +%s)-$$"
+
+printf '%s\n' '=> denial contract'
+deny_now=$(date +%s)
+deny_reconcile=$((deny_now + 120))
+"$host_artifact" task submit \
+	--request_id "macos-deny-submit-$probe_suffix" --task_id "macos-deny-$probe_suffix" \
+	--capability_id agent.run/execute --action run \
+	--action_fingerprint macos-deny-input --input 'deny probe' \
+	--runtime_profile_digest dev-local-v1 --reconcile_by "$deny_reconcile" >/dev/null
+"$host_artifact" approval resolve \
+	--request_id "macos-deny-approve-$probe_suffix" --task_id "macos-deny-$probe_suffix" \
+	--target_node_id "$host_node_id" --action_fingerprint macos-deny-input \
+	--approval_id "macos-deny-approval-$probe_suffix" --approved_at "$deny_now" \
+	--expires_at "$deny_reconcile" --reconcile_by "$deny_reconcile" \
+	--runtime_profile_digest dev-local-v1 --input 'deny probe' --decision deny >/dev/null
+sleep 2
+denied=$("$host_artifact" task show --task_id "macos-deny-$probe_suffix")
+[ "$(printf '%s' "$denied" | jq -r '.task.status')" = failed ] || fail 'a denied task did not fail closed'
+[ "$(printf '%s' "$denied" | jq -r '.task.terminalReason')" = approval_denied ] || fail 'a denied task did not record approval_denied'
+[ "$(printf '%s' "$denied" | jq -r '.task.output // empty')" = '' ] || fail 'a denied task produced output'
+printf '%s\n' "$denied" | redact
+
+printf '%s\n' '=> cancellation contract'
+cancel_now=$(date +%s)
+cancel_reconcile=$((cancel_now + 180))
+"$host_artifact" task submit \
+	--request_id "macos-cancel-submit-$probe_suffix" --task_id "macos-cancel-$probe_suffix" \
+	--capability_id agent.run/execute --action run \
+	--action_fingerprint macos-cancel-input --input 'cancel probe' \
+	--runtime_profile_digest dev-local-v1 --reconcile_by "$cancel_reconcile" >/dev/null
+"$host_artifact" approval resolve \
+	--request_id "macos-cancel-approve-$probe_suffix" --task_id "macos-cancel-$probe_suffix" \
+	--target_node_id "$host_node_id" --action_fingerprint macos-cancel-input \
+	--approval_id "macos-cancel-approval-$probe_suffix" --approved_at "$cancel_now" \
+	--expires_at "$cancel_reconcile" --reconcile_by "$cancel_reconcile" \
+	--runtime_profile_digest dev-local-v1 --input 'cancel probe' --decision once >/dev/null
+"$host_artifact" task cancel \
+	--request_id "macos-cancel-request-$probe_suffix" --task_id "macos-cancel-$probe_suffix" >/dev/null
+
+cancelled_status=
+i=0
+while [ "$i" -lt 60 ]; do
+	shown=$("$host_artifact" task show --task_id "macos-cancel-$probe_suffix") || fail 'task status unavailable during cancellation'
+	cancelled_status=$(printf '%s' "$shown" | jq -r '.task.status')
+	case "$cancelled_status" in
+		cancelled)
+			[ "$(printf '%s' "$shown" | jq -r '.task.output // empty')" = '' ] || fail 'a cancelled task produced output'
+			printf '%s\n' "$shown" | redact
+			break
+			;;
+		failed|completed|unknown_outcome)
+			printf '%s\n' "$shown" | redact >&2
+			fail "cancellation reached $cancelled_status instead of cancelled"
+			;;
+	esac
+	i=$((i + 1))
+	sleep 1
+done
+[ "$cancelled_status" = cancelled ] || fail 'cancellation did not converge'
+
+printf '%s\n' 'All native macOS journey checkpoints passed.'
+if [ "${LUMEN_MACOS_CHECK_PRESERVE:-0}" = 1 ]; then
+	printf 'preserved work directory: %s\n' "$work_dir"
+	printf 'preserved Compose project: %s\n' "$project"
+	trap - EXIT
+fi

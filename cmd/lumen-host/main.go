@@ -40,7 +40,7 @@ func run(args []string) int {
 	}
 	c, err := host.LoadConfig()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "configuration unavailable")
+		fmt.Fprintf(os.Stderr, "configuration unavailable: %v\n", err)
 		return 3
 	}
 	switch args[0] {
@@ -48,7 +48,7 @@ func run(args []string) int {
 		return doctor(c)
 	case "init":
 		if err := host.Initialize(c); err != nil {
-			fmt.Fprintln(os.Stderr, "initialization unavailable")
+			fmt.Fprintf(os.Stderr, "initialization unavailable: %v\n", err)
 			return 3
 		}
 		return 0
@@ -85,7 +85,7 @@ func doctor(c host.Config) int {
 		"hermes_configured":  c.HermesBaseURL != "",
 	}
 	if err := writeJSON(os.Stdout, report); err != nil {
-		fmt.Fprintln(os.Stderr, "output unavailable")
+		fmt.Fprintf(os.Stderr, "output unavailable: %v\n", err)
 		return 3
 	}
 	return 0
@@ -98,7 +98,7 @@ func serve(c host.Config) int {
 		return 3
 	}
 	if err := s.Start(); err != nil {
-		fmt.Fprintln(os.Stderr, "service unavailable")
+		fmt.Fprintf(os.Stderr, "service unavailable: %v\n", err)
 		return 3
 	}
 	fmt.Println("ready")
@@ -106,7 +106,7 @@ func serve(c host.Config) int {
 	defer stop()
 	go func() { <-ctx.Done(); s.Shutdown() }()
 	if err := s.Wait(context.Background()); err != nil {
-		fmt.Fprintln(os.Stderr, "runtime incompatibility")
+		fmt.Fprintf(os.Stderr, "runtime incompatibility: %v\n", err)
 		return 4
 	}
 	return 0
@@ -133,7 +133,7 @@ func call(c host.Config, cmd string) int {
 func callWithArguments(c host.Config, cmd string, arguments map[string]string) int {
 	r, err := control.Call(c.SocketPath, c.CredentialPath, control.Request{Command: cmd, Arguments: arguments})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "host unavailable")
+		fmt.Fprintf(os.Stderr, "host unavailable: %v\n", err)
 		return 3
 	}
 	if !r.OK || r.Error != "" {
@@ -142,7 +142,7 @@ func callWithArguments(c host.Config, cmd string, arguments map[string]string) i
 	}
 	if r.Data != nil {
 		if err := writeJSON(os.Stdout, r.Data); err != nil {
-			fmt.Fprintln(os.Stderr, "output unavailable")
+			fmt.Fprintf(os.Stderr, "output unavailable: %v\n", err)
 			return 3
 		}
 	}
