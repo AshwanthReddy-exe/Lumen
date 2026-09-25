@@ -27,8 +27,8 @@ run = [
   "test \"$(shasum -a 256 build/lumen-host/lumen-host | cut -d' ' -f1)\" = \"$(shasum -a 256 build/lumen-host/lumen-host.second | cut -d' ' -f1)\"",
   "test \"$(shasum -a 256 build/lumen-host/lumen-host-linux-arm64 | cut -d' ' -f1)\" = \"$(shasum -a 256 build/lumen-host/lumen-host-linux-arm64.second | cut -d' ' -f1)\"",
   "LUMEN_TERMUX_PIE_ARTIFACT=\"$(pwd)/build/lumen-host/lumen-host-android-arm64\" go test ./test/contract -run TestTermuxPIEArtifactIsPositionIndependentWhenBuilt -count=1",
-  "sh -n deploy/launchd/dev.lumen.host-launcher.sh deploy/termux/run deploy/termux/finish deploy/termux/install-lumen-host scripts/lumen-release scripts/install.sh && zsh -n scripts/lumen-mac-host scripts/lumen-mac-test scripts/push-termux-host",
-  "test -x deploy/launchd/dev.lumen.host-launcher.sh && test -x deploy/termux/run && test -x deploy/termux/finish && test -x deploy/termux/install-lumen-host && test -x scripts/lumen-mac-host && test -x scripts/lumen-mac-test && test -x scripts/push-termux-host && test -x scripts/lumen-release && test -x scripts/install.sh",
+  "sh -n deploy/launchd/dev.lumen.host-launcher.sh deploy/termux/run deploy/termux/finish deploy/termux/install-lumen-host scripts/lumen-release scripts/install.sh scripts/lumen-macos-check && zsh -n scripts/lumen-mac-host scripts/lumen-mac-test scripts/push-termux-host",
+  "test -x deploy/launchd/dev.lumen.host-launcher.sh && test -x deploy/termux/run && test -x deploy/termux/finish && test -x deploy/termux/install-lumen-host && test -x scripts/lumen-mac-host && test -x scripts/lumen-mac-test && test -x scripts/push-termux-host && test -x scripts/lumen-release && test -x scripts/install.sh && test -x scripts/lumen-macos-check",
   "plutil -lint deploy/launchd/dev.lumen.host.plist",
   "if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then docker compose -f deploy/docker/compose.yaml config >/dev/null; else grep -q 'restart: on-failure:3' deploy/docker/compose.yaml && grep -q 'STOPSIGNAL SIGTERM' deploy/docker/Dockerfile; fi",
   "test -n \"${ANDROID_HOME:-}\" && test -d \"$ANDROID_HOME\" || { echo 'Android companion checks require ANDROID_HOME'; exit 1; }",
@@ -48,6 +48,15 @@ run = [
   "if git grep -n -I -E '(sk-[A-Za-z0-9]{20,}|Bearer[[:space:]][A-Za-z0-9._-]{20,})' -- . ':!docs'; then echo 'potential credential found' >&2; exit 1; else :; fi",
   "test -f deploy/docker/compose.yaml && docker compose version",
   "scripts/lumen-linux-check",
+]
+
+[tasks.milestone1-macos-check]
+description = "Run the native macOS Host journey against the pinned Hermes gateway"
+run = [
+  "go test ./... -count=1",
+  "sh -n scripts/lumen-macos-check",
+  "test -x scripts/lumen-macos-check",
+  "scripts/lumen-macos-check",
 ]
 
 [tasks.milestone1-external-check]
