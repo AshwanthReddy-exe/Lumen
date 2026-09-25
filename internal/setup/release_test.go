@@ -186,6 +186,14 @@ func TestReleaseMatchesBindingRejectsDrift(t *testing.T) {
 	if !errors.Is(ReleaseMatchesBinding(r, pathAsImage), ErrReleaseBindingDrift) {
 		t.Fatal("accepted a record that changes an executable into an image")
 	}
+	redirectedRollback := r
+	redirectedRollback.Rollback = copyReleaseArtifacts(r.Current)
+	old := redirectedRollback.Rollback["lumen"]
+	old.Path = "/tmp/attacker/lumen"
+	redirectedRollback.Rollback["lumen"] = old
+	if !errors.Is(ReleaseMatchesBinding(redirectedRollback, binding), ErrReleaseBindingDrift) {
+		t.Fatal("accepted a rollback generation that redirects the install path")
+	}
 }
 
 func TestRollbackReleaseWithoutGenerationFails(t *testing.T) {
@@ -240,6 +248,29 @@ func TestReleaseRecordDurabilityAndStrictDecoding(t *testing.T) {
 	}
 	if _, err := LoadReleaseRecord(path); !errors.Is(err, ErrReleaseRecordInvalid) {
 		t.Fatalf("accepted a group-readable record: %v", err)
+	}
+}
+
+func TestSaveReleaseRecordReplacesExistingRecord(t *testing.T) {
+	dir := privateTempDir(t)
+	path := filepath.Join(dir, "release-record.json")
+	first := releaseRecord(TopologyExternal, map[string]ReleaseArtifact{"lumen": releaseExecutable(t, "/opt/lumen/bin/lumen", "first")})
+	if err := SaveReleaseRecord(path, first); err != nil {
+		t.Fatal(err)
+	}
+	second := first
+	second.Generation++
+	second.Rollback = first.Current
+	second.Current = map[string]ReleaseArtifact{"lumen": releaseExecutable(t, "/opt/lumen/bin/lumen", "second")}
+	if err := SaveReleaseRecord(path, second); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadReleaseRecord(path)
+	if err != nil || loaded.Generation != second.Generation {
+		t.Fatalf("replacement = %#v, %v", loaded, err)
+	}
+	if _, err := os.Lstat(path + ".rollback"); !os.IsNotExist(err) {
+		t.Fatalf("non-atomic backup path remains: %v", err)
 	}
 }
 

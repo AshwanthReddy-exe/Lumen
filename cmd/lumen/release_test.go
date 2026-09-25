@@ -98,6 +98,116 @@ func TestUpdateAdvancesGenerationAndRollbackRestoresIt(t *testing.T) {
 	}
 }
 
+func TestInterruptedReleaseRestoresLastCommittedGeneration(t *testing.T) {
+	newSetupJourneyFixture(t, setup.TopologyCombined)
+	if report := runForTest([]string{"setup"}); report.Outcome != setup.Ready {
+		t.Fatalf("setup report = %#v", report)
+	}
+	dataDir := os.Getenv("LUMEN_DATA_DIR")
+	d, err := loadDeployment(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous, err := boundRelease(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed := installedArtifactPath(t, "lumen")
+	original, err := os.ReadFile(installed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.RetainExecutableGeneration(setup.ReleaseStoreDir(dataDir), previous); err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.SaveReleaseRecord(pendingReleasePath(dataDir), previous); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(installed, []byte("interrupted-update"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadDeployment(dataDir); err != nil {
+		t.Fatalf("deployment did not recover: %v", err)
+	}
+	if live, err := os.ReadFile(installed); err != nil || string(live) != string(original) {
+		t.Fatalf("recovered artifact = %q, %v", live, err)
+	}
+	if _, err := os.Lstat(pendingReleasePath(dataDir)); !os.IsNotExist(err) {
+		t.Fatalf("pending release remains: %v", err)
+	}
+	if report := runForTest([]string{"service", "status"}); report.Outcome != setup.Ready {
+		t.Fatalf("service after recovery = %#v", report)
+	}
+}
+
+func TestCommittedReleaseClearsPendingRecordOnRestart(t *testing.T) {
+	newSetupJourneyFixture(t, setup.TopologyCombined)
+	if report := runForTest([]string{"setup"}); report.Outcome != setup.Ready {
+		t.Fatalf("setup report = %#v", report)
+	}
+	dataDir := os.Getenv("LUMEN_DATA_DIR")
+	d, err := loadDeployment(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous, err := boundRelease(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed := installedArtifactPath(t, "lumen")
+	replacement := []byte("lumen-release-two")
+	source := filepath.Join(filepath.Dir(installed), "lumen-release-two")
+	if err := os.WriteFile(source, replacement, 0700); err != nil {
+		t.Fatal(err)
+	}
+	rewriteManifestExecutable(t, "lumen", replacement)
+	t.Setenv("LUMEN_LUMEN_ARTIFACT", source)
+	if report := runForTest([]string{"update"}); report.Outcome != setup.Ready {
+		t.Fatalf("update report = %#v", report)
+	}
+	if err := setup.SaveReleaseRecord(pendingReleasePath(dataDir), previous); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadDeployment(dataDir); err != nil {
+		t.Fatalf("committed release did not load: %v", err)
+	}
+	if live, err := os.ReadFile(installed); err != nil || string(live) != string(replacement) {
+		t.Fatalf("committed artifact = %q, %v", live, err)
+	}
+	if _, err := os.Lstat(pendingReleasePath(dataDir)); !os.IsNotExist(err) {
+		t.Fatalf("pending release remains: %v", err)
+	}
+	if err := setup.SaveReleaseRecord(pendingReleasePath(dataDir), previous); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(installed, []byte("corrupted-committed-release"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadDeployment(dataDir); err == nil {
+		t.Fatal("accepted corrupted committed release while cleanup was pending")
+	}
+	record, err := setup.LoadReleaseRecord(releaseRecordPath(dataDir))
+	if err != nil || record.Generation != previous.Generation+1 {
+		t.Fatalf("committed record was overwritten: %#v, %v", record, err)
+	}
+}
+
+func TestDeploymentLoadCannotRaceReleaseTransaction(t *testing.T) {
+	newSetupJourneyFixture(t, setup.TopologyCombined)
+	if report := runForTest([]string{"setup"}); report.Outcome != setup.Ready {
+		t.Fatalf("setup report = %#v", report)
+	}
+	dataDir := os.Getenv("LUMEN_DATA_DIR")
+	lock, err := lockRelease(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlockRelease(lock)
+	if _, err := loadDeployment(dataDir); err == nil {
+		t.Fatal("deployment loaded while a release transaction held the lock")
+	}
+}
+
 func TestFailedUpdatePreservesInstalledArtifact(t *testing.T) {
 	newSetupJourneyFixture(t, setup.TopologyCombined)
 	if report := runForTest([]string{"setup"}); report.Outcome != setup.Ready {

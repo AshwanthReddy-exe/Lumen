@@ -328,6 +328,15 @@ func composeProjectForSetup(dataDir, configured string) string {
 }
 
 func loadDeployment(dataDir string) (deployment, error) {
+	lock, err := lockRelease(dataDir)
+	if err != nil {
+		return deployment{}, deploymentError{cause: errDeploymentUnavailable}
+	}
+	defer unlockRelease(lock)
+	return loadDeploymentLocked(dataDir)
+}
+
+func loadDeploymentLocked(dataDir string) (deployment, error) {
 	if dataDir == "" || !filepath.IsAbs(dataDir) || filepath.Clean(dataDir) != dataDir {
 		return deployment{}, deploymentError{cause: errDeploymentUnavailable}
 	}
@@ -340,6 +349,9 @@ func loadDeployment(dataDir string) (deployment, error) {
 		return deployment{}, deploymentError{cause: errDeploymentBinding}
 	}
 	if binding.Supervisor == setup.SupervisorDocker && binding.ComposeProject == "" {
+		return deployment{}, deploymentError{cause: errDeploymentBinding}
+	}
+	if err := recoverPendingRelease(dataDir, binding, j.Next() == setup.Validated); err != nil {
 		return deployment{}, deploymentError{cause: errDeploymentBinding}
 	}
 	digests, digestErr := effectiveArtifactDigests(binding, dataDir)

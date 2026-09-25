@@ -153,24 +153,29 @@ func ReleaseMatchesBinding(r ReleaseRecord, b JournalBinding) error {
 	if r.Profile != b.Profile || r.Topology != b.Topology {
 		return ErrReleaseBindingDrift
 	}
-	for _, name := range artifactNameSet(b.Topology) {
-		a, ok := r.Current[name]
-		if !ok {
-			return ErrReleaseBindingDrift
+	for _, generation := range []map[string]ReleaseArtifact{r.Current, r.Rollback} {
+		if len(generation) == 0 {
+			continue
 		}
-		path, hasPath := b.ArtifactPaths[name]
-		ref, hasRef := b.ArtifactRefs[name]
-		switch a.Kind {
-		case ArtifactExecutable:
-			if hasRef || !hasPath || a.Path != path {
+		for _, name := range artifactNameSet(b.Topology) {
+			a, ok := generation[name]
+			if !ok {
 				return ErrReleaseBindingDrift
 			}
-		case ArtifactDockerImage:
-			if hasPath || !hasRef || a.Ref != ref {
+			path, hasPath := b.ArtifactPaths[name]
+			ref, hasRef := b.ArtifactRefs[name]
+			switch a.Kind {
+			case ArtifactExecutable:
+				if hasRef || !hasPath || a.Path != path {
+					return ErrReleaseBindingDrift
+				}
+			case ArtifactDockerImage:
+				if hasPath || !hasRef || a.Ref != ref {
+					return ErrReleaseBindingDrift
+				}
+			default:
 				return ErrReleaseBindingDrift
 			}
-		default:
-			return ErrReleaseBindingDrift
 		}
 	}
 	return nil
@@ -323,39 +328,11 @@ func SaveReleaseRecord(path string, r ReleaseRecord) error {
 	if err = f.Close(); err != nil {
 		return err
 	}
-	backup := ""
-	if _, err := os.Lstat(path); err == nil {
-		backup = path + ".rollback"
-		if err := os.Remove(backup); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		if err = os.Rename(path, backup); err != nil {
-			return err
-		}
-	}
 	if err = os.Rename(tmp, path); err != nil {
-		if backup != "" {
-			_ = os.Rename(backup, path)
-			_ = syncDirectory(parent)
-		}
 		return err
 	}
 	if err = syncDirectory(parent); err != nil {
-		_ = os.Remove(path)
-		if backup != "" {
-			_ = os.Rename(backup, path)
-		}
-		_ = syncDirectory(parent)
 		return fmt.Errorf("%w: %v", ErrInstallDurabilityUncertain, err)
-	}
-	if backup != "" {
-		if err = os.Remove(backup); err != nil {
-			_ = os.Remove(path)
-			_ = os.Rename(backup, path)
-			_ = syncDirectory(parent)
-			return fmt.Errorf("%w: %v", ErrInstallDurabilityUncertain, err)
-		}
-		_ = syncDirectory(parent)
 	}
 	return nil
 }
@@ -466,8 +443,8 @@ func RetainExecutableGeneration(storeDir string, r ReleaseRecord) error {
 
 // RestoreRetainedGeneration writes retained bytes back to an installed
 // generation using atomic replace, verifying every digest before and after the
-// swap. A failure on any artifact leaves the previously live bytes in place;
-// the caller owns journaling whether the restore completed.
+// swap. A failure may leave an earlier artifact restored; callers must keep
+// their pending release record until the whole generation verifies.
 func RestoreRetainedGeneration(storeDir string, r ReleaseRecord, mode os.FileMode) error {
 	if err := validReleaseRecord(r); err != nil {
 		return err

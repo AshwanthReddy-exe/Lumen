@@ -5,7 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"syscall"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/setup"
 )
@@ -25,6 +27,52 @@ func releaseRecordPath(dataDir string) string {
 	return filepath.Join(dataDir, "setup", "release-record.json")
 }
 
+func pendingReleasePath(dataDir string) string {
+	return filepath.Join(dataDir, "setup", "release-pending.json")
+}
+
+func lockRelease(dataDir string) (*os.File, error) {
+	if dataDir == "" || !filepath.IsAbs(dataDir) || filepath.Clean(dataDir) != dataDir {
+		return nil, setup.ErrReleaseRecordInvalid
+	}
+	if _, err := setup.NewJournal(filepath.Join(dataDir, "setup")); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(dataDir, "setup", "release.lock")
+	if st, err := os.Lstat(path); err == nil {
+		if !privateReleaseLock(st) {
+			return nil, setup.ErrReleaseRecordInvalid
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return nil, err
+	}
+	st, statErr := file.Stat()
+	pathSt, pathErr := os.Lstat(path)
+	if statErr != nil || pathErr != nil || !privateReleaseLock(st) || !os.SameFile(st, pathSt) {
+		_ = file.Close()
+		return nil, setup.ErrReleaseRecordInvalid
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return file, nil
+}
+
+func privateReleaseLock(st os.FileInfo) bool {
+	owner, ok := st.Sys().(*syscall.Stat_t)
+	return ok && st.Mode().IsRegular() && st.Mode().Perm() == 0600 && owner.Uid == uint32(os.Getuid())
+}
+
+func unlockRelease(file *os.File) {
+	_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	_ = file.Close()
+}
+
 func updateCommand(ctx context.Context) setup.Report { return releaseChangeCommand(ctx, false) }
 
 func rollbackCommand(ctx context.Context) setup.Report { return releaseChangeCommand(ctx, true) }
@@ -34,7 +82,12 @@ func releaseChangeCommand(ctx context.Context, rollback bool) setup.Report {
 	if dataDir == "" {
 		return placeholder("configuration_required")
 	}
-	d, err := loadDeployment(dataDir)
+	lock, err := lockRelease(dataDir)
+	if err != nil {
+		return deploymentReport(err, "", "")
+	}
+	defer unlockRelease(lock)
+	d, err := loadDeploymentLocked(dataDir)
 	if err != nil {
 		return deploymentReport(err, "", "")
 	}
@@ -64,26 +117,112 @@ func releaseChangeCommand(ctx context.Context, rollback bool) setup.Report {
 		}
 		change = changed
 	}
+	if err := setup.ReleaseMatchesBinding(next, d.binding); err != nil {
+		return releaseReport(d, "release_binding_drift")
+	}
 	storeDir := setup.ReleaseStoreDir(d.config.DataDir)
 	// Preserve the live bytes before replacing them so this change can itself
 	// be undone without network access.
 	if err := setup.RetainExecutableGeneration(storeDir, current); err != nil {
 		return releaseReport(d, "release_retention_failed")
 	}
+	if err := setup.SaveReleaseRecord(pendingReleasePath(d.config.DataDir), current); err != nil {
+		return releaseReport(d, "release_record_unavailable")
+	}
 	if rollback {
 		if err := setup.RestoreRetainedGeneration(storeDir, next, 0700); err != nil {
-			return releaseReport(d, "rollback_failed")
+			return failedRelease(d, "rollback_failed")
 		}
 	} else if err := installRelease(ctx, d, change); err != nil {
-		return releaseReport(d, "update_failed")
+		return failedRelease(d, "update_failed")
 	}
 	if err := setup.VerifyReleaseGeneration(next); err != nil {
-		return releaseReport(d, "release_verification_failed")
+		return failedRelease(d, "release_verification_failed")
 	}
 	if err := setup.SaveReleaseRecord(releaseRecordPath(d.config.DataDir), next); err != nil {
+		return failedRelease(d, "release_record_unavailable")
+	}
+	if err := clearPendingRelease(d.config.DataDir); err != nil {
 		return releaseReport(d, "release_record_unavailable")
 	}
 	return restartDeployment(ctx, d)
+}
+
+func failedRelease(d deployment, code string) setup.Report {
+	if err := recoverPendingRelease(d.config.DataDir, d.binding, true); err != nil {
+		return releaseReport(d, "release_recovery_failed")
+	}
+	return releaseReport(d, code)
+}
+
+// A pending record contains the last committed generation, retained before a
+// file swap. Recovery rolls an incomplete swap back, including after a crash.
+func recoverPendingRelease(dataDir string, binding setup.JournalBinding, validated bool) error {
+	pendingPath := pendingReleasePath(dataDir)
+	if _, err := os.Lstat(pendingPath); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if !validated {
+		return setup.ErrReleaseRecordInvalid
+	}
+	previous, err := setup.LoadReleaseRecord(pendingPath)
+	if err != nil {
+		return err
+	}
+	if err := setup.ReleaseMatchesBinding(previous, binding); err != nil {
+		return err
+	}
+	recordPath := releaseRecordPath(dataDir)
+	committed := false
+	if _, err := os.Lstat(recordPath); err == nil {
+		record, err := setup.LoadReleaseRecord(recordPath)
+		if err != nil {
+			return err
+		}
+		if err := setup.ReleaseMatchesBinding(record, binding); err != nil {
+			return err
+		}
+		if record.Generation == previous.Generation+1 && reflect.DeepEqual(record.Rollback, previous.Current) {
+			if err := setup.VerifyReleaseGeneration(record); err != nil {
+				return err
+			}
+			committed = true
+		} else if !reflect.DeepEqual(record, previous) {
+			return setup.ErrReleaseRecordInvalid
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if !committed {
+		if err := setup.RestoreRetainedGeneration(setup.ReleaseStoreDir(dataDir), previous, 0700); err != nil {
+			return err
+		}
+		if err := setup.VerifyReleaseGeneration(previous); err != nil {
+			return err
+		}
+		if err := setup.SaveReleaseRecord(recordPath, previous); err != nil {
+			return err
+		}
+	}
+	return clearPendingRelease(dataDir)
+}
+
+func clearPendingRelease(dataDir string) error {
+	path := pendingReleasePath(dataDir)
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	f, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	err = f.Sync()
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 // boundRelease returns the durable release record, or derives generation one
