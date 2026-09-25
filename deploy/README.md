@@ -1,5 +1,24 @@
 # Host provisioning
 
+## Installing a release
+
+```sh
+curl -fsSL https://github.com/AshwanthReddy-exe/Lumen/releases/latest/download/install.sh | sh
+```
+
+The installer detects the host platform, resolves the matching artifact from the pinned release manifest, verifies its size and SHA-256 before writing anything, and installs `lumen-host`. It never initializes a Space and never touches Host state; set `LUMEN_DATA_DIR` to a private directory and run `lumen setup` as a separate, explicit step. `LUMEN_VERSION` requires a specific version, `LUMEN_MANIFEST` points at a specific manifest, and `LUMEN_ARTIFACT_DIR` installs from a local mirror instead of the network.
+
+Supported Host targets are `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`, and `android/arm64` (Termux). Windows and the planned iOS/Android application surfaces are not Host targets.
+
+Maintainers build and pin a release with the reproducible builder, which builds every target twice and refuses to publish unless both builds are byte-identical:
+
+```sh
+scripts/lumen-release --version 0.1.0-m1 \
+  --hermes-image-ref ghcr.io/<owner>/lumen-hermes@sha256:<digest> --publish
+```
+
+It never writes a placeholder identity, so a released manifest always resolves to real, digest-pinned bytes. Publishing the pinned Hermes image requires a token with `write:packages`.
+
 Supervisor definitions are deliberately non-bootstrapping templates. Provision the private state and secrets once, then start the foreground service; never run `init` from a restart hook and never auto-reinitialize an existing state directory.
 
 ```sh
