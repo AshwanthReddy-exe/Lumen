@@ -43,6 +43,10 @@ func run(args []string) int {
 		if len(args) < 2 || args[1] != "set" {
 			return usage()
 		}
+	case "memory":
+		if len(args) < 2 || (args[1] != "save" && args[1] != "list" && args[1] != "delete") {
+			return usage()
+		}
 	default:
 		return usage()
 	}
@@ -76,7 +80,7 @@ func run(args []string) int {
 	}
 }
 func usage() int {
-	fmt.Fprintln(os.Stderr, "usage: lumen-host doctor|init|serve|status|task submit|task show|task cancel|approval resolve|conversation create|conversation send|conversation show|preference set|shutdown")
+	fmt.Fprintln(os.Stderr, "usage: lumen-host doctor|init|serve|status|task submit|task show|task cancel|approval resolve|conversation create|conversation send|conversation show|preference set|memory save|memory list|memory delete|shutdown")
 	return 2
 }
 
@@ -191,6 +195,9 @@ func validPublicArguments(command string, arguments map[string]string) bool {
 		"conversation send":   {"request_id": true, "conversation_id": true, "surface_id": true, "input": true, "task_id": true},
 		"conversation show":   {"conversation_id": true},
 		"preference set":      {"request_id": true, "name": true, "value": true},
+		"memory save":         {"request_id": true, "memory_id": true, "text": true},
+		"memory list":         {},
+		"memory delete":       {"request_id": true, "memory_id": true},
 	}
 	set, ok := allowed[command]
 	if !ok {
@@ -206,6 +213,9 @@ func validPublicArguments(command string, arguments map[string]string) bool {
 		"conversation send":   {"request_id", "conversation_id", "surface_id", "input"},
 		"conversation show":   {"conversation_id"},
 		"preference set":      {"request_id", "name", "value"},
+		"memory save":         {"request_id", "memory_id", "text"},
+		"memory list":         {},
+		"memory delete":       {"request_id", "memory_id"},
 	}[command] {
 		if arguments[required] == "" {
 			return false

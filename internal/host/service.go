@@ -544,6 +544,12 @@ func (s *Service) handle(ctx context.Context, q control.Request) control.Respons
 		return s.handleConversationShow(ctx, q.Arguments)
 	case "preference set":
 		return s.handlePreferenceSet(ctx, q.Arguments)
+	case "memory save":
+		return s.handleMemorySave(ctx, q.Arguments)
+	case "memory list":
+		return s.handleMemoryList(ctx, q.Arguments)
+	case "memory delete":
+		return s.handleMemoryDelete(ctx, q.Arguments)
 	default:
 		return control.Response{Error: "unsupported command"}
 	}

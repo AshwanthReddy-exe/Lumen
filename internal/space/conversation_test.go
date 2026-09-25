@@ -5,6 +5,68 @@ import (
 	"testing"
 )
 
+func TestOwnerMemoryLifecycleControlsFutureContext(t *testing.T) {
+	s := conversationState()
+	saved := Apply(s, Command{Type: CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "save-1", MemoryID: "fact-1", Content: "I prefer concise answers", CreatedAt: 100})
+	if saved.Rejection != "" || saved.State.ContextRecords["fact-1"].Namespace != "user.memory/v1" {
+		t.Fatalf("memory save: %#v", saved)
+	}
+	if tr := Apply(saved.State, Command{Type: CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "save-1", MemoryID: "fact-1", Content: "I prefer concise answers", CreatedAt: 100}); !tr.Replayed || tr.Rejection != "" {
+		t.Fatalf("identical save did not replay: %#v", tr)
+	}
+	if tr := Apply(saved.State, Command{Type: CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "save-1", MemoryID: "fact-1", Content: "changed", CreatedAt: 100}); tr.Rejection != "idempotency_key_reused" {
+		t.Fatalf("changed save reused key: %#v", tr)
+	}
+	denied := Apply(saved.State, Command{Type: CommandDeleteMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "delete-denied", MemoryID: "fact-1"})
+	if denied.Rejection == "" || denied.State.ContextRecords["fact-1"].ID == "" {
+		t.Fatalf("non-owner deleted memory: %#v", denied)
+	}
+	deleted := Apply(saved.State, Command{Type: CommandDeleteMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "delete-1", MemoryID: "fact-1"})
+	if deleted.Rejection != "" {
+		t.Fatalf("memory delete: %#v", deleted)
+	}
+	if _, exists := deleted.State.ContextRecords["fact-1"]; exists {
+		t.Fatal("deleted memory remained in canonical Space")
+	}
+	for _, command := range deleted.State.Commands {
+		if strings.Contains(command.Content, "I prefer concise answers") {
+			t.Fatal("deleted memory retained in idempotency ledger")
+		}
+	}
+}
+
+func TestMemoryIDCannotCollideWithPreferenceRecord(t *testing.T) {
+	s := conversationState()
+	tr := Apply(s, Command{Type: CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "save", MemoryID: "user.preference.locale", Content: "collision", CreatedAt: 1})
+	if tr.Rejection == "" {
+		t.Fatal("memory claimed preference key")
+	}
+}
+
+func TestMemoryRejectsOversizeAndUnboundedGrowth(t *testing.T) {
+	s := conversationState()
+	for _, input := range []Command{
+		{MemoryID: strings.Repeat("x", 129), Content: "small", CreatedAt: 1},
+		{MemoryID: "small", Content: strings.Repeat("x", 4097), CreatedAt: 1},
+	} {
+		input.Type, input.SpaceID, input.HostID, input.Epoch, input.ActorID, input.RequestID = CommandSaveMemory, "space", "host", 1, "owner", "bad"
+		if tr := Apply(s, input); tr.Rejection == "" {
+			t.Fatalf("oversize memory accepted: %#v", tr)
+		}
+	}
+	for i := 0; i < 256; i++ {
+		id := string(rune(0x1000 + i))
+		tr := Apply(s, Command{Type: CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "save-" + id, MemoryID: id, Content: "small", CreatedAt: 1})
+		if tr.Rejection != "" {
+			t.Fatalf("memory %d rejected: %s", i, tr.Rejection)
+		}
+		s = tr.State
+	}
+	if tr := Apply(s, Command{Type: CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "overflow", MemoryID: "last", Content: "small", CreatedAt: 1}); tr.Rejection == "" {
+		t.Fatal("memory limit bypassed")
+	}
+}
+
 func TestConversationCreateAndSendPersistAtomicIntent(t *testing.T) {
 	s := conversationState()
 	created := Apply(s, Command{

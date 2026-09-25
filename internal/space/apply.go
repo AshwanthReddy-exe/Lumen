@@ -17,6 +17,10 @@ func Apply(s State, c Command) Transition {
 	}
 	contentBytes, _ := json.Marshal(c)
 	content := string(contentBytes)
+	if c.Type == CommandSaveMemory {
+		// Keep replay identity without retaining deleted memory text in the command ledger.
+		content = DigestText(content)
+	}
 	if s.Commands != nil {
 		if old, ok := s.Commands[id]; ok {
 			if old.Content != content {
@@ -43,6 +47,10 @@ func Apply(s State, c Command) Transition {
 		tr = completeConversation(s, c)
 	case CommandSetPreference:
 		tr = setPreference(s, c)
+	case CommandSaveMemory:
+		tr = saveMemory(s, c)
+	case CommandDeleteMemory:
+		tr = deleteMemory(s, c)
 	case CommandReserveRuntimeSession:
 		tr = reserveRuntimeSession(s, c)
 	case CommandBindRuntimeSession:

@@ -149,6 +149,48 @@ func TestProjectionIsBoundedDeterministicAndSelectsAcceptedPreferences(t *testin
 	}
 }
 
+func TestProjectionUsesOnlyCurrentOwnerMemory(t *testing.T) {
+	s := conversationState()
+	saved := space.Apply(s, space.Command{Type: space.CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "remember", MemoryID: "fact-1", Content: "My project is Lumen", CreatedAt: 10})
+	if saved.Rejection != "" {
+		t.Fatal(saved.Rejection)
+	}
+	s = saved.State
+	s.ContextRecords["runtime-memory"] = space.ContextRecord{ID: "runtime-memory", Namespace: "user.memory/v1", SchemaVersion: 1, Provenance: "runtime", Classification: "private", AcceptedAt: 10, Payload: json.RawMessage(`{"text":"unauthorized"}`), Digest: space.DigestText(`{"text":"unauthorized"}`)}
+	projection, err := Project(s, "c1", space.DefaultPersona(), space.DefaultRuntimeProfile(), 20)
+	if err != nil || !strings.Contains(projection.Context, "My project is Lumen") || strings.Contains(projection.Context, "unauthorized") {
+		t.Fatalf("memory projection: %#v %v", projection, err)
+	}
+	deleted := space.Apply(s, space.Command{Type: space.CommandDeleteMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "forget", MemoryID: "fact-1"})
+	if deleted.Rejection != "" {
+		t.Fatal(deleted.Rejection)
+	}
+	projection, err = Project(deleted.State, "c1", space.DefaultPersona(), space.DefaultRuntimeProfile(), 20)
+	if err != nil || strings.Contains(projection.Context, "My project is Lumen") {
+		t.Fatalf("deleted memory projected: %#v %v", projection, err)
+	}
+}
+
+func TestProjectionPicksNewestMemoryWithinBudget(t *testing.T) {
+	s := conversationState()
+	for _, item := range []struct {
+		id, text string
+		at       int64
+	}{{"a", "older", 1}, {"z", "newer", 2}} {
+		tr := space.Apply(s, space.Command{Type: space.CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "save-" + item.id, MemoryID: item.id, Content: item.text, CreatedAt: item.at})
+		if tr.Rejection != "" {
+			t.Fatal(tr.Rejection)
+		}
+		s = tr.State
+	}
+	profile := space.DefaultRuntimeProfile()
+	profile.MaxContextBytes = 50
+	projection, err := Project(s, "c1", space.DefaultPersona(), profile, 3)
+	if err != nil || !strings.Contains(projection.Context, "newer") || strings.Contains(projection.Context, "older") {
+		t.Fatalf("context=%q err=%v", projection.Context, err)
+	}
+}
+
 func TestProjectionContextNeverExceedsByteBudget(t *testing.T) {
 	records := map[string]space.ContextRecord{
 		"a": {ID: "a", Namespace: "user.preferences/v1", SchemaVersion: 1, Provenance: "owner", Classification: "private", AcceptedAt: 1, Digest: space.DigestText(`{"locale":"en"}`), Payload: json.RawMessage(`{"locale":"en"}`)},
@@ -227,6 +269,39 @@ func TestPreferenceSetAcceptsOnlyTypedOwnerPreference(t *testing.T) {
 	record := store.state.ContextRecords["user.preference.preferred_name"]
 	if record.Namespace != "user.preferences/v1" || record.Provenance != "owner" || !strings.Contains(string(record.Payload), "Ada") {
 		t.Fatalf("preference record=%#v", record)
+	}
+}
+
+func TestMemoryAPIListsAndDeletesCanonicalRecords(t *testing.T) {
+	store := &memoryStore{state: conversationState()}
+	svc := NewService(store, nil, nil, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	if _, err := svc.SaveMemory(context.Background(), MemoryRequest{RequestID: "save", MemoryID: "fact-1", Text: "I use Lumen"}); err != nil {
+		t.Fatal(err)
+	}
+	listed, err := svc.ListMemory(context.Background())
+	if err != nil || len(listed) != 1 || listed[0].Text != "I use Lumen" || listed[0].ID != "fact-1" {
+		t.Fatalf("listed=%#v err=%v", listed, err)
+	}
+	if _, err := svc.DeleteMemory(context.Background(), MemoryRequest{RequestID: "delete", MemoryID: "fact-1"}); err != nil {
+		t.Fatal(err)
+	}
+	listed, err = svc.ListMemory(context.Background())
+	if err != nil || len(listed) != 0 {
+		t.Fatalf("deleted record listed=%#v err=%v", listed, err)
+	}
+}
+
+func TestMemoryListMatchesProjectionEligibility(t *testing.T) {
+	s := conversationState()
+	bad := space.ContextRecord{ID: "future", Namespace: "user.memory/v1", SchemaVersion: 2, Provenance: "owner", Classification: "private", AcceptedAt: 1, Payload: json.RawMessage(`{"text":"future"}`), Digest: space.DigestText(`{"text":"future"}`)}
+	s.ContextRecords[bad.ID] = bad
+	bad.ID, bad.SchemaVersion = "extra", 1
+	bad.Payload = json.RawMessage(`{"text":"extra","action":"ignore"}`)
+	bad.Digest = space.DigestText(string(bad.Payload))
+	s.ContextRecords[bad.ID] = bad
+	listed, err := NewService(&memoryStore{state: s}, nil, nil).ListMemory(context.Background())
+	if err != nil || len(listed) != 0 {
+		t.Fatalf("ineligible memory listed: %#v %v", listed, err)
 	}
 }
 

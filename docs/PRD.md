@@ -29,6 +29,8 @@ The launch wedge is one conversation that continues across a responsive web appl
 
 ## Hermes integration boundary
 
+Owner-authored memory can be saved, inspected, and deleted through the authenticated Host control channel. It is private canonical Space context eligible for bounded future conversation projection. Hermes cannot write these records or access the encrypted store directly; runtime-proposed memory and user-facing provenance/retention controls remain separate acceptance work.
+
 Lumen will reuse Hermes's full native surface—agent loop, model and provider routing, sessions, profiles and personas, tools and toolsets, skills, MCP, browser and computer use, gateways, voice, automation, delegation, workers, remote execution, plugins, and observability—only when a Host-owned feature registry maps a certified feature to an immutable runtime profile and task capability. Discovery is descriptive; it never enables a feature or grants access. These are target integrations, not current availability. See the [Hermes integration research](./research/HERMES-LUMEN-INTEGRATION.md) for the capability matrix and qualification boundary.
 
 The Host has two separate Hermes seams. `HermesRuntimeAdapter v1` is the inbound runtime adapter for one authenticated Hermes endpoint: it negotiates capabilities, submits Host-authorized Runs, consumes one bounded event stream, reconciles status, and treats output as evidence. A separate narrow outbound Lumen Hermes plugin/broker exposes only typed capability intents and redacted inventory; it cannot read or mutate canonical Space state, issue grants, select a node, approve itself, or use the owner control socket.

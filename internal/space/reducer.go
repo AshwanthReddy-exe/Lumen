@@ -2,6 +2,7 @@ package space
 
 import (
 	"encoding/json"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -229,6 +230,48 @@ func setPreference(s State, c Command) Transition {
 	id := "user.preference." + c.PreferenceName
 	s.ContextRecords[id] = ContextRecord{ID: id, Namespace: "user.preferences/v1", SchemaVersion: 1, OriginNodeID: s.OwnerID, Version: 1, Provenance: "owner", Classification: "private", AcceptedAt: c.CreatedAt, Digest: DigestText(string(payload)), Payload: payload}
 	return accepted(s, c, OutcomeApplied, id)
+}
+
+func saveMemory(s State, c Command) Transition {
+	if reason := conversationContext(s, c, true); reason != "" {
+		return reject(s, c, reason)
+	}
+	if c.MemoryID == "" || len(c.MemoryID) > 128 || !utf8.ValidString(c.MemoryID) || strings.HasPrefix(c.MemoryID, "user.") || c.CreatedAt <= 0 || c.Content == "" || !utf8.ValidString(c.Content) || len(c.Content) > 4096 {
+		return reject(s, c, "invalid_memory")
+	}
+	if _, exists := s.ContextRecords[c.MemoryID]; exists {
+		return reject(s, c, "memory_already_exists")
+	}
+	count := 0
+	for _, record := range s.ContextRecords {
+		if record.Namespace == "user.memory/v1" {
+			count++
+		}
+	}
+	if count >= 256 {
+		return reject(s, c, "memory_limit_reached")
+	}
+	payload, err := json.Marshal(map[string]string{"text": c.Content})
+	if err != nil {
+		return reject(s, c, "invalid_memory")
+	}
+	if s.ContextRecords == nil {
+		s.ContextRecords = map[string]ContextRecord{}
+	}
+	s.ContextRecords[c.MemoryID] = ContextRecord{ID: c.MemoryID, Namespace: "user.memory/v1", SchemaVersion: 1, OriginNodeID: s.OwnerID, Version: 1, Provenance: "owner", Classification: "private", AcceptedAt: c.CreatedAt, Digest: DigestText(string(payload)), Payload: payload}
+	return accepted(s, c, OutcomeApplied, c.MemoryID)
+}
+
+func deleteMemory(s State, c Command) Transition {
+	if reason := conversationContext(s, c, true); reason != "" {
+		return reject(s, c, reason)
+	}
+	record, exists := s.ContextRecords[c.MemoryID]
+	if !exists || record.Namespace != "user.memory/v1" {
+		return reject(s, c, "memory_unknown")
+	}
+	delete(s.ContextRecords, c.MemoryID)
+	return accepted(s, c, OutcomeApplied, c.MemoryID)
 }
 
 func reserveRuntimeSession(s State, c Command) Transition {

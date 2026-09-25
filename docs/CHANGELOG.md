@@ -1,5 +1,7 @@
 # Changelog
 
+- Added owner-controlled `memory save|list|delete` Host commands. Canonical encrypted Space records are idempotent, bounded, inspectable, and filtered into future conversation context; deleting a record removes it from later projections. Production Hermes chat certification and runtime-proposed memory remain open.
+
 ## Unreleased
 
 - Added a first capability-scoped cross-node status path: signed, expiring Host invocation over verified HTTPS; node-side local permission check; signed receipt bound to the exact request; and Host grant recheck before canonical task completion. Tests cover two endpoints, wrong signature/target/epoch/capability, expiry, revocation, and strict wire decoding. Pairing and general node execution remain open.

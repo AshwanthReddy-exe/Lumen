@@ -23,6 +23,8 @@ const (
 	CommandSendConversation               CommandType = "conversation.send"
 	CommandCompleteConversation           CommandType = "conversation.complete"
 	CommandSetPreference                  CommandType = "preference.set"
+	CommandSaveMemory                     CommandType = "memory.save"
+	CommandDeleteMemory                   CommandType = "memory.delete"
 	CommandReserveRuntimeSession          CommandType = "conversation.reserve_session"
 	CommandBindRuntimeSession             CommandType = "conversation.bind_session"
 	CommandInvalidateRuntimeCertification CommandType = "conversation.invalidate_certification"
@@ -211,6 +213,7 @@ type Command struct {
 	PersonaID             string          `json:"personaId,omitempty"`
 	Content               string          `json:"content,omitempty"`
 	PreferenceName        string          `json:"preferenceName,omitempty"`
+	MemoryID              string          `json:"memoryId,omitempty"`
 	CreatedAt             int64           `json:"createdAt,omitempty"`
 	OriginNodeID          string          `json:"originNodeId,omitempty"`
 	TargetNodeID          string          `json:"targetNodeId,omitempty"`

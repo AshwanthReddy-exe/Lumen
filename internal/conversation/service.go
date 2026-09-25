@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -71,6 +72,17 @@ type SendRequest struct {
 type PreferenceRequest struct {
 	RequestID, Name, Value string
 	CreatedAt              int64
+}
+
+type MemoryRequest struct {
+	RequestID, MemoryID, Text string
+	CreatedAt                 int64
+}
+
+type Memory struct {
+	ID         string `json:"id"`
+	Text       string `json:"text"`
+	AcceptedAt int64  `json:"accepted_at"`
 }
 
 type View struct {
@@ -365,6 +377,51 @@ func (s *Service) SetPreference(_ context.Context, req PreferenceRequest) (space
 		created = s.now().Unix()
 	}
 	return s.apply(space.Command{Type: space.CommandSetPreference, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.OwnerID, RequestID: req.RequestID, PreferenceName: req.Name, Content: req.Value, CreatedAt: created})
+}
+
+func (s *Service) SaveMemory(_ context.Context, req MemoryRequest) (space.Transition, error) {
+	state, err := s.state.Read()
+	if err != nil {
+		return space.Transition{}, err
+	}
+	created := req.CreatedAt
+	if created <= 0 {
+		created = s.now().Unix()
+	}
+	return s.apply(space.Command{Type: space.CommandSaveMemory, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.OwnerID, RequestID: req.RequestID, MemoryID: req.MemoryID, Content: req.Text, CreatedAt: created})
+}
+
+func (s *Service) DeleteMemory(_ context.Context, req MemoryRequest) (space.Transition, error) {
+	state, err := s.state.Read()
+	if err != nil {
+		return space.Transition{}, err
+	}
+	return s.apply(space.Command{Type: space.CommandDeleteMemory, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.OwnerID, RequestID: req.RequestID, MemoryID: req.MemoryID})
+}
+
+func (s *Service) ListMemory(_ context.Context) ([]Memory, error) {
+	state, err := s.state.Read()
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(state.ContextRecords))
+	for id := range state.ContextRecords {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	result := make([]Memory, 0)
+	for _, id := range ids {
+		record := state.ContextRecords[id]
+		if record.Namespace != "user.memory/v1" || record.SchemaVersion != 1 || record.Provenance != "owner" || record.Classification != "private" || record.AcceptedAt <= 0 || record.RetentionUntil != 0 && record.RetentionUntil <= s.now().Unix() || record.Digest != space.DigestText(string(record.Payload)) {
+			continue
+		}
+		var payload map[string]string
+		if json.Unmarshal(record.Payload, &payload) != nil || len(payload) != 1 || payload["text"] == "" {
+			continue
+		}
+		result = append(result, Memory{ID: id, Text: payload["text"], AcceptedAt: record.AcceptedAt})
+	}
+	return result, nil
 }
 
 func (s *Service) apply(command space.Command) (space.Transition, error) {
