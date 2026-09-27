@@ -174,6 +174,8 @@ printf '%s\n' '=> one-shot E1 SSE interruption proxy'
 export LUMEN_E1_UPSTREAM_PORT="$hermes_host_port"
 export LUMEN_E1_PROXY_STATE="$work_dir/e1-proxy.json"
 export LUMEN_E1_PROXY_ARM="$work_dir/e1-arm"
+export LUMEN_E1_CREATE_DROP_ARM="$work_dir/e1-create-drop-arm"
+export LUMEN_E1_GATEWAY_RESTART_ARM="$work_dir/e1-gateway-restart-arm"
 python3 scripts/lumen-e1-proxy.py >"$work_dir/e1-proxy.log" 2>&1 &
 proxy_pid=$!
 i=0
@@ -283,6 +285,92 @@ while [ "$i" -lt 60 ]; do
 done
 [ "$cancelled_status" = cancelled ] || fail 'cancellation did not converge'
 
+printf '%s\n' '=> pinned E1 gateway restart'
+gateway_creates_before=$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")
+gateway_now=$(date +%s)
+gateway_reconcile=$((gateway_now + 180))
+gateway_task="macos-gateway-restart-$probe_suffix"
+gateway_request="macos-gateway-restart-submit-$probe_suffix"
+printf '%s\n' "$gateway_request" >"$LUMEN_E1_GATEWAY_RESTART_ARM"
+"$host_artifact" task submit \
+	--request_id "$gateway_request" --task_id "$gateway_task" \
+	--capability_id agent.run/execute --action run \
+	--action_fingerprint macos-gateway-restart-input --input 'E1 gateway restart probe' \
+	--runtime_profile_digest dev-local-v1 --reconcile_by "$gateway_reconcile" >/dev/null
+"$host_artifact" approval resolve \
+	--request_id "macos-gateway-restart-approve-$probe_suffix" --task_id "$gateway_task" \
+	--target_node_id "$host_node_id" --action_fingerprint macos-gateway-restart-input \
+	--approval_id "macos-gateway-restart-approval-$probe_suffix" --approved_at "$gateway_now" \
+	--expires_at "$gateway_reconcile" --reconcile_by "$gateway_reconcile" \
+	--runtime_profile_digest dev-local-v1 --input 'E1 gateway restart probe' --decision once >/dev/null
+i=0
+gateway_run=
+while [ "$i" -lt 60 ]; do
+	gateway_run=$(jq -r '.gateway_restart_run_id // empty' "$LUMEN_E1_PROXY_STATE")
+	[ -n "$gateway_run" ] && break
+	i=$((i + 1))
+	sleep 1
+done
+[ -n "$gateway_run" ] || fail 'gateway restart probe did not capture the pinned Run ID'
+[ "$(jq -r '.gateway_restart_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'gateway restart task issued multiple Run creates'
+gateway_before_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$gateway_run" | jq -r '.status')
+case "$gateway_before_status" in
+	started|running) ;;
+	*) fail "gateway restart probe was not active before restart: $gateway_before_status" ;;
+esac
+gateway_before_host=$(
+	"$host_artifact" task show --task_id "$gateway_task" | jq -r '.task.status'
+)
+case "$gateway_before_host" in
+	dispatched|running) ;;
+	*) fail "Host task was not in flight before Hermes restart: $gateway_before_host" ;;
+esac
+compose restart lumen-hermes >/dev/null
+wait_for_hermes || fail 'pinned Hermes gateway did not recover after container restart'
+gateway_status=
+gateway_host_status=
+i=0
+while [ "$i" -lt 180 ]; do
+	if gateway_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+		"http://127.0.0.1:$hermes_host_port/v1/runs/$gateway_run" 2>/dev/null | jq -r '.status'); then
+		:
+	else
+		gateway_status=
+	fi
+	gateway_shown=$("$host_artifact" task show --task_id "$gateway_task") || fail 'gateway restart task unavailable from Host'
+	gateway_host_status=$(printf '%s' "$gateway_shown" | jq -r '.task.status')
+	if [ "$gateway_status" = completed ] && [ "$gateway_host_status" = completed ]; then
+		break
+	fi
+	case "$gateway_status:$gateway_host_status" in
+		failed:*|*:failed|cancelled:*|*:cancelled|unknown_outcome:*|*:unknown_outcome)
+			printf 'E1 gateway restart: task=%s run=%s runtime=%s host=%s\n' \
+				"$gateway_task" "$gateway_run" "$gateway_status" "$gateway_host_status" >&2
+			fail 'gateway or Host did not recover the in-flight task to completed' ;;
+	esac
+	i=$((i + 1))
+	sleep 1
+done
+[ "$gateway_status" = completed ] || fail "gateway Run did not complete after restart: $gateway_status"
+[ "$gateway_host_status" = completed ] || fail "Host did not reconcile gateway restart: $gateway_host_status"
+[ "$(jq -r '.gateway_restart_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'gateway restart task issued more than one POST /v1/runs'
+[ "$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")" -eq "$((gateway_creates_before + 1))" ] || fail 'unexpected Run create during gateway restart probe'
+[ "$(printf '%s' "$gateway_shown" | jq -r '.run.runtimeRunId')" = "$gateway_run" ] || fail 'Host Run mapping changed across gateway restart'
+gateway_host_output=$(printf '%s' "$gateway_shown" | jq -r '.task.output // empty')
+[ -n "$gateway_host_output" ] || fail 'Hermes and Host reported completed after gateway restart without durable output'
+gateway_runtime_json=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$gateway_run")
+gateway_runtime_output=$(printf '%s' "$gateway_runtime_json" | jq -r '.output // empty')
+[ "$gateway_host_output" = "$gateway_runtime_output" ] || fail 'Host output differs from pinned Run status after gateway restart'
+case "$gateway_host_output" in
+	'Operation interrupted: waiting for model response ('*) ;;
+	*) fail 'gateway restart returned an unrecognized durable output' ;;
+esac
+printf 'E1 gateway restart: task=%s run=%s before_runtime=%s before_host=%s after_runtime=%s after_host=%s creates_for_task=1 host_mapping_preserved=true output=interrupted host_runtime_output_match=true\n' \
+	"$gateway_task" "$gateway_run" "$gateway_before_status" "$gateway_before_host" \
+	"$gateway_status" "$gateway_host_status"
+
 printf '%s\n' '=> pinned E1 stream cut and Host restart'
 e1_creates_before=$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")
 printf '%s\n' "macos-e1-submit-$probe_suffix" >"$LUMEN_E1_PROXY_ARM"
@@ -352,6 +440,54 @@ printf 'E1: task=%s run=%s event_type=%s event_id=%s creates_for_task=1 prekill_
 	"$e1_task" "$(jq -r '.run_id' "$LUMEN_E1_PROXY_STATE")" \
 	"$(jq -r '.event_type' "$LUMEN_E1_PROXY_STATE")" \
 	"$(jq -r '.event_id' "$LUMEN_E1_PROXY_STATE")" "$prekill_status" "$e1_status" "$runtime_status"
+
+if [ "${LUMEN_E1_AMBIGUOUS_CREATE:-0}" = 1 ]; then
+	printf '%s\n' '=> pinned E1 ambiguous create response'
+	ambiguous_now=$(date +%s)
+	ambiguous_reconcile=$((ambiguous_now + 20))
+	ambiguous_task="macos-ambiguous-$probe_suffix"
+	ambiguous_request="macos-ambiguous-submit-$probe_suffix"
+	ambiguous_creates_before=$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")
+	printf '%s\n' "$ambiguous_request" >"$LUMEN_E1_CREATE_DROP_ARM"
+	"$host_artifact" task submit \
+		--request_id "$ambiguous_request" --task_id "$ambiguous_task" \
+		--capability_id agent.run/execute --action run \
+		--action_fingerprint macos-ambiguous-input --input 'E1 ambiguous create probe' \
+		--runtime_profile_digest dev-local-v1 --reconcile_by "$ambiguous_reconcile" >/dev/null
+	"$host_artifact" approval resolve \
+		--request_id "macos-ambiguous-approve-$probe_suffix" --task_id "$ambiguous_task" \
+		--target_node_id "$host_node_id" --action_fingerprint macos-ambiguous-input \
+		--approval_id "macos-ambiguous-approval-$probe_suffix" --approved_at "$ambiguous_now" \
+		--expires_at "$ambiguous_reconcile" --reconcile_by "$ambiguous_reconcile" \
+		--runtime_profile_digest dev-local-v1 --input 'E1 ambiguous create probe' --decision once >/dev/null
+	i=0
+	while [ "$i" -lt 30 ]; do
+		ambiguous_shown=$("$host_artifact" task show --task_id "$ambiguous_task") || fail 'ambiguous task status unavailable'
+		ambiguous_status=$(printf '%s' "$ambiguous_shown" | jq -r '.task.status')
+		[ "$ambiguous_status" = unknown_outcome ] && break
+		i=$((i + 1))
+		sleep 1
+	done
+	[ "$ambiguous_status" = unknown_outcome ] || fail "ambiguous create did not produce durable unknown_outcome: $ambiguous_status"
+	while [ "$(date +%s)" -le "$ambiguous_reconcile" ]; do
+		sleep 1
+	done
+	ambiguous_shown=$("$host_artifact" task show --task_id "$ambiguous_task") || fail 'ambiguous task status unavailable after reconcile deadline'
+	ambiguous_status=$(printf '%s' "$ambiguous_shown" | jq -r '.task.status')
+	[ "$ambiguous_status" = unknown_outcome ] || fail "ambiguous create changed after reconcile deadline: $ambiguous_status"
+	[ "$(jq -r '.create_dropped' "$LUMEN_E1_PROXY_STATE")" = true ] || fail 'pinned create response was not captured and dropped'
+	[ "$(jq -r '.ambiguous_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'ambiguous create idempotency key was posted more than once'
+	[ "$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")" -eq "$((ambiguous_creates_before + 1))" ] || fail 'additional Run create occurred during ambiguous probe'
+	[ "$(printf '%s' "$ambiguous_shown" | jq -r '.run.runtimeRunId // empty')" = '' ] || fail 'ambiguous create invented a durable Run mapping'
+	[ "$(printf '%s' "$ambiguous_shown" | jq -r '.task.output // empty')" = '' ] || fail 'ambiguous create invented completed output'
+	ambiguous_run=$(jq -r '.ambiguous_run_id' "$LUMEN_E1_PROXY_STATE")
+	[ -n "$ambiguous_run" ] || fail 'pinned gateway did not return a run ID for ambiguous create'
+	ambiguous_runtime_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+		"http://127.0.0.1:$hermes_host_port/v1/runs/$ambiguous_run" | jq -r '.status')
+	[ "$ambiguous_runtime_status" = completed ] || fail "pinned Hermes run did not complete after Host response loss: $ambiguous_runtime_status"
+	printf 'E1 ambiguous: task=%s runtime_run=%s host_status=%s host_mapping=none creates_for_key=1 runtime_status=%s\n' \
+		"$ambiguous_task" "$ambiguous_run" "$ambiguous_status" "$ambiguous_runtime_status"
+fi
 
 printf '%s\n' 'All native macOS journey checkpoints passed.'
 if [ "${LUMEN_MACOS_CHECK_PRESERVE:-0}" = 1 ]; then

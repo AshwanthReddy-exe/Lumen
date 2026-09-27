@@ -12,9 +12,14 @@ import urllib.parse
 UPSTREAM_PORT = int(os.environ["LUMEN_E1_UPSTREAM_PORT"])
 STATE_FILE = os.environ["LUMEN_E1_PROXY_STATE"]
 ARM_FILE = os.environ["LUMEN_E1_PROXY_ARM"]
+CREATE_DROP_ARM = os.environ["LUMEN_E1_CREATE_DROP_ARM"]
+GATEWAY_RESTART_ARM = os.environ["LUMEN_E1_GATEWAY_RESTART_ARM"]
 LOCK = threading.Lock()
 STATE = {"port": 0, "creates": 0, "e1_creates": 0, "cut_reserved": False,
-         "cut_event": False, "event_id": "", "event_type": "", "run_id": ""}
+         "cut_event": False, "event_id": "", "event_type": "", "run_id": "",
+         "ambiguous_creates": 0, "drop_reserved": False, "create_dropped": False,
+         "ambiguous_run_id": "", "ambiguous_runtime_status": "",
+         "gateway_restart_creates": 0, "gateway_restart_run_id": ""}
 
 
 def save():
@@ -43,6 +48,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                    if key.lower() not in ("host", "connection", "content-length")}
         if body:
             headers["Content-Length"] = str(len(body))
+        drop_create = False
+        gateway_restart_create = False
         with LOCK:
             if self.command == "POST" and path == "/v1/runs":
                 STATE["creates"] += 1
@@ -50,11 +57,60 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     with open(ARM_FILE, encoding="utf-8") as armed:
                         if self.headers.get("Idempotency-Key") == armed.read().strip():
                             STATE["e1_creates"] += 1
+                if os.path.exists(CREATE_DROP_ARM):
+                    with open(CREATE_DROP_ARM, encoding="utf-8") as armed:
+                        if self.headers.get("Idempotency-Key") == armed.read().strip():
+                            STATE["ambiguous_creates"] += 1
+                            drop_create = not STATE["drop_reserved"]
+                            STATE["drop_reserved"] = True
+                if os.path.exists(GATEWAY_RESTART_ARM):
+                    with open(GATEWAY_RESTART_ARM, encoding="utf-8") as armed:
+                        if self.headers.get("Idempotency-Key") == armed.read().strip():
+                            STATE["gateway_restart_creates"] += 1
+                            gateway_restart_create = True
                 save()
         connection = http.client.HTTPConnection("127.0.0.1", UPSTREAM_PORT, timeout=180)
         try:
             connection.request(self.command, self.path, body, headers)
             response = connection.getresponse()
+            if gateway_restart_create:
+                content_length = response.getheader("Content-Length", "")
+                if content_length.isdigit() and int(content_length) <= 65536:
+                    reply = response.read(int(content_length))
+                    try:
+                        metadata = json.loads(reply)
+                    except (ValueError, UnicodeDecodeError):
+                        metadata = {}
+                    if not isinstance(metadata, dict):
+                        metadata = {}
+                    with LOCK:
+                        STATE["gateway_restart_run_id"] = metadata.get("run_id", "")
+                        save()
+                    self.send_response(response.status)
+                    for key, value in response.getheaders():
+                        if key.lower() not in ("connection", "transfer-encoding", "content-length"):
+                            self.send_header(key, value)
+                    self.send_header("Content-Length", str(len(reply)))
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.write(reply)
+                    return
+            if drop_create:
+                reply = response.read(65537)
+                if len(reply) <= 65536 and 200 <= response.status < 300:
+                    try:
+                        metadata = json.loads(reply)
+                    except (ValueError, UnicodeDecodeError):
+                        metadata = {}
+                    if not isinstance(metadata, dict):
+                        metadata = {}
+                    with LOCK:
+                        STATE["ambiguous_run_id"] = metadata.get("run_id", "")
+                        STATE["ambiguous_runtime_status"] = metadata.get("status", "")
+                        STATE["create_dropped"] = True
+                        save()
+                self.close_connection = True
+                return
             self.send_response(response.status)
             for key, value in response.getheaders():
                 if key.lower() not in ("connection", "transfer-encoding", "content-length"):
