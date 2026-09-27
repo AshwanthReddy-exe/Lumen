@@ -43,7 +43,7 @@ The personal alpha follows the existing plan's Phases 01–10: reconcile evidenc
   1. Owner can install or adopt the pinned Hermes runtime and see honest readiness on a supported machine.
   2. Denied approval, cancellation, ambiguous dispatch and restart leave one durable, truthful outcome.
 **Plans**: TBD
-**Gate**: Phase 01 artifact set approved by the owner on 2026-09-27. Phase 02 starts from updated `main` after the Phase 01 PR merges, unless the owner explicitly chooses another base.
+**Gate**: Phase 01 artifact set was approved and PR #21 merged into `main` as `81b60e3` on 2026-09-27. Phase 02 starts from that updated base.
 
 ### Phase 03: Validate mobile, storage, network and wake foundations
 **Goal**: The alpha platform choices are supported by reproducible physical and operational evidence.

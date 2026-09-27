@@ -2,7 +2,7 @@
 
 ## Status and sequencing
 
-This document preserves the implementation contract formerly called “Phase 2.” It is now the foundation-closure workstream in the journey-first plan in [PLAN.md](./PLAN.md), not a lock that requires every platform proof before conversation, node-fabric, or Jarvis-experience work can begin.
+This is the dated foundation implementation contract and evidence record. The current Phase 02 scope and exit criteria are in [PLAN.md](./PLAN.md#phase-02--close-the-existing-hosthermes-foundation) and the [GSD roadmap](../.planning/ROADMAP.md#phase-02-close-the-existing-hosthermes-foundation). Historical platform-specific gates below qualify only their named profile; they do not expand the current phase or prove a later product journey.
 
 The minimum release-grade combined Linux/VPS deployment remains a prerequisite for relying on the Host in product milestones. Platform-specific Termux, macOS, separated-runtime, and hardened evidence gates the deployment profile or capability that needs it; it does not dictate the whole product sequence. Authenticated node trust still requires the node protocol and its security evidence rather than this document alone.
 

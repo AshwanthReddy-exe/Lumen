@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 01
-status: "Phase 01 shipped — PR #21"
-stopped_at: Phase 01 PR #21 is open; review and merge remain before Phase 02.
-last_updated: "2026-09-27T08:09:26.749Z"
+current_phase: 02
+status: "Phase 02 planning"
+stopped_at: Phase 01 PR #21 merged; Phase 02 context, research and execution plans are being prepared.
+last_updated: "2026-09-27T09:04:07Z"
 last_activity: 2026-09-27
-state_head: 8bc6c3d8c2a79f3b3cded06cc4c20b3aaa230bff
+state_head: 81b60e33ef006e33f0e63c882052c2a17efcacea
 progress:
   total_phases: 17
   completed_phases: 1
   total_plans: 3
   completed_plans: 3
   percent: 6
-current_phase_name: Reconcile the repository and establish GSD authority
+current_phase_name: Close the existing Host/Hermes foundation
 ---
 
 # Project State
@@ -22,13 +22,13 @@ current_phase_name: Reconcile the repository and establish GSD authority
 See: .planning/PROJECT.md (updated 2026-09-26)
 
 **Core value:** One conversation continues from laptop to phone after laptop shutdown, then an approved phone request produces a verifiable laptop receipt in that conversation.
-**Current focus:** Phase 01 — Reconcile the repository and establish GSD authority
+**Current focus:** Phase 02 — Close the existing Host/Hermes foundation
 
 ## Current Position
 
-Phase: 01 — COMPLETE
-Plan: 3 of 3 complete
-Status: Phase 01 shipped — PR #21
+Phase: 02 — PLANNING
+Plan: 0 Phase 02 plans prepared
+Status: Phase 01 merged; Phase 02 planning in progress
 Last activity: 2026-09-27
 
 Progress: [█░░░░░░░░░] 6%
@@ -51,7 +51,8 @@ None yet.
 
 ### Blockers/Concerns
 
-- The owner approved Phase 01 on 2026-09-27. Phase 02 remains gated on this PR's review and merge, or an explicit alternative base choice.
+- The owner approved Phase 01 and PR #21 merged on 2026-09-27; the Phase 02 branch starts at `81b60e3`.
+- Phase 02 live gates require pinned Hermes, a real update/rollback machine, and a second machine for external Runs; no synthetic probe can stand in for those results.
 - Draft PR #20 and its dirty separate worktree are candidate evidence only; live gates remain open.
 - Physical device, recovery and seven-day soak evidence remain unverified.
 
@@ -64,5 +65,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-09-27
-Stopped at: Phase 01 PR #21 open; review and merge before Phase 02.
+Stopped at: Phase 02 context, research and execution planning.
 Resume file: None
