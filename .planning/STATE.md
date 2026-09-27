@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
 current_phase: 02
-status: "Phase 02 execution in progress"
-stopped_at: Plan 03 E1 stop and plan 01 foreground Host identity continuity passed on macOS; public setup interruption/rerun, E2 and Linux/cross-machine gates remain open.
-last_updated: "2026-09-27T19:21:01Z"
+current_phase_name: Close the existing Host/Hermes foundation
+status: Phase 02 execution in progress
+stopped_at: Completed Phase 02 plan 06 summary; continue Plan 01 public setup rerun gate
+last_updated: "2026-09-27T19:40:11.859Z"
 last_activity: 2026-09-28
-state_head: 6fc0ca1bc5aaadd0962d51b4a69c2a66d615e817
+state_head: 0d1c0abf23b81f08cb437d853b01700b40fd906f
 progress:
   total_phases: 17
   completed_phases: 1
   total_plans: 10
-  completed_plans: 3
+  completed_plans: 4
   percent: 6
-current_phase_name: Close the existing Host/Hermes foundation
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-09-26)
 ## Current Position
 
 Phase: 02 — EXECUTION
-Plan: 7 prepared; plan 03 has partial live evidence
+Plan: 6 remaining; plan 01 has partial live evidence and plan 06 is complete
 Status: Phase 01 merged; Phase 02 execution in progress, not complete
 Last activity: 2026-09-28
 
@@ -47,7 +47,7 @@ Progress: [█░░░░░░░░░] 6%
 
 ### Pending Todos
 
-- Qualify interrupted public setup rerun and partial-bootstrap fail-closed behavior on the named Mac (Phase 02 plan 01, task 2).
+- Qualify interrupted public setup rerun on the named Mac without touching its installed LaunchAgent (Phase 02 plan 01, task 2); focused automated partial-bootstrap and journal-resume checks passed, but are not a substitute for this live rerun.
 - Complete the remaining real-machine install/update/rollback and cross-machine Runs gates when the owner provides the VPS SSH target.
 - Close remaining security, compatibility, recovery, device, and soak evidence gates before declaring Phase 02 complete.
 
@@ -61,6 +61,7 @@ Progress: [█░░░░░░░░░] 6%
 - Plan 03 stop is now verified on a held pinned Run: task `macos-reordered-1790535955-2533`, Run `run_f78dc17659df4f38a6fc80c2f8d85042`; Host and Hermes were both `running` immediately before stop, both became `cancelled` while the provider remained held, and stayed cancelled after release. One Run create; full native journey and nine Go packages passed in `/Users/ashwanthreddyboddireddy/Library/Application Support/rtk/tee/1790535984_mise_run_f350c7.log`. This is a pinned synthetic-provider result only.
 - Phase 02 plan 01 restart-identity probe passed on the named Mac: E1 task `macos-e1-1790536770-9936`, Run `run_6205919d35404c3486a9935289d78de7`; Space/owner/Host IDs, initialized-marker digest, operator credential digest/mode, and doctor initialized observation were preserved across foreground Host `SIGKILL`/restart. The task reconciled once to completed. Evidence log `/Users/ashwanthreddyboddireddy/Library/Application Support/rtk/tee/1790536805_mise_run_f350c7.log`; this does **not** prove interrupted public setup/rerun or a real provider result.
 - Next bounded task: qualify interrupted public `lumen setup` rerun and partial-bootstrap fail-closed behavior without touching any pre-existing system service. Ordinary clarification remains unsupported. Linux/VPS update/rollback and cross-machine Runs still require the owner's SSH target.
+- Focused plan 01 recovery tests were rerun on 2026-09-27: partial bootstrap rejects without mutation; Host identity verification is stable; setup journal resumes after an injected interruption and skips completed initialization on rerun. Four tests passed; evidence is in `02-01-EVIDENCE.md`. The public CLI/service-manager interruption remains unverified.
 - Physical device, recovery and seven-day soak evidence remain unverified.
 
 ## Deferred Items
@@ -71,6 +72,6 @@ Progress: [█░░░░░░░░░] 6%
 
 ## Session Continuity
 
-Last session: 2026-09-28
-Stopped at: Exact-run Host/SSE and injected duplicate/reorder probes passed; next prove stop while a pinned Run is genuinely in flight. Linux/VPS evidence awaits the owner-provided SSH target.
+Last session: 2026-09-27T19:40:11.848Z
+Stopped at: Completed Phase 02 plan 06 summary; continue Plan 01 public setup rerun gate
 Resume file: None
