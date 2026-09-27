@@ -772,4 +772,4 @@ The proposed architecture retains the tested Go foundation, gives Hermes substan
 
 The highest-risk assumptions have explicit experiments before dependent implementation: runtime containment and interaction support, shared mobile native integration, storage evolution, wake reliability, remote connectivity and migration fencing.
 
-This is the approved master plan. Phase 01 GSD artifacts merged in PR #21. Phase 02 is active for planning from updated `main`; its live evidence gates remain open until verified.
+This is the approved master plan. Phase 01 GSD artifacts merged in PR #21. Phase 02 execution is in progress on its reviewed branch; live evidence and open gates are tracked in [GSD state](../.planning/STATE.md) and the phase evidence files.
