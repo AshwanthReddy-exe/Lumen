@@ -92,7 +92,7 @@
   "next": {
     "command": "/gsd:progress --next",
     "label": "Advance to the next step",
-    "reason": "Phase 01 of 17 complete locally; PR review and merge precede Phase 02"
+    "reason": "Phase 01 PR #21 open; review and merge precede Phase 02"
   },
   "updated_at": "2026-09-27T07:50:23.941Z"
 }
