@@ -24,9 +24,10 @@ archive_target=$repo_root/hermes-source.tar.gz
 archive_copied=0
 compose_ready=0
 host_pid=
+proxy_pid=
 api_key=
 hermes_host_port=${LUMEN_HERMES_HOST_PORT:-28652}
-provider_delay_ms=${LUMEN_PROVIDER_DELAY_MS:-3000}
+provider_delay_ms=${LUMEN_PROVIDER_DELAY_MS:-10000}
 
 cd "$repo_root"
 
@@ -45,6 +46,9 @@ cleanup() {
 	status=$?
 	if [ -n "$host_pid" ]; then
 		kill "$host_pid" 2>/dev/null || :
+	fi
+	if [ -n "$proxy_pid" ]; then
+		kill "$proxy_pid" 2>/dev/null || :
 	fi
 	if [ "$status" -ne 0 ] && [ "$compose_ready" -eq 1 ]; then
 		printf '%s\n' '--- redacted macOS journey logs ---' >&2
@@ -84,6 +88,7 @@ command -v curl >/dev/null 2>&1 || fail 'curl is required'
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
 command -v zsh >/dev/null 2>&1 || fail 'zsh is required'
 command -v shasum >/dev/null 2>&1 || fail 'shasum is required'
+command -v python3 >/dev/null 2>&1 || fail 'python3 is required'
 
 printf '%s\n' '=> private state'
 mkdir -m 700 "$data_dir" "$secret_dir"
@@ -164,6 +169,25 @@ wait_for_hermes() {
 }
 
 wait_for_hermes || fail 'pinned Hermes gateway did not become ready'
+
+printf '%s\n' '=> one-shot E1 SSE interruption proxy'
+export LUMEN_E1_UPSTREAM_PORT="$hermes_host_port"
+export LUMEN_E1_PROXY_STATE="$work_dir/e1-proxy.json"
+export LUMEN_E1_PROXY_ARM="$work_dir/e1-arm"
+python3 scripts/lumen-e1-proxy.py >"$work_dir/e1-proxy.log" 2>&1 &
+proxy_pid=$!
+i=0
+while [ ! -s "$LUMEN_E1_PROXY_STATE" ] && [ "$i" -lt 20 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ -s "$LUMEN_E1_PROXY_STATE" ] || fail 'E1 proxy did not start'
+kill -0 "$proxy_pid" 2>/dev/null || fail 'E1 proxy exited after readiness'
+e1_proxy_port=$(jq -er '.port | select(. > 0 and . < 65536)' "$LUMEN_E1_PROXY_STATE") || fail 'E1 proxy did not report a bound port'
+curl -fsS -m 5 -o /dev/null -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$e1_proxy_port/v1/capabilities" || fail 'E1 proxy did not forward authenticated discovery'
+kill -0 "$proxy_pid" 2>/dev/null || fail 'E1 proxy exited before Host start'
+export LUMEN_HERMES_BASE_URL="http://127.0.0.1:$e1_proxy_port"
 
 printf '%s\n' '=> native Host start'
 umask 077
@@ -258,6 +282,76 @@ while [ "$i" -lt 60 ]; do
 	sleep 1
 done
 [ "$cancelled_status" = cancelled ] || fail 'cancellation did not converge'
+
+printf '%s\n' '=> pinned E1 stream cut and Host restart'
+e1_creates_before=$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")
+printf '%s\n' "macos-e1-submit-$probe_suffix" >"$LUMEN_E1_PROXY_ARM"
+e1_now=$(date +%s)
+e1_reconcile=$((e1_now + 180))
+e1_task="macos-e1-$probe_suffix"
+"$host_artifact" task submit \
+	--request_id "macos-e1-submit-$probe_suffix" --task_id "$e1_task" \
+	--capability_id agent.run/execute --action run \
+	--action_fingerprint macos-e1-input --input 'E1 stream interruption probe' \
+	--runtime_profile_digest dev-local-v1 --reconcile_by "$e1_reconcile" >/dev/null
+"$host_artifact" approval resolve \
+	--request_id "macos-e1-approve-$probe_suffix" --task_id "$e1_task" \
+	--target_node_id "$host_node_id" --action_fingerprint macos-e1-input \
+	--approval_id "macos-e1-approval-$probe_suffix" --approved_at "$e1_now" \
+	--expires_at "$e1_reconcile" --reconcile_by "$e1_reconcile" \
+	--runtime_profile_digest dev-local-v1 --input 'E1 stream interruption probe' --decision once >/dev/null
+i=0
+while [ "$(jq -r '.cut_event' "$LUMEN_E1_PROXY_STATE")" != true ] && [ "$i" -lt 60 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.cut_event' "$LUMEN_E1_PROXY_STATE")" = true ] || fail 'no complete pinned SSE event was cut'
+state_before_observation=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+prekill=$("$host_artifact" task show --task_id "$e1_task") || fail 'E1 task unavailable before Host interruption'
+prekill_status=$(printf '%s' "$prekill" | jq -r '.task.status')
+case "$prekill_status" in
+	dispatched|running) ;;
+	*) fail "E1 task was not durably in flight before Host interruption: $prekill_status" ;;
+esac
+e1_run=$(jq -r '.run_id' "$LUMEN_E1_PROXY_STATE")
+[ "$(printf '%s' "$prekill" | jq -r '.run.runtimeRunId')" = "$e1_run" ] || fail 'prekill durable Host run mapping differs from interrupted SSE run'
+printf 'E1 prekill: task=%s run=%s status=%s cut_event=true\n' "$e1_task" "$e1_run" "$prekill_status"
+state_before_kill=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+[ "$state_before_observation" = "$state_before_kill" ] || fail 'canonical state changed during in-flight observation'
+kill -KILL "$host_pid"
+wait "$host_pid" 2>/dev/null || :
+host_pid=
+state_after_kill=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+[ "$state_before_kill" = "$state_after_kill" ] || fail 'canonical state changed between in-flight observation and Host exit'
+"$host_artifact" serve >"$work_dir/host-restart.log" 2>&1 &
+host_pid=$!
+wait_for_host || fail 'Host did not restart against the same canonical state'
+restarted_host_node_id=$(jq -r '.active_host_id // .host_id // empty' "$work_dir/host-status.json")
+[ "$restarted_host_node_id" = "$host_node_id" ] || fail 'Host identity changed after restart'
+e1_status=
+i=0
+while [ "$i" -lt 180 ]; do
+	shown=$("$host_artifact" task show --task_id "$e1_task") || fail 'E1 task status unavailable after restart'
+	e1_status=$(printf '%s' "$shown" | jq -r '.task.status')
+	case "$e1_status" in
+		completed|failed|cancelled) break ;;
+	esac
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")" -eq "$((e1_creates_before + 1))" ] || fail 'E1 did not issue exactly one POST /v1/runs'
+[ "$(jq -r '.e1_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'E1 idempotency key did not issue exactly one POST /v1/runs'
+[ "$(printf '%s' "$shown" | jq -r '.run.runtimeRunId')" = "$e1_run" ] || fail 'durable Host run mapping differs from interrupted SSE run'
+runtime_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$e1_run" | jq -r '.status')
+printf 'E1 postrestart: task=%s run=%s prekill_status=%s durable_status=%s runtime_status=%s creates_for_task=1 host_id_preserved=true state_unchanged_at_exit=true\n' \
+	"$e1_task" "$e1_run" "$prekill_status" "$e1_status" "$runtime_status"
+[ "$runtime_status" = completed ] || fail "pinned E1 runtime ended as $runtime_status"
+[ "$e1_status" = completed ] || fail "Host did not reconcile pinned E1 completion: $e1_status"
+printf 'E1: task=%s run=%s event_type=%s event_id=%s creates_for_task=1 prekill_status=%s durable_status=%s runtime_status=%s host_id_preserved=true\n' \
+	"$e1_task" "$(jq -r '.run_id' "$LUMEN_E1_PROXY_STATE")" \
+	"$(jq -r '.event_type' "$LUMEN_E1_PROXY_STATE")" \
+	"$(jq -r '.event_id' "$LUMEN_E1_PROXY_STATE")" "$prekill_status" "$e1_status" "$runtime_status"
 
 printf '%s\n' 'All native macOS journey checkpoints passed.'
 if [ "${LUMEN_MACOS_CHECK_PRESERVE:-0}" = 1 ]; then
