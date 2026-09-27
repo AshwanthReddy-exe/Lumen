@@ -3,10 +3,10 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Close the existing Host/Hermes foundation
 status: Phase 02 execution in progress
-stopped_at: Completed Phase 02 plan 06 summary; continue Plan 01 public setup rerun gate
-last_updated: "2026-09-27T19:40:11.859Z"
+stopped_at: Plan 02-01 public setup rerun safety preflight found fixed system Launchd registration and placeholder templates; no service mutations run
+last_updated: "2026-09-27T19:46:24.513Z"
 last_activity: 2026-09-28
-state_head: 0d1c0abf23b81f08cb437d853b01700b40fd906f
+state_head: 9b931361ccfa8ccf9f40d7591863a06d30cde271
 progress:
   total_phases: 17
   completed_phases: 1
@@ -47,7 +47,7 @@ Progress: [█░░░░░░░░░] 6%
 
 ### Pending Todos
 
-- Qualify interrupted public setup rerun on the named Mac without touching its installed LaunchAgent (Phase 02 plan 01, task 2); focused automated partial-bootstrap and journal-resume checks passed, but are not a substitute for this live rerun.
+- Public setup interruption/rerun remains unverified (Phase 02 plan 01, task 2). It was not run on the Mac: `lumen setup` registers fixed Launchd labels in the system domain from placeholder plists and has no scoped rollback. Implement and independently review a scoped/recoverable Launchd path, or use an explicitly disposable supported host; evidence is in `02-01-EVIDENCE.md`.
 - Complete the remaining real-machine install/update/rollback and cross-machine Runs gates when the owner provides the VPS SSH target.
 - Close remaining security, compatibility, recovery, device, and soak evidence gates before declaring Phase 02 complete.
 
@@ -72,6 +72,6 @@ Progress: [█░░░░░░░░░] 6%
 
 ## Session Continuity
 
-Last session: 2026-09-27T19:40:11.848Z
-Stopped at: Completed Phase 02 plan 06 summary; continue Plan 01 public setup rerun gate
+Last session: 2026-09-27T19:46:24.499Z
+Stopped at: Plan 02-01 public setup rerun safety preflight found fixed system Launchd registration and placeholder templates; no service mutations run
 Resume file: None
