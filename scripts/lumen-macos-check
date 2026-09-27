@@ -217,6 +217,16 @@ wait_for_host() {
 wait_for_host || fail 'native Host did not become ready'
 host_node_id=$(jq -r '.active_host_id // .host_id // empty' "$work_dir/host-status.json")
 [ -n "$host_node_id" ] || fail 'live Host status did not expose a node ID'
+initial_identity=$("$host_artifact" status) || fail 'Host identity unavailable after initialization'
+initial_space_id=$(printf '%s' "$initial_identity" | jq -r '.space_id // empty')
+initial_owner_id=$(printf '%s' "$initial_identity" | jq -r '.owner_id // empty')
+initial_host_id=$(printf '%s' "$initial_identity" | jq -r '.host_id // empty')
+[ -n "$initial_space_id" ] && [ -n "$initial_owner_id" ] && [ -n "$initial_host_id" ] || fail 'initialized Host omitted bootstrap identities'
+initial_initialized_marker=$(shasum -a 256 "$data_dir/initialized" | cut -d ' ' -f 1)
+initial_operator_credential=$(shasum -a 256 "$data_dir/operator.credential" | cut -d ' ' -f 1)
+[ "$(stat -f '%Lp' "$data_dir/operator.credential")" = 600 ] || fail 'operator credential is not owner-only'
+"$host_artifact" doctor >"$work_dir/initial-doctor.json" || fail 'Host doctor failed after initialization'
+[ "$(jq -r '.host_initialized' "$work_dir/initial-doctor.json")" = true ] || fail 'Host doctor did not observe initialized state'
 
 printf '%s\n' '=> configured synthetic task'
 export LUMEN_BINARY="$host_artifact"
@@ -420,6 +430,15 @@ host_pid=$!
 wait_for_host || fail 'Host did not restart against the same canonical state'
 restarted_host_node_id=$(jq -r '.active_host_id // .host_id // empty' "$work_dir/host-status.json")
 [ "$restarted_host_node_id" = "$host_node_id" ] || fail 'Host identity changed after restart'
+restarted_identity=$(cat "$work_dir/host-status.json")
+[ "$(printf '%s' "$restarted_identity" | jq -r '.space_id // empty')" = "$initial_space_id" ] || fail 'Space identity changed after Host restart'
+[ "$(printf '%s' "$restarted_identity" | jq -r '.owner_id // empty')" = "$initial_owner_id" ] || fail 'owner identity changed after Host restart'
+[ "$(printf '%s' "$restarted_identity" | jq -r '.host_id // empty')" = "$initial_host_id" ] || fail 'Host identity changed after restart'
+[ "$(shasum -a 256 "$data_dir/initialized" | cut -d ' ' -f 1)" = "$initial_initialized_marker" ] || fail 'initialized marker changed across Host restart'
+[ "$(shasum -a 256 "$data_dir/operator.credential" | cut -d ' ' -f 1)" = "$initial_operator_credential" ] || fail 'operator credential changed across Host restart'
+[ "$(stat -f '%Lp' "$data_dir/operator.credential")" = 600 ] || fail 'operator credential permissions changed across Host restart'
+"$host_artifact" doctor >"$work_dir/restarted-doctor.json" || fail 'Host doctor failed after restart'
+[ "$(jq -r '.host_initialized' "$work_dir/restarted-doctor.json")" = true ] || fail 'Host doctor lost initialized state after restart'
 e1_status=
 i=0
 while [ "$i" -lt 180 ]; do
@@ -436,7 +455,7 @@ done
 [ "$(printf '%s' "$shown" | jq -r '.run.runtimeRunId')" = "$e1_run" ] || fail 'durable Host run mapping differs from interrupted SSE run'
 runtime_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
 	"http://127.0.0.1:$hermes_host_port/v1/runs/$e1_run" | jq -r '.status')
-printf 'E1 postrestart: task=%s run=%s prekill_status=%s durable_status=%s runtime_status=%s creates_for_task=1 host_id_preserved=true state_unchanged_at_exit=true\n' \
+printf 'E1 postrestart: task=%s run=%s prekill_status=%s durable_status=%s runtime_status=%s creates_for_task=1 space_owner_host_identity_preserved=true initialized_marker_preserved=true operator_credential_preserved=true state_unchanged_at_exit=true\n' \
 	"$e1_task" "$e1_run" "$prekill_status" "$e1_status" "$runtime_status"
 [ "$runtime_status" = completed ] || fail "pinned E1 runtime ended as $runtime_status"
 [ "$e1_status" = completed ] || fail "Host did not reconcile pinned E1 completion: $e1_status"
