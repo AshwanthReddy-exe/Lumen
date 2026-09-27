@@ -3,8 +3,8 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Close the existing Host/Hermes foundation
 status: Phase 02 execution in progress
-stopped_at: Plan 02-01 public setup rerun safety preflight found fixed system Launchd registration and placeholder templates; no service mutations run
-last_updated: "2026-09-27T19:46:24.513Z"
+stopped_at: Plan 02-01 pinned service-contract check found macOS Launchd starts Hermes serve (9119), not the Runs gateway (8642); no services changed
+last_updated: "2026-09-27T19:55:24.000Z"
 last_activity: 2026-09-28
 state_head: 9b931361ccfa8ccf9f40d7591863a06d30cde271
 progress:
@@ -47,7 +47,7 @@ Progress: [█░░░░░░░░░] 6%
 
 ### Pending Todos
 
-- Public setup interruption/rerun remains unverified (Phase 02 plan 01, task 2). It was not run on the Mac: `lumen setup` registers fixed Launchd labels in the system domain from placeholder plists and has no scoped rollback. Implement and independently review a scoped/recoverable Launchd path, or use an explicitly disposable supported host; evidence is in `02-01-EVIDENCE.md`.
+- Public setup interruption/rerun remains unverified (Phase 02 plan 01, task 2). Do not implement Launchd recovery until the macOS Hermes profile is resolved: the pinned Runs API uses `gateway run` on 8642, but the Launchd template starts `hermes serve` on 9119. Next: minimally make combined macOS setup explicitly unsupported or implement the pinned gateway under a scoped, recoverable user LaunchAgent, then independently review before any live setup test. Evidence is in `02-01-EVIDENCE.md`.
 - Complete the remaining real-machine install/update/rollback and cross-machine Runs gates when the owner provides the VPS SSH target.
 - Close remaining security, compatibility, recovery, device, and soak evidence gates before declaring Phase 02 complete.
 
@@ -60,7 +60,7 @@ Progress: [█░░░░░░░░░] 6%
 - Duplicate/reordered SSE handling was fault-injected on active pinned Run `run_2fb9c88e3e024e3485a93bfef9bb5c1c`: Host consumed out-of-order IDs 2,1, ignored conflicting duplicate ID 2 while Hermes/provider remained held, accepted barrier ID 3, then converged to completed after provider release; one Run create. Full journey passed in log `/Users/ashwanthreddyboddireddy/Library/Application Support/rtk/tee/1790535003_mise_run_f350c7.log`. This does not certify Hermes-native event IDs or replay semantics. Independent security review passed for the probe and bounded loopback test endpoints.
 - Plan 03 stop is now verified on a held pinned Run: task `macos-reordered-1790535955-2533`, Run `run_f78dc17659df4f38a6fc80c2f8d85042`; Host and Hermes were both `running` immediately before stop, both became `cancelled` while the provider remained held, and stayed cancelled after release. One Run create; full native journey and nine Go packages passed in `/Users/ashwanthreddyboddireddy/Library/Application Support/rtk/tee/1790535984_mise_run_f350c7.log`. This is a pinned synthetic-provider result only.
 - Phase 02 plan 01 restart-identity probe passed on the named Mac: E1 task `macos-e1-1790536770-9936`, Run `run_6205919d35404c3486a9935289d78de7`; Space/owner/Host IDs, initialized-marker digest, operator credential digest/mode, and doctor initialized observation were preserved across foreground Host `SIGKILL`/restart. The task reconciled once to completed. Evidence log `/Users/ashwanthreddyboddireddy/Library/Application Support/rtk/tee/1790536805_mise_run_f350c7.log`; this does **not** prove interrupted public setup/rerun or a real provider result.
-- Next bounded task: qualify interrupted public `lumen setup` rerun and partial-bootstrap fail-closed behavior without touching any pre-existing system service. Ordinary clarification remains unsupported. Linux/VPS update/rollback and cross-machine Runs still require the owner's SSH target.
+- Next bounded task: decide and enforce a truthful macOS profile boundary—prefer fail-closed rejection of combined topology until a pinned Runs gateway lifecycle is implemented; keep externally managed Hermes support only when its endpoint passes the Host contract. Then independently review the Launchd scope/recovery path before live setup. Ordinary clarification remains unsupported. Linux/VPS update/rollback and cross-machine Runs still require the owner's SSH target.
 - Focused plan 01 recovery tests were rerun on 2026-09-27: partial bootstrap rejects without mutation; Host identity verification is stable; setup journal resumes after an injected interruption and skips completed initialization on rerun. Four tests passed; evidence is in `02-01-EVIDENCE.md`. The public CLI/service-manager interruption remains unverified.
 - Physical device, recovery and seven-day soak evidence remain unverified.
 
