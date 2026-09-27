@@ -49,6 +49,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if body:
             headers["Content-Length"] = str(len(body))
         drop_create = False
+        e1_create = False
         gateway_restart_create = False
         with LOCK:
             if self.command == "POST" and path == "/v1/runs":
@@ -57,6 +58,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     with open(ARM_FILE, encoding="utf-8") as armed:
                         if self.headers.get("Idempotency-Key") == armed.read().strip():
                             STATE["e1_creates"] += 1
+                            e1_create = True
                 if os.path.exists(CREATE_DROP_ARM):
                     with open(CREATE_DROP_ARM, encoding="utf-8") as armed:
                         if self.headers.get("Idempotency-Key") == armed.read().strip():
@@ -73,6 +75,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             connection.request(self.command, self.path, body, headers)
             response = connection.getresponse()
+            if e1_create:
+                content_length = response.getheader("Content-Length", "")
+                if 200 <= response.status < 300 and content_length.isdigit() and int(content_length) <= 65536:
+                    reply = response.read(int(content_length))
+                    try:
+                        metadata = json.loads(reply)
+                    except (ValueError, UnicodeDecodeError):
+                        metadata = {}
+                    if not isinstance(metadata, dict):
+                        metadata = {}
+                    with LOCK:
+                        STATE["run_id"] = metadata.get("run_id", "")
+                        save()
+                    self.send_response(response.status)
+                    for key, value in response.getheaders():
+                        if key.lower() not in ("connection", "transfer-encoding", "content-length"):
+                            self.send_header(key, value)
+                    self.send_header("Content-Length", str(len(reply)))
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.write(reply)
+                    return
             if gateway_restart_create:
                 content_length = response.getheader("Content-Length", "")
                 if content_length.isdigit() and int(content_length) <= 65536:
@@ -119,10 +143,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             if path.endswith("/events") and response.status == 200:
                 with LOCK:
-                    should_cut = os.path.exists(ARM_FILE) and not STATE["cut_reserved"]
+                    should_cut = (os.path.exists(ARM_FILE) and STATE["run_id"] and
+                                  path == f"/v1/runs/{STATE['run_id']}/events" and
+                                  not STATE["cut_reserved"])
                     if should_cut:
                         STATE["cut_reserved"] = True
-                        STATE["run_id"] = path.split("/")[3]
                         save()
                 if should_cut:
                     event = bytearray()
