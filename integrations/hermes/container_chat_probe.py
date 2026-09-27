@@ -18,7 +18,7 @@ def docker(*args):
     return subprocess.check_output(["docker", *args], text=True).strip()
 
 
-def probe(image):
+def probe(image, config_path=None, model="synthetic-model"):
     model_port, api_port = free_port(), free_port()
     observed = []
     provider = ThreadingHTTPServer(("0.0.0.0", model_port), provider_class(observed))
@@ -26,7 +26,7 @@ def probe(image):
     worker.start()
     container = ""
     try:
-        config = Path(__file__).with_name("chat-config.yaml").resolve()
+        config = Path(config_path).resolve() if config_path else Path(__file__).with_name("chat-config.yaml").resolve()
         config_digest = "sha256:" + hashlib.sha256(config.read_bytes()).hexdigest()
         container = docker("run", "--detach", "--rm", "--read-only", "--user", "65532:65532",
                            "--add-host", "host.docker.internal:host-gateway",
@@ -37,9 +37,9 @@ def probe(image):
                            "--env", "HERMES_SAFE_MODE=1", "--env", "LUMEN_CHAT_ZERO_TOOL=1",
                            "--env", "API_SERVER_ENABLED=true", "--env", "API_SERVER_HOST=0.0.0.0",
                            "--env", "API_SERVER_PORT=8642", "--env", "API_SERVER_KEY=synthetic-container-key",
-                           "--env", "API_SERVER_MODEL_NAME=synthetic-model",
+                           "--env", f"API_SERVER_MODEL_NAME={model}",
                            "--env", "HERMES_INFERENCE_PROVIDER=custom",
-                           "--env", "HERMES_INFERENCE_MODEL=synthetic-model",
+                           "--env", f"HERMES_INFERENCE_MODEL={model}",
                            "--env", "OPENAI_API_KEY=synthetic-only",
                            "--env", f"OPENAI_BASE_URL=http://host.docker.internal:{model_port}/v1",
                            "--env", "OPENROUTER_API_KEY=synthetic-only",
@@ -85,6 +85,8 @@ def probe(image):
         time.sleep(0.5)
         if len(observed) != 4 or any(body.get("tools") for body in observed):
             raise AssertionError("container made unexpected model requests or advertised tools")
+        if config_path and any(body.get("model") != model for body in observed):
+            raise AssertionError("Hermes did not resolve the model from its isolated config")
         return {"status": "container_probe_passed", "imageId": image_id, "configDigest": config_digest,
                 "providerCalls": len(observed), "rejectedToolCalls": 3}
     finally:
@@ -99,4 +101,7 @@ def probe(image):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", required=True, help="locally built pinned chat image")
-    print(json.dumps(probe(parser.parse_args().image)))
+    parser.add_argument("--config", help="isolated zero-tool config to probe with a synthetic provider")
+    parser.add_argument("--model", default="synthetic-model", help="expected model in synthetic provider requests")
+    args = parser.parse_args()
+    print(json.dumps(probe(args.image, args.config, args.model)))

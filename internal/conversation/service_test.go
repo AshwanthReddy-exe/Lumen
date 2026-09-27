@@ -327,6 +327,9 @@ func TestSendPersistsBeforeIOAndFailsClosedWithoutExactCertification(t *testing.
 	if runtime.created != 1 || len(store.state.Messages["c1"]) != 2 || store.state.Messages["c1"][1].Content != "hello" {
 		t.Fatalf("certified completion not reconciled: creates=%d messages=%#v", runtime.created, store.state.Messages["c1"])
 	}
+	if runtime.req.Model != "" || runtime.req.Provider != "" || len(runtime.req.ModelOptions) != 0 {
+		t.Fatalf("Lumen overrode Hermes model routing: %#v", runtime.req)
+	}
 }
 
 func TestCertifiedChatRejectsMismatchedAdapterEndpoint(t *testing.T) {

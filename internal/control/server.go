@@ -288,6 +288,7 @@ func (s *Server) handle(c net.Conn) {
 		_ = WriteResponse(c, Response{Error: "unauthorized"})
 		return
 	}
+	_ = c.SetDeadline(time.Now().Add(commandTimeout(q.Command)))
 	resp := Response{Error: "handler failure"}
 	func() { defer func() { _ = recover() }(); resp = s.handler(ctx, q) }()
 	_ = WriteResponse(c, resp)

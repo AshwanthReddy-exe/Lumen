@@ -20,6 +20,7 @@ import (
 
 var dockerIDPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var imageIDPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+var chatModelPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$`)
 
 type dockerChatCertifier struct {
 	config  Config
@@ -94,8 +95,22 @@ func (c *dockerChatCertifier) Certify(ctx context.Context, _ space.State, profil
 		return deny()
 	}
 	configBytes, err := os.ReadFile(c.config.ChatConfigPath)
-	if err != nil || len(configBytes) > 4096 || probe.ConfigDigest != space.DigestText(string(configBytes)) {
+	if err != nil || len(configBytes) > 4096 {
 		return deny()
+	}
+	configDigest := space.DigestText(string(configBytes))
+	if c.config.ChatModel == "" {
+		if probe.ConfigDigest != configDigest {
+			return deny()
+		}
+	} else {
+		if len(c.config.ChatModel) > 128 || !chatModelPattern.MatchString(c.config.ChatModel) {
+			return deny()
+		}
+		suffix := []byte("\nmodel:\n  default: \"" + c.config.ChatModel + "\"\n")
+		if !bytes.HasSuffix(configBytes, suffix) || probe.ConfigDigest != space.DigestText(string(configBytes[:len(configBytes)-len(suffix)])) {
+			return deny()
+		}
 	}
 	key, err := readRestrictedSecret(c.config.ChatBearerPath)
 	if err != nil || len(bytes.TrimSpace(key)) == 0 {
@@ -174,16 +189,33 @@ func (c *dockerChatCertifier) Certify(ctx context.Context, _ space.State, profil
 	if len(allowed) != len(baseNames) {
 		return deny()
 	}
-	for name, value := range map[string]string{"HERMES_SAFE_MODE": "1", "LUMEN_CHAT_ZERO_TOOL": "1", "HERMES_HOME": "/var/lib/hermes", "TERMINAL_CWD": "/var/lib/hermes", "API_SERVER_ENABLED": "true", "API_SERVER_HOST": "0.0.0.0", "API_SERVER_PORT": "8642", "API_SERVER_KEY": string(bytes.TrimSpace(key)), "API_SERVER_MODEL_NAME": "synthetic-model", "HERMES_INFERENCE_PROVIDER": "custom", "HERMES_INFERENCE_MODEL": "synthetic-model", "OPENAI_API_KEY": "synthetic-only", "OPENROUTER_API_KEY": "synthetic-only"} {
+	model, providerKey := "synthetic-model", "synthetic-only"
+	if c.config.ChatModel != "" {
+		if c.config.ChatProviderKeyPath == "" || len(c.config.ChatModel) > 128 || !chatModelPattern.MatchString(c.config.ChatModel) {
+			return deny()
+		}
+		providerKeyBytes, err := readRestrictedSecret(c.config.ChatProviderKeyPath)
+		if err != nil || len(providerKeyBytes) == 0 || len(providerKeyBytes) > 4096 || len(bytes.TrimSpace(providerKeyBytes)) != len(providerKeyBytes) {
+			return deny()
+		}
+		model, providerKey = c.config.ChatModel, string(providerKeyBytes)
+	} else if c.config.ChatProviderKeyPath != "" {
+		return deny()
+	}
+	for name, value := range map[string]string{"HERMES_SAFE_MODE": "1", "LUMEN_CHAT_ZERO_TOOL": "1", "HERMES_HOME": "/var/lib/hermes", "TERMINAL_CWD": "/var/lib/hermes", "API_SERVER_ENABLED": "true", "API_SERVER_HOST": "0.0.0.0", "API_SERVER_PORT": "8642", "API_SERVER_KEY": string(bytes.TrimSpace(key)), "API_SERVER_MODEL_NAME": model, "HERMES_INFERENCE_PROVIDER": "custom", "HERMES_INFERENCE_MODEL": model, "OPENAI_API_KEY": providerKey, "OPENROUTER_API_KEY": providerKey} {
 		allowed[name] = value
 	}
 	providerURL := env["OPENAI_BASE_URL"]
 	provider, err := url.Parse(providerURL)
-	if err != nil || providerURL != c.config.ChatProviderURL || provider.Scheme != "http" || provider.Hostname() != "host.docker.internal" || provider.Path != "/v1" || provider.RawQuery != "" || provider.Fragment != "" || provider.User != nil || env["OPENROUTER_BASE_URL"] != providerURL {
+	if err != nil || providerURL != c.config.ChatProviderURL || provider.RawQuery != "" || provider.Fragment != "" || provider.User != nil || env["OPENROUTER_BASE_URL"] != providerURL {
 		return deny()
 	}
-	providerPort, err := strconv.Atoi(provider.Port())
-	if err != nil || providerPort < 1 || providerPort > 65535 {
+	if c.config.ChatModel == "" {
+		providerPort, err := strconv.Atoi(provider.Port())
+		if err != nil || provider.Scheme != "http" || provider.Hostname() != "host.docker.internal" || provider.Path != "/v1" || providerPort < 1 || providerPort > 65535 {
+			return deny()
+		}
+	} else if provider.Scheme != "https" || provider.Hostname() == "" || provider.Port() != "" || provider.Path == "" || strings.HasPrefix(provider.Hostname(), "127.") || provider.Hostname() == "localhost" {
 		return deny()
 	}
 	allowed["OPENAI_BASE_URL"] = providerURL
@@ -212,6 +244,6 @@ func (c *dockerChatCertifier) Certify(ctx context.Context, _ space.State, profil
 	}
 	process := "docker:" + d.ID + ":" + strconv.Itoa(d.State.PID) + ":" + d.State.StartedAt
 	limits := space.RuntimeProfileLimits{Version: 1, MaxTurns: profile.MaxTurns, MaxMessages: profile.MaxMessages, MaxContextBytes: profile.MaxContextBytes, MaxInputTokens: profile.MaxInputTokens, MaxOutputTokens: profile.MaxOutputTokens, MaxTotalTokens: profile.MaxTotalTokens, DeadlineSeconds: profile.DeadlineSeconds}
-	id := space.DigestText(process + probe.ImageID + probe.ConfigDigest + endpoint + profile.Digest)
-	return space.RuntimeCertification{ID: id, RuntimeIdentity: "docker:" + d.ID, EndpointIdentity: endpoint, ArtifactDigest: probe.ImageID, ProcessIdentity: process, HermesVersion: "0.21.1", PluginIdentity: "lumen-chat-zero-tool-patch", PluginCommit: "2237be355906fbe6065ce1815711eee52b2d646e", ProfileDigest: profile.Digest, ConfigDigest: probe.ConfigDigest, EffectiveToolsets: []string{}, MemoryRead: false, MemoryWrite: false, Limits: limits, Evidence: space.DigestText(string(probeBytes)), ExpiresAt: time.Now().Truncate(time.Minute).Add(time.Minute).Unix()}, nil
+	id := space.DigestText(process + probe.ImageID + configDigest + endpoint + profile.Digest)
+	return space.RuntimeCertification{ID: id, RuntimeIdentity: "docker:" + d.ID, EndpointIdentity: endpoint, ArtifactDigest: probe.ImageID, ProcessIdentity: process, HermesVersion: "0.21.1", PluginIdentity: "lumen-chat-zero-tool-patch", PluginCommit: "2237be355906fbe6065ce1815711eee52b2d646e", ProfileDigest: profile.Digest, ConfigDigest: configDigest, EffectiveToolsets: []string{}, MemoryRead: false, MemoryWrite: false, Limits: limits, Evidence: space.DigestText(string(probeBytes)), ExpiresAt: time.Now().Truncate(time.Minute).Add(time.Minute).Unix()}, nil
 }

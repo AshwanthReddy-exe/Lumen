@@ -67,11 +67,53 @@ func TestDockerChatCertifierBindsQualifiedContainer(t *testing.T) {
 	if err != nil || cert.ArtifactDigest != image || cert.ProcessIdentity == "" || cert.ConfigDigest != space.DigestText("zero-tool-config") || cert.EndpointIdentity != "endpoint:test" {
 		t.Fatalf("qualified container certificate=%#v err=%v", cert, err)
 	}
+	realKeyPath := filepath.Join(d, "provider.key")
+	if err := os.WriteFile(realKeyPath, []byte("real-test-key"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	realCfg := cfg
+	realCfg.ChatProviderURL, realCfg.ChatModel, realCfg.ChatProviderKeyPath = "https://provider.example/v1", "real-model", realKeyPath
+	if err := os.WriteFile(configPath, []byte("zero-tool-config\nmodel:\n  default: \"real-model\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	config := inspect["Config"].(map[string]any)
+	realEnv := append([]string{}, goodEnv...)
+	for i, entry := range realEnv {
+		name, _, _ := strings.Cut(entry, "=")
+		switch name {
+		case "API_SERVER_MODEL_NAME", "HERMES_INFERENCE_MODEL":
+			realEnv[i] = name + "=real-model"
+		case "OPENAI_API_KEY", "OPENROUTER_API_KEY":
+			realEnv[i] = name + "=real-test-key"
+		case "OPENAI_BASE_URL", "OPENROUTER_BASE_URL":
+			realEnv[i] = name + "=https://provider.example/v1"
+		}
+	}
+	config["Env"] = realEnv
+	writeInspect()
+	if _, err := newDockerChatCertifier(realCfg, &fakeRuntime{}).Certify(context.Background(), space.State{}, profile); err != nil {
+		t.Fatalf("Hermes-managed route rejected: %v", err)
+	}
+	realCfg.ChatProviderURL = "https://other.example/v1"
+	if _, err := newDockerChatCertifier(realCfg, &fakeRuntime{}).Certify(context.Background(), space.State{}, profile); !errors.Is(err, conversation.ErrRuntimeProfileUnverified) {
+		t.Fatalf("changed route certified: %v", err)
+	}
+	realCfg.ChatProviderURL = "https://provider.example/v1"
+	if err := os.WriteFile(configPath, []byte("zero-tool-config\nmodel:\n  default: \"real-model\"\nplatform_toolsets: [terminal]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newDockerChatCertifier(realCfg, &fakeRuntime{}).Certify(context.Background(), space.State{}, profile); !errors.Is(err, conversation.ErrRuntimeProfileUnverified) {
+		t.Fatalf("modified chat safety profile certified: %v", err)
+	}
+	if err := os.WriteFile(configPath, []byte("zero-tool-config"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	config["Env"] = goodEnv
+	writeInspect()
 	cfg.ChatProviderURL = "http://host.docker.internal:54321/v1"
 	if _, err := newDockerChatCertifier(cfg, &fakeRuntime{}).Certify(context.Background(), space.State{}, profile); !errors.Is(err, conversation.ErrRuntimeProfileUnverified) {
 		t.Fatalf("provider destination mismatch was certified: %v", err)
 	}
-	config := inspect["Config"].(map[string]any)
 	imageEnv = append(imageEnv, "HTTP_PROXY=http://untrusted.example:8080")
 	config["Env"] = append(append([]string{}, goodEnv...), "HTTP_PROXY=http://untrusted.example:8080")
 	writeInspect()

@@ -22,6 +22,30 @@ func TestCallContextHonorsCancellationBeforeDial(t *testing.T) {
 	}
 }
 
+func TestConversationSendCanOutlastDefaultControlDeadline(t *testing.T) {
+	d := shortPrivateDir(t)
+	credential := filepath.Join(d, "operator")
+	if err := WriteCredential(credential, bytes.Repeat([]byte{8}, CredentialSize)); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(d, "host.sock")
+	s, err := NewServer(path, credential, func(_ context.Context, _ Request) Response {
+		time.Sleep(6 * time.Second)
+		return Response{OK: true}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	r, err := Call(path, credential, Request{Command: "conversation send"})
+	if err != nil || !r.OK {
+		t.Fatalf("delayed conversation response: %+v, %v", r, err)
+	}
+}
+
 func TestFrameRejectsOversizedRequest(t *testing.T) {
 	r, w := net.Pipe()
 	defer r.Close()
