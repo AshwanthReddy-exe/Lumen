@@ -1,0 +1,22 @@
+docs:
+  - path: docs/DECISIONS.md
+    type: ADR
+    precedence: 0
+  - path: docs/PLAN.md
+    type: SPEC
+    precedence: 1
+  - path: docs/ARCHITECTURE.md
+    type: SPEC
+    precedence: 2
+  - path: docs/THREAT_MODEL.md
+    type: SPEC
+    precedence: 2
+  - path: docs/PRD.md
+    type: PRD
+    precedence: 3
+  - path: docs/DESIGN-PRINCIPLES.md
+    type: DOC
+    precedence: 4
+  - path: docs/PHASE-2-HOST-HERMES.md
+    type: DOC
+    precedence: 5

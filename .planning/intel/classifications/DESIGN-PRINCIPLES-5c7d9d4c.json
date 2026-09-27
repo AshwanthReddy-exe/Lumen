@@ -1,0 +1,29 @@
+{
+  "source_path": "docs/DESIGN-PRINCIPLES.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Lumen design principles",
+  "summary": "Defines engineering principles for Lumen’s Space authority, trust boundaries, capabilities, state changes, operations, interoperability, and code organization.",
+  "scope": [
+    "Lumen",
+    "Space",
+    "Host",
+    "nodes",
+    "capabilities",
+    "Hermes",
+    "trust boundaries",
+    "state changes",
+    "operations",
+    "interoperability",
+    "code organization"
+  ],
+  "cross_refs": [
+    "./PRD.md",
+    "./ARCHITECTURE.md",
+    "./DECISIONS.md"
+  ],
+  "locked": false,
+  "precedence": 4,
+  "notes": ""
+}

@@ -1,0 +1,38 @@
+{
+  "source_path": "docs/PLAN.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Lumen master development plan",
+  "summary": "Defines Lumen’s phased product releases, architecture and engineering contracts, validation gates, and delivery plan.",
+  "scope": [
+    "Lumen",
+    "Space",
+    "Host",
+    "Hermes",
+    "paired nodes",
+    "conversations",
+    "memory",
+    "permissions",
+    "voice",
+    "release phases",
+    "engineering contracts"
+  ],
+  "cross_refs": [
+    "../.planning/research/BASELINE-EVIDENCE.md",
+    "https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/VOICES.md",
+    "UI-SPEC.md",
+    "PROJECT.md",
+    "REQUIREMENTS.md",
+    "ROADMAP.md",
+    "STATE.md",
+    "onboarding/SUMMARY.md",
+    "01-CONTEXT.md",
+    "01-RESEARCH.md",
+    "01-01-PLAN.md",
+    "01-02-PLAN.md",
+    "01-03-PLAN.md"
+  ],
+  "locked": false,
+  "precedence": 1
+}

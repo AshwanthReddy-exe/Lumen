@@ -8,9 +8,9 @@ The defining experience is not voice alone. It combines presence, continuity, aw
 
 ## Audience and product shape
 
-Lumen serves normal users, power users, and self-hosters through progressive disclosure. A normal user can start with managed hosting and a conversational interface; a power user can inspect memory, permissions, models, tasks, and automation; a self-hoster can operate the same Space contract without receiving a different product.
+Lumen will eventually serve normal users, power users, and self-hosters through progressive disclosure. The first release is a personal alpha with one owner and one always-on Host; paid self-hosted and managed offerings follow demonstrated personal usefulness. A later managed user can start with a conversational interface; a power user can inspect memory, permissions, models, tasks, and automation; a self-hoster can operate the same Space contract without receiving a different product.
 
-The launch wedge is one conversation that continues across a responsive web application, one Hermes-backed messaging gateway, and one lightweight capability node; it includes inspectable memory and one safe, useful cross-node action.
+The personal-alpha wedge is one conversation that survives a laptop shutdown, continues on the phone through the always-on Host, and later authorizes one useful action on the reconnected laptop. It includes inspectable memory, approval and clarification handling, and a verifiable result in the same conversation. A messaging gateway is an expanded-beta capability, not an alpha prerequisite. See [the release sequence](./PLAN.md#release-sequence).
 
 ## Product principles
 
@@ -33,7 +33,7 @@ The Host has two separate Hermes seams. `HermesRuntimeAdapter v1` is the inbound
 
 Each Host binds to one active Hermes runtime. A Hermes session maps to a Host-owned conversation or task and is replaceable; a profile is an immutable digest of approved tools, models/providers, context, budget, deadline, credential handles, and cancellation constraints. `ContextRecord` projections are filtered before serialization, and a runtime's `MemoryProposal` is untrusted until the Host accepts it under provenance, classification, retention, scope, and confirmation rules. For node work, Hermes may propose constraints, but the Host selects the eligible node and the node revalidates the invocation, grant, resource scope, expiry, Host epoch, and local permission.
 
-Milestone 1 offers explicit `combined` and `external` setup choices. Combined owns the Lumen and Hermes artifacts and services in the Docker reference deployment; external adopts an existing independently managed Hermes endpoint and controls only the Host. Both use the same Host-owned task contract and report only `ready`, `degraded`, or `action_required`; topology and assurance remain independent. The [approved dual-topology design](./superpowers/specs/2026-09-11-milestone-1-dual-topology-design.md) defines the evidence required before this milestone can close.
+Milestone 1 offers explicit `combined` and `external` setup choices. Combined owns the Lumen and Hermes artifacts and services in the Docker reference deployment; external adopts an existing independently managed Hermes endpoint and controls only the Host. Both use the same Host-owned task contract and report only `ready`, `degraded`, or `action_required`; topology and assurance remain independent. The [Host/Hermes closure workstream](./PHASE-2-HOST-HERMES.md) and [master plan](./PLAN.md) define the remaining evidence before this foundation closes.
 
 ## Core journeys
 
@@ -113,13 +113,17 @@ The original identifiers remain stable. New product requirements use `FR-60` and
 | FR-78 | Publish versioned node, capability, runtime, and integration contracts, SDKs, conformance fixtures, and compatibility rules without publishing proprietary product code. |
 | FR-79 | Qualify every upstream component for provenance, commercial rights, security, maintenance, data flow, benchmarks, fallback, rollback, and disablement. |
 | FR-80 | Use progressive disclosure so ordinary users avoid infrastructure complexity while power users and self-hosters can inspect advanced controls. |
+| FR-81 | Persist Hermes clarification questions separately from action approvals; answering a question supplies input but grants no new authority. |
+| FR-82 | Show approvals and clarifications in a synchronized attention inbox and their conversation, with one accepted resolution, expiry, and consistent results across surfaces. |
+| FR-83 | Keep wake detection, recognition, and speech synthesis local by default; any remote speech processing requires explicit opt-in and must never be an automatic fallback. |
+| FR-84 | Qualify shared mobile UI and native audio/security modules on physical Android and iPhone devices before committing to that client strategy; provide the documented native-Android plus phone-web fallback if it fails. |
 
 ## Launch capability cohort
 
-The first cohort proves the complete continuity-and-action journey rather than maximizing breadth:
+The personal-alpha cohort proves the complete continuity-and-action journey rather than maximizing breadth:
 
 - Canonical conversation and inspectable memory through the web.
-- One Hermes messaging gateway mapped into the same conversation.
+- A phone conversation and approval surface synchronized through the always-on Host. One messaging gateway follows in expanded beta.
 - A lightweight node exposing restricted `files.search` and `files.read` plus one harmless delivery or notification capability.
 - Hermes-backed `agent.run/execute` for bounded reasoning, with separate authority for every transitive tool or external effect.
 - Local wake word, post-activation speech, and cross-surface handoff once the secure node action path is proven.
@@ -128,13 +132,13 @@ Coding, reminders, browser actions, application control, camera, microphone, she
 
 ## Launch acceptance
 
-A launch candidate must demonstrate that a new user reaches a continuity-and-action moment within ten minutes; one conversation continues across web, messaging, and a capability node; memory is useful, inspectable, correctable, exportable, and deletable; every side effect has deterministic authority and an honest receipt; combined, separated, managed, and hybrid deployments pass the same applicable Space conformance suite; a Space migrates between managed and self-hosted environments; Hermes failure cannot corrupt canonical state; upstream upgrades can roll back without user-data loss; and sustained real-user use meets defined reliability, trust, recovery, and retention targets.
+Personal-alpha acceptance requires the laptop-to-phone-to-laptop journey, inspectable and correctable memory, exact approval, a bounded node receipt, honest offline and uncertain states, recovery drills, measured latency, and a seven-day soak on the declared supported configuration. Later commercial launch additionally requires messaging continuity, independent installation, signed distribution, portability between managed and self-hosted deployments, and operational isolation. Phase-specific gates and evidence live in [PLAN.md](./PLAN.md).
 
 ## Current implementation boundary
 
 The repository has a substantive native Go Space authority, encrypted persistence, task and approval lifecycle, local operator boundary, constrained Hermes Runs adapter, setup planning and artifact/configuration components, and supervision definitions. Those foundations must be preserved.
 
-The public setup runner and whole-deployment doctor are incomplete. Canonical conversations and memory UX, web and messaging surfaces, node pairing and transport, restricted file execution, Jarvis-like voice presence, managed hosting, migration, and the public SDK are not implemented. Requirements describe the target product and must not be read as claims of current availability. Delivery status and evidence belong in [PLAN.md](./PLAN.md) and [CHANGELOG.md](./CHANGELOG.md).
+Combined/external setup, doctor, supervision, and release-generation paths exist on `main`, with remaining live lifecycle and recovery gates recorded in [PLAN.md](./PLAN.md). Canonical conversations and memory UX, web and messaging surfaces, node pairing and transport, restricted file execution, voice presence, managed hosting, migration, and the public SDK are not merged into `main`. [Draft PR #20](https://github.com/AshwanthReddy-exe/Lumen/pull/20) has candidate conversation, memory, isolated Hermes chat, and bounded node-status code; its open proof gates prevent treating it as a shipped feature. Requirements describe the target product, not current availability. Current evidence is in [the Phase 01 ledger](../.planning/research/BASELINE-EVIDENCE.md) and [CHANGELOG.md](./CHANGELOG.md).
 
 ## Non-goals for the first launch
 

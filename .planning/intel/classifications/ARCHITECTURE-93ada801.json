@@ -1,0 +1,13 @@
+{
+  "source_path": "docs/ARCHITECTURE.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Lumen Architecture",
+  "summary": "Defines Lumen's Space authority, Host and node responsibilities, Hermes integration, execution paths, deployment, and security contracts.",
+  "scope": ["Lumen Space", "Host", "nodes", "Hermes", "capabilities", "execution paths", "deployment", "security", "recovery", "conversations", "memory"],
+  "cross_refs": ["./PLAN.md", "../.planning/research/BASELINE-EVIDENCE.md", "./PHASE-2-HOST-HERMES.md", "./research/HERMES-LUMEN-INTEGRATION.md"],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

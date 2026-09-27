@@ -1,0 +1,13 @@
+{
+  "source_path": "docs/THREAT_MODEL.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Lumen V1 threat model",
+  "summary": "Defines Lumen V1 protected assets, trust boundaries, threats, mitigations, security invariants, and release-blocking evidence.",
+  "scope": ["Lumen V1", "Space", "Host", "nodes", "capabilities", "Hermes", "managed deployments", "protocol", "security invariants", "release-blocking evidence"],
+  "cross_refs": ["./PRD.md", "./PLAN.md#evidence-format", "DECISIONS.md"],
+  "locked": false,
+  "precedence": 2,
+  "notes": ""
+}

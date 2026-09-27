@@ -24,7 +24,7 @@ V1 has one active headless Host process. The same service artifact may run on Li
 
 ## Current implementation status
 
-The repository currently implements the Go Space authority, encrypted durable storage, owner-restricted local control, Host-local task execution and recovery, and a versioned Hermes Runs adapter. The public setup, doctor, and service experience is not yet complete. Canonical conversations and product memory, authenticated node transport, remote node execution, restricted file capabilities, web and messaging surfaces, and the Jarvis voice experience described below are target architecture, not shipped behavior. Phase-specific evidence is tracked in [PLAN.md](./PLAN.md); architecture must not be read as an implementation claim.
+On `main`, the repository implements the Go Space authority, encrypted durable storage, owner-restricted local control, Host-local task execution and recovery, a versioned Hermes Runs adapter, and combined/external setup, doctor, service, and release-generation paths. These are not proof that every live installation, update, rollback, or cross-machine recovery gate has passed. Canonical conversations and product memory, authenticated node transport, remote node execution, restricted file capabilities, web and messaging surfaces, and the Jarvis voice experience are not merged into `main`. [Draft PR #20](https://github.com/AshwanthReddy-exe/Lumen/pull/20) contains candidate conversation, memory, isolated-chat, and bounded `node.status/read` work, but is not product acceptance. Current evidence and open gates are tracked in [PLAN.md](./PLAN.md) and [the Phase 01 ledger](../.planning/research/BASELINE-EVIDENCE.md).
 
 ## Component responsibilities
 
@@ -32,7 +32,7 @@ The repository currently implements the Go Space authority, encrypted durable st
 
 The Host owns the Space identity, canonical conversations, accepted memory and shared context, node and integration registries, capability grants, durable task and automation state, routing, approval records, audit history, and portable encrypted state. It authenticates messages and actively selects only eligible execution targets. It does not need to proxy local model calls or same-device tool traffic.
 
-The first production composition is a native Go Host service that combines the pure Go Space authority core with encrypted durable storage, a local operator control boundary, structured health, and a versioned Hermes Runtime Adapter. One native command contract runs on Linux/VPS, macOS, and Android Termux. Host correctness never depends on Hermes availability. Kotlin remains Android application code and Swift remains Apple application code; nodes share schemas and conformance fixtures rather than Host implementation internals.
+The first production composition is a native Go Host service that combines the pure Go Space authority core with encrypted durable storage, a local operator control boundary, structured health, and a versioned Hermes Runtime Adapter. One native command contract runs on Linux/VPS, macOS, and Android Termux. Host correctness never depends on Hermes availability. Mobile client implementation is experiment-gated: evaluate a shared Expo/React Native UI with native Kotlin/Swift modules on physical devices, then use Kotlin Android plus responsive phone web if the shared-client gate fails. Nodes share schemas and conformance fixtures rather than Host implementation internals.
 
 The previously merged Android foreground service and Android-owned canonical store proved the portable boundary on a phone but assigned authority to the wrong process. They have been removed from the companion application and remain available only through Git history. [PHASE-2-HOST-HERMES.md](./PHASE-2-HOST-HERMES.md) records the replacement slice.
 
@@ -111,7 +111,7 @@ The origin surface does not need to name a device. The Host resolves a target fr
 
 Cross-node work requires the Host. When it is unavailable, the origin reports that fact and may queue only within an explicit delivery policy.
 
-The first transport implementation is local-network: mDNS discovers a previously paired Host, then nodes use one mutually authenticated encrypted channel. Discovery is never trust. The secure-node milestone extends the same signed envelope and authority contract through outbound persistent sessions and a content-blind relay for managed and NAT-bound nodes; the relay has no Space keys or authority and cannot assert completion. Push wake-up remains capability-driven later work.
+For the personal alpha, Tailscale-assisted private reachability is the remote baseline while Lumen retains its own authenticated, versioned, transport-independent node protocol. mDNS may discover a previously paired Host on a local network but is never trust or authority. Build a content-blind public relay only if measured onboarding and connectivity require it; a relay would hold no Space keys or authority and could not assert completion. Push wake-up remains later work.
 
 ## Capability contract
 
@@ -133,13 +133,13 @@ State-changing capability contracts also declare authority, validation point, id
 
 All surfaces map into Host-owned `Conversation`, `Message`, `Participant`, and `Surface` records. Hermes runtime sessions are replaceable execution mappings, not conversation authority. A runtime outage, upgrade, or replacement cannot erase canonical history.
 
-Runtimes may propose memory, but only the Host validates and persists canonical records. Low-risk memory may be accepted automatically under an inspectable retention policy; sensitive or consequential durable memory requires confirmation. Records carry scope, provenance, classification, retention, expiry, confidence, and a digest; users can inspect why a record exists and edit, export, or delete it within their authorized scope. Deletion excludes it from future context projections and follows the documented durable deletion and backup policy.
+Runtimes may propose memory, but only the Host validates and persists canonical records. Personal alpha begins with explicit preferences and clearly proposed facts; automatic acceptance requires a later policy and retrieval evaluation. Records carry scope, provenance, classification, retention, expiry, confidence, and a digest; users can inspect why a record exists and edit, export, or delete it within their authorized scope. Deletion excludes it from future context projections and follows the documented durable deletion and backup policy.
 
 The Host stores canonical Space context as typed records and append-only events, not one unbounded prompt. Context namespaces include user preferences, projects, devices, tasks, schedules, and capability-specific memory. Each synchronized record carries origin node, version, timestamp, classification, retention, and content digest.
 
 Users choose a synchronization level per capability: `none`, `metadata`, `summary`, or `content`. Local context remains usable when disconnected. Conflicting mutable records are preserved as conflicts or resolved by a type-specific rule; arrival order alone never silently wins.
 
-The target durable entities are `Space`, `Identity`, `Conversation`, `Message`, `Participant`, `Surface`, `Node`, `Integration`, `CapabilityManifest`, `Grant`, `Task`, `TaskEvent`, `Approval`, `Automation`, `Schedule`, `ContextRecord`, `MemoryProposal`, `RetentionPolicy`, `Artifact`, and `Receipt`. Entities not present in the current Go model remain planned contracts.
+The target durable entities are `Space`, `Identity`, `Conversation`, `Message`, `Participant`, `Surface`, `ConversationEvent`, `CommandReceipt`, `Node`, `Integration`, `CapabilityManifest`, `Grant`, `Task`, `TaskEvent`, `ApprovalRequest`, `InteractionRequest`, `Invocation`, `ExecutionReceipt`, `Automation`, `Schedule`, `ContextRecord`, `MemoryProposal`, `RetentionPolicy`, and `ArtifactReference`. An approval is bound to exact action and authority; a clarification answer supplies input and never grants authority. Both have expiry and one accepted resolution synchronized across surfaces. Entities not present in the current Go model remain planned contracts.
 
 ## Task lifecycle
 
@@ -188,7 +188,7 @@ Any active state may move to interrupted, offline, or degraded.
 
 A button, text command, shortcut, or node-local wake word activates a conversation. Wake-word and voice-activity detection before activation run entirely on the node without model calls; Hermes client capture and remote wake detection are prohibited. No audio, transcript, activation metadata, model call, or tool call leaves the node before activation. Listening is visibly and audibly understandable, capture is short-lived by default, microphone permission is capability- and OS-gated, and the user always has immediate stop and barge-in control.
 
-After activation, Lumen prefers Hermes voice orchestration and selects local or cloud speech-to-text, text-to-speech, interruption, and diarization components only under the upstream qualification rule and data policy. Wake detection remains local. Voice handoff changes the active surface without creating another conversation or memory. Proactive suggestions are allowed within policy; background actions require explicit, narrow, inspectable, and revocable automation grants.
+After local wake detection, speech recognition and synthesis run locally by default. Remote speech processing requires explicit opt-in and may use a qualified Hermes capability; it is never an automatic fallback from a missing local engine. Voice handoff changes the active surface without creating another conversation or memory. Proactive suggestions are allowed within policy; background actions require explicit, narrow, inspectable, and revocable automation grants.
 
 `browser.run` is a capability adapter, not a general browser attached to the runtime. The first actions are read-only research, navigation, and extraction on allowlisted public sites. A browser profile is a protected credential boundary: the Host stores only an opaque profile reference, never cookies or passwords as context. Draft and submit actions require an exact preview, one-time approval, durable receipt, and an honest unknown outcome when completion cannot be verified.
 

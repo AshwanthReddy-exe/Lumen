@@ -1,0 +1,13 @@
+{
+  "source_path": "docs/DECISIONS.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Decisions",
+  "summary": "Records accepted and superseded product and technical decisions for Lumen, including their consequences and references to decision contracts and plans.",
+  "scope": ["Lumen", "Space", "Host", "capabilities", "Hermes", "deployment topologies", "mobile client", "transport", "memory"],
+  "cross_refs": ["./O-002-CONTEXT.md", "./O-003-TRANSPORT.md", "./O-005-RECOVERY.md", "./O-006-CAPABILITIES.md", "./O-004-HOST.md", "./PHASE-2-HOST-HERMES.md", "./ARCHITECTURE.md", "./research/HERMES-LUMEN-INTEGRATION.md", "./PLAN.md#required-experiments", "./PLAN.md#device-connectivity-and-synchronization", "./PLAN.md#release-sequence", "./PLAN.md#conversation-and-memory"],
+  "locked": false,
+  "precedence": 0,
+  "notes": "Manifest declares ADR. The document groups entries under Accepted and Superseded rather than having one document-level status, so locked is false."
+}
