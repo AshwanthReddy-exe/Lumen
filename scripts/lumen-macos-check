@@ -540,16 +540,38 @@ printf 'E1 duplicate/reordered barrier: task=%s run=%s host=running runtime=%s d
 provider_hold=$(compose exec -T lumen-provider python -c \
 	'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/status", data=b""))["held"])')
 [ "$provider_hold" = True ] || fail 'synthetic provider released before Host durably processed the duplicate barrier'
+printf '%s\n' '=> stop the exact pinned Run while inference is held'
+reordered_before_stop=$("$host_artifact" task show --task_id "$reordered_task") || fail 'Host task unavailable immediately before stop'
+[ "$(printf '%s' "$reordered_before_stop" | jq -r '.task.status')" = running ] || fail 'Host task was not running immediately before stop'
+reordered_runtime_before_stop=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status') || fail 'pinned Run status unavailable immediately before stop'
+case "$reordered_runtime_before_stop" in queued|started|running) ;; *) fail "pinned Run not in flight immediately before stop: $reordered_runtime_before_stop" ;; esac
+"$host_artifact" task cancel \
+	--request_id "macos-reordered-cancel-$probe_suffix" --task_id "$reordered_task" >/dev/null || fail 'Host rejected stop for the in-flight pinned Run'
+i=0
+while [ "$i" -lt 60 ]; do
+	reordered_stopped=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+		"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status') || fail 'pinned Run status unavailable after stop'
+	case "$reordered_stopped" in cancelled|canceled) break ;; esac
+	i=$((i + 1))
+	sleep 1
+done
+case "$reordered_stopped" in cancelled|canceled) ;; *) fail "pinned Run did not cancel while provider was held: $reordered_stopped" ;; esac
+reordered_stopped_shown=$("$host_artifact" task show --task_id "$reordered_task") || fail 'Host task status unavailable after stop'
+[ "$(printf '%s' "$reordered_stopped_shown" | jq -r '.task.status')" = cancelled ] || fail 'Host did not durably record cancellation of the in-flight Run'
+provider_hold=$(compose exec -T lumen-provider python -c \
+	'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/status", data=b""))["held"])')
+[ "$provider_hold" = True ] || fail 'provider was not still held when Hermes confirmed cancellation'
+printf 'E1 in-flight stop: task=%s run=%s before_host=running before_runtime=%s after_host=cancelled after_runtime=%s provider_held=true\n' \
+	"$reordered_task" "$reordered_run" "$reordered_runtime_before_stop" "$reordered_stopped"
 compose exec -T lumen-provider python -c \
 	'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/release", data=b"").close()' \
-	>/dev/null || fail 'synthetic provider did not release the held model response'
+	>/dev/null || fail 'synthetic provider did not release after cancellation'
 i=0
 while [ "$i" -lt 180 ]; do
 	reordered_shown=$("$host_artifact" task show --task_id "$reordered_task") || fail 'duplicate/reordered E1 task status unavailable'
 	reordered_status=$(printf '%s' "$reordered_shown" | jq -r '.task.status')
-	case "$reordered_status" in
-		completed|failed|cancelled) break ;;
-	esac
+	case "$reordered_status" in cancelled) break ;; completed|failed|unknown_outcome) fail "stopped task changed to $reordered_status after provider release" ;; esac
 	i=$((i + 1))
 	sleep 1
 done
@@ -561,8 +583,8 @@ reordered_runtime_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
 	"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status')
 printf 'E1 duplicate/reordered: task=%s run=%s frames=4 sequence=2,1,2,3 conflicting_duplicate=failed host=%s runtime=%s creates_for_task=1 injected_frames=true provider_held_through_barrier=true\n' \
 	"$reordered_task" "$reordered_run" "$reordered_status" "$reordered_runtime_status"
-[ "$reordered_runtime_status" = completed ] || fail "duplicate/reordered runtime ended as $reordered_runtime_status"
-[ "$reordered_status" = completed ] || fail "Host did not ignore the conflicting duplicate and reconcile completion: $reordered_status"
+case "$reordered_runtime_status" in cancelled|canceled) ;; *) fail "stopped duplicate/reordered runtime ended as $reordered_runtime_status" ;; esac
+[ "$reordered_status" = cancelled ] || fail "Host did not preserve cancellation after provider release: $reordered_status"
 
 if [ "${LUMEN_E1_AMBIGUOUS_CREATE:-0}" = 1 ]; then
 	printf '%s\n' '=> pinned E1 ambiguous create response'
