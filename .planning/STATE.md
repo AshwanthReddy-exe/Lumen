@@ -2,10 +2,10 @@
 gsd_state_version: "1.0"
 current_phase: 02
 status: "Phase 02 execution in progress"
-stopped_at: Plan 03 pinned gateway-restart probe passed; duplicate/reordered events and genuinely running stop remain open.
-last_updated: "2026-09-27T18:21:35Z"
+stopped_at: Plan 03 exact-run Host/SSE interruption passed on macOS; duplicate/reordered events and genuinely running stop remain open.
+last_updated: "2026-09-27T18:29:40Z"
 last_activity: 2026-09-27
-state_head: ec386e1edafebe34ed8a0b6e8ffaada74e308ce9
+state_head: b4d5432c0b1ef844756c89273e01e6438b067b47
 progress:
   total_phases: 17
   completed_phases: 1
@@ -54,8 +54,8 @@ None yet.
 - The owner approved Phase 01 and PR #21 merged on 2026-09-27; the Phase 02 branch starts at `81b60e3`.
 - Phase 02 live gates require pinned Hermes, a real update/rollback machine, and a second machine for external Runs; no synthetic probe can stand in for those results.
 - PR #20 is closed after useful dirty work was preserved on a verified remote branch; its real-provider HTTP 401 remains open for the later chat phase.
-- Plan 03 proves pinned synthetic-profile SSE interruption, Host crash/restart reconciliation, ambiguous-create no-redispatch, and gateway restart while a Run was active. Gateway task `macos-gateway-restart-1790532962-74867` / Run `run_b86e47659cff437e910d7b3be7882caf` produced one create, preserved the mapping, and reached matching runtime/Host `completed` status with output category `interrupted`; its final security-tightened assertion passed in log `1790532983_mise_run_f350c7.log`. The full journey then failed later, in the separate Host/SSE crash checkpoint, because that task reached `completed` before pre-kill observation. An earlier full invocation demonstrated the ambiguous-create behavior, but preceded the final output-log redaction. `phase2-check` passed after the implementation changes. Duplicate/reordered live event delivery, genuinely running stop, and clarification support remain open/unsupported.
-- Independent security review of the final gateway-restart proxy/assertions passed. The latest full macOS journey passed that gateway-restart row, then exposed a timing race in the separate Host/SSE pre-kill check (`completed` before the intended in-flight observation). The next bounded task is to make that Host/SSE interruption probe deterministically cut while the Run is active; then continue duplicate/reordered event delivery. Linux/VPS install/update/rollback and cross-machine gates still require the owner's SSH target.
+- Plan 03 exact-run Host/SSE interruption passed on macOS: task `macos-e1-1790533614-80598`, Run `run_a3fd9ed35bc7421fbdae0e1b0aca7937`, pre-kill `running`, same durable mapping after restart, one create, and unchanged encrypted state across SIGKILL; log `/Users/ashwanthreddyboddireddy/Library/Application Support/rtk/tee/1790533636_mise_run_f350c7.log`. The probe now binds the SSE cut to the exact Run returned for the armed idempotency key, preventing unrelated streams from consuming it. Full macOS journey and all nine Go packages passed. This is pinned synthetic-provider lifecycle evidence only. Follow-up security review pending. Duplicate/reordered live event delivery, genuinely running stop, and clarification support remain open/unsupported.
+- Independent read-only security review passed for the exact-run E1 response capture and SSE path predicate. Next bounded task: exercise duplicate/reordered live event delivery. Linux/VPS install/update/rollback and cross-machine gates still require the owner's SSH target.
 - Physical device, recovery and seven-day soak evidence remain unverified.
 
 ## Deferred Items
@@ -67,5 +67,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-09-27
-Stopped at: Stabilize the pinned Host/SSE pre-kill in-flight observation, then test duplicate/reordered event delivery; Linux/VPS evidence awaits the owner-provided SSH target.
+Stopped at: Exact-run Host/SSE interruption probe passed; next test duplicate/reordered event delivery. Linux/VPS evidence awaits the owner-provided SSH target.
 Resume file: None
