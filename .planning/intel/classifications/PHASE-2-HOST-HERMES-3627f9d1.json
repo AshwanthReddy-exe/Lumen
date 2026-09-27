@@ -1,0 +1,13 @@
+{
+  "source_path": "docs/PHASE-2-HOST-HERMES.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Host and Hermes foundation closure",
+  "summary": "Documents the Host and Hermes foundation implementation contract, deployment evidence, failure behavior, validation gates, and closure criteria.",
+  "scope": ["Host", "Hermes", "deployment", "operator CLI", "durable storage", "process supervision", "validation gates"],
+  "cross_refs": ["./PLAN.md"],
+  "locked": false,
+  "precedence": 5,
+  "notes": ""
+}

@@ -38,7 +38,7 @@ Milestone 1 remains active. The repository explicitly says that clean setup, pin
 | Item | Provenance and status |
 | --- | --- |
 | Hermes is Nous Research's open-source agent platform | Official project identity: [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent). The report identifies this interpretation at lines 3–9. |
-| Official latest release `v2026.9.7`, internal version `0.21.1`, published 7 September 2026 | The release tag is the official snapshot and resolves to peeled commit `2237be355906fbe6065ce1815711eee52b2d646e` (`2237be3`), corroborated by the repository planning handoff at `docs/superpowers/plans/2026-09-11-milestone-1-foundation-closure.md:66-73` and the [official release tag](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.7). This establishes source identity only: it is not a Lumen certification. Curated feature notes below are intentionally deferred to the pinned-build probes and must not be treated as proof of behavior. |
+| Official latest release `v2026.9.7`, internal version `0.21.1`, published 7 September 2026 | The release tag is the official snapshot and resolves to peeled commit `2237be355906fbe6065ce1815711eee52b2d646e` (`2237be3`), as shown by the [official release tag](https://github.com/NousResearch/hermes-agent/releases/tag/v2026.9.7). Lumen's current runtime integration and evidence status are summarized in the [delivery plan](../PLAN.md). This establishes source identity only: it is not a Lumen certification. Curated feature notes below are intentionally deferred to the pinned-build probes and must not be treated as proof of behavior. |
 | Lumen uses the documented API server surface | `docs/PHASE-2-HOST-HERMES.md:67-85` and the official [programmatic integration guide](https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration). |
 | Existing Lumen adapter supports capabilities, health, Runs, status, SSE, approval, steer, stop | Repository fact: `internal/hermes/client.go:17-80,182-193,319-479`; `internal/hermes/events.go:16-190`. |
 | Hermes is rapidly changing and pre-1.0 according to the report | Report claim at lines 9 and 77–79. Treat as an integration-risk signal, not a substitute for pinning and probes. |
@@ -383,7 +383,7 @@ The report's useful observations are at lines 11–23, 150–194, 217–245, 656
 | Node access | Local broker first | Versioned mTLS envelopes; relay only opaque transport |
 | Evidence status | Development/personal until gates pass | Hardened only after isolation, mTLS, rollback, and recovery evidence |
 
-Do not infer release readiness from a local process restart, socket presence, synthetic state, or HTTP health alone. `docs/superpowers/specs/2026-09-11-milestone-1-dual-topology-design.md:91-124` defines the truthful doctor and deployment requirements.
+Do not infer release readiness from a local process restart, socket presence, synthetic state, or HTTP health alone. The [architecture](../ARCHITECTURE.md) defines combined and external topology ownership and readiness status; the [delivery plan](../PLAN.md) records the deployment acceptance gates.
 
 ## Exhaustive negative and recovery test matrix
 

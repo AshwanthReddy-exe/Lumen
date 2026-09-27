@@ -1,0 +1,98 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": null,
+  "phases": [
+    {
+      "number": "01",
+      "name": "Reconcile the repository and establish GSD authority",
+      "status": "complete"
+    },
+    {
+      "number": "02",
+      "name": "Close the existing Host/Hermes foundation",
+      "status": "pending"
+    },
+    {
+      "number": "03",
+      "name": "Validate mobile, storage, network and wake foundations",
+      "status": "pending"
+    },
+    {
+      "number": "04",
+      "name": "Canonical conversations and product API",
+      "status": "pending"
+    },
+    {
+      "number": "05",
+      "name": "Accepted memory and context controls",
+      "status": "pending"
+    },
+    {
+      "number": "06",
+      "name": "Pairing, client identity and reliable synchronization",
+      "status": "pending"
+    },
+    {
+      "number": "07",
+      "name": "Attention inbox and cross-device human input",
+      "status": "pending"
+    },
+    {
+      "number": "08",
+      "name": "Mac execution node and useful cross-device action",
+      "status": "pending"
+    },
+    {
+      "number": "09",
+      "name": "Speech and Android desk companion",
+      "status": "pending"
+    },
+    {
+      "number": "10",
+      "name": "Personal alpha acceptance and recovery",
+      "status": "pending"
+    },
+    {
+      "number": "11",
+      "name": "One messaging integration",
+      "status": "pending"
+    },
+    {
+      "number": "12",
+      "name": "Apple abilities and controlled browsing",
+      "status": "pending"
+    },
+    {
+      "number": "13",
+      "name": "Controlled coding and broader device execution",
+      "status": "pending"
+    },
+    {
+      "number": "14",
+      "name": "Durable automation and delegation",
+      "status": "pending"
+    },
+    {
+      "number": "15",
+      "name": "Paid self-hosted readiness",
+      "status": "pending"
+    },
+    {
+      "number": "16",
+      "name": "Managed service",
+      "status": "pending"
+    },
+    {
+      "number": "17",
+      "name": "Public integration ecosystem and shared Spaces",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 01 of 17 complete locally; PR review and merge precede Phase 02"
+  },
+  "updated_at": "2026-09-27T07:50:23.941Z"
+}
