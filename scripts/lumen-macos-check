@@ -112,6 +112,7 @@ export LUMEN_HERMES_CA_SOURCE="$secret_dir/hermes.token"
 export LUMEN_HERMES_CLIENT_CERT_SOURCE="$secret_dir/hermes.token"
 export LUMEN_HERMES_CLIENT_KEY_SOURCE="$secret_dir/hermes.token"
 export LUMEN_PROVIDER_DELAY_MS="$provider_delay_ms"
+export LUMEN_PROVIDER_HOLD_MARKER='E1 duplicate and reordered event probe'
 export HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
 export HERMES_SOURCE_ARCHIVE_SHA256=907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688
 export COMPOSE_PROJECT_NAME="$project"
@@ -176,6 +177,9 @@ export LUMEN_E1_PROXY_STATE="$work_dir/e1-proxy.json"
 export LUMEN_E1_PROXY_ARM="$work_dir/e1-arm"
 export LUMEN_E1_CREATE_DROP_ARM="$work_dir/e1-create-drop-arm"
 export LUMEN_E1_GATEWAY_RESTART_ARM="$work_dir/e1-gateway-restart-arm"
+export LUMEN_E1_REORDER_ARM="$work_dir/e1-reorder-arm"
+export LUMEN_E1_REORDER_PREFIX_RELEASE="$work_dir/e1-reorder-prefix-release"
+export LUMEN_E1_REORDER_RELEASE="$work_dir/e1-reorder-release"
 python3 scripts/lumen-e1-proxy.py >"$work_dir/e1-proxy.log" 2>&1 &
 proxy_pid=$!
 i=0
@@ -440,6 +444,125 @@ printf 'E1: task=%s run=%s event_type=%s event_id=%s creates_for_task=1 prekill_
 	"$e1_task" "$(jq -r '.run_id' "$LUMEN_E1_PROXY_STATE")" \
 	"$(jq -r '.event_type' "$LUMEN_E1_PROXY_STATE")" \
 	"$(jq -r '.event_id' "$LUMEN_E1_PROXY_STATE")" "$prekill_status" "$e1_status" "$runtime_status"
+
+printf '%s\n' '=> pinned E1 duplicate and reordered SSE delivery'
+reordered_creates_before=$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")
+reordered_now=$(date +%s)
+reordered_reconcile=$((reordered_now + 180))
+reordered_request="macos-reordered-submit-$probe_suffix"
+reordered_task="macos-reordered-$probe_suffix"
+printf '%s\n' "$reordered_request" >"$LUMEN_E1_REORDER_ARM"
+"$host_artifact" task submit \
+	--request_id "$reordered_request" --task_id "$reordered_task" \
+	--capability_id agent.run/execute --action run \
+	--action_fingerprint macos-reordered-input --input 'E1 duplicate and reordered event probe' \
+	--runtime_profile_digest dev-local-v1 --reconcile_by "$reordered_reconcile" >/dev/null
+"$host_artifact" approval resolve \
+	--request_id "macos-reordered-approve-$probe_suffix" --task_id "$reordered_task" \
+	--target_node_id "$host_node_id" --action_fingerprint macos-reordered-input \
+	--approval_id "macos-reordered-approval-$probe_suffix" --approved_at "$reordered_now" \
+	--expires_at "$reordered_reconcile" --reconcile_by "$reordered_reconcile" \
+	--runtime_profile_digest dev-local-v1 --input 'E1 duplicate and reordered event probe' --decision once >/dev/null
+i=0
+while [ "$(jq -r '.reordered_prefix_sent' "$LUMEN_E1_PROXY_STATE")" != true ] && [ "$i" -lt 60 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.reordered_prefix_sent' "$LUMEN_E1_PROXY_STATE")" = true ] || fail 'reordered SSE prefix was not delivered'
+reordered_run=$(jq -r '.reordered_run_id' "$LUMEN_E1_PROXY_STATE")
+[ -n "$reordered_run" ] || fail 'duplicate/reordered probe Run ID was not captured'
+[ "$(jq -r '.reordered_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'duplicate/reordered probe issued multiple Run creates'
+i=0
+reordered_prefix_shown=
+while [ "$i" -lt 20 ]; do
+	reordered_prefix_shown=$("$host_artifact" task show --task_id "$reordered_task") || fail 'duplicate/reordered task unavailable before conflicting duplicate'
+	reordered_prefix_status=$(printf '%s' "$reordered_prefix_shown" | jq -r '.task.status')
+	[ "$reordered_prefix_status" = running ] && break
+	case "$reordered_prefix_status" in failed|cancelled|unknown_outcome) fail "task became terminal before duplicate probe: $reordered_prefix_status" ;; esac
+	i=$((i + 1))
+	sleep 1
+done
+[ "$reordered_prefix_status" = running ] || fail 'Host did not durably observe the injected running prefix'
+[ "$(printf '%s' "$reordered_prefix_shown" | jq -r '.run.runtimeRunId')" = "$reordered_run" ] || fail 'duplicate/reordered task Run mapping changed before conflicting duplicate'
+reordered_prefix_runtime=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status')
+case "$reordered_prefix_runtime" in
+	queued|started|running) ;;
+	*) fail "runtime was not in flight before conflicting duplicate: $reordered_prefix_runtime" ;;
+esac
+provider_hold=$(compose exec -T lumen-provider python -c \
+	'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/status", data=b""))["held"])')
+[ "$provider_hold" = True ] || fail 'synthetic provider did not confirm the marked Run is held'
+printf 'E1 duplicate/reordered precondition: task=%s run=%s host=running runtime=%s provider_held=true prefix_sent=true\n' \
+	"$reordered_task" "$reordered_run" "$reordered_prefix_runtime"
+reordered_first_hash=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+: >"$LUMEN_E1_REORDER_PREFIX_RELEASE"
+i=0
+while [ "$(jq -r '.reordered_older_sent' "$LUMEN_E1_PROXY_STATE")" != true ] && [ "$i" -lt 30 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.reordered_older_sent' "$LUMEN_E1_PROXY_STATE")" = true ] || fail 'out-of-order older SSE frame was not delivered'
+i=0
+reordered_after_older_hash=$reordered_first_hash
+while [ "$reordered_after_older_hash" = "$reordered_first_hash" ] && [ "$i" -lt 30 ]; do
+	reordered_after_older_hash=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+	i=$((i + 1))
+	sleep 1
+done
+[ "$reordered_after_older_hash" != "$reordered_first_hash" ] || fail 'Host did not durably process the out-of-order older event before duplicate injection'
+reordered_before_hash=$reordered_after_older_hash
+: >"$LUMEN_E1_REORDER_RELEASE"
+i=0
+while [ "$(jq -r '.reordered_barrier_sent' "$LUMEN_E1_PROXY_STATE")" != true ] && [ "$i" -lt 60 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.reordered_barrier_sent' "$LUMEN_E1_PROXY_STATE")" = true ] || fail 'post-duplicate barrier frame was not delivered'
+i=0
+reordered_after_hash=$reordered_before_hash
+while [ "$reordered_after_hash" = "$reordered_before_hash" ] && [ "$i" -lt 30 ]; do
+	reordered_after_hash=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+	i=$((i + 1))
+	sleep 1
+done
+[ "$reordered_after_hash" != "$reordered_before_hash" ] || fail 'Host did not durably process the post-duplicate barrier event'
+reordered_barrier_shown=$("$host_artifact" task show --task_id "$reordered_task") || fail 'duplicate/reordered task unavailable after barrier'
+[ "$(printf '%s' "$reordered_barrier_shown" | jq -r '.task.status')" = running ] || fail 'Host applied the conflicting duplicate instead of ignoring it'
+reordered_barrier_runtime=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status')
+case "$reordered_barrier_runtime" in
+	queued|started|running) ;;
+	*) fail "runtime completed before duplicate handling was observed: $reordered_barrier_runtime" ;;
+esac
+printf 'E1 duplicate/reordered barrier: task=%s run=%s host=running runtime=%s durable_event_processed=true\n' \
+	"$reordered_task" "$reordered_run" "$reordered_barrier_runtime"
+provider_hold=$(compose exec -T lumen-provider python -c \
+	'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/status", data=b""))["held"])')
+[ "$provider_hold" = True ] || fail 'synthetic provider released before Host durably processed the duplicate barrier'
+compose exec -T lumen-provider python -c \
+	'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/release", data=b"").close()' \
+	>/dev/null || fail 'synthetic provider did not release the held model response'
+i=0
+while [ "$i" -lt 180 ]; do
+	reordered_shown=$("$host_artifact" task show --task_id "$reordered_task") || fail 'duplicate/reordered E1 task status unavailable'
+	reordered_status=$(printf '%s' "$reordered_shown" | jq -r '.task.status')
+	case "$reordered_status" in
+		completed|failed|cancelled) break ;;
+	esac
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.reordered_frames_sent' "$LUMEN_E1_PROXY_STATE")" -eq 4 ] || fail 'duplicate/reordered frame sequence was incomplete'
+[ "$(jq -r '.reordered_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'duplicate/reordered probe issued multiple Run creates'
+[ "$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")" -eq "$((reordered_creates_before + 1))" ] || fail 'unexpected Run create during duplicate/reordered probe'
+[ "$(printf '%s' "$reordered_shown" | jq -r '.run.runtimeRunId')" = "$reordered_run" ] || fail 'duplicate/reordered task Run mapping changed'
+reordered_runtime_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status')
+printf 'E1 duplicate/reordered: task=%s run=%s frames=4 sequence=2,1,2,3 conflicting_duplicate=failed host=%s runtime=%s creates_for_task=1 injected_frames=true provider_held_through_barrier=true\n' \
+	"$reordered_task" "$reordered_run" "$reordered_status" "$reordered_runtime_status"
+[ "$reordered_runtime_status" = completed ] || fail "duplicate/reordered runtime ended as $reordered_runtime_status"
+[ "$reordered_status" = completed ] || fail "Host did not ignore the conflicting duplicate and reconcile completion: $reordered_status"
 
 if [ "${LUMEN_E1_AMBIGUOUS_CREATE:-0}" = 1 ]; then
 	printf '%s\n' '=> pinned E1 ambiguous create response'

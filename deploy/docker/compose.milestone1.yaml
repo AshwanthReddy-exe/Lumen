@@ -20,9 +20,13 @@ services:
         import json
         import os
         import time
+        from threading import Event
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
         delay = float(os.environ.get("LUMEN_PROVIDER_DELAY_MS", "0")) / 1000.0
+        hold_marker = os.environ.get("LUMEN_PROVIDER_HOLD_MARKER", "")
+        release = Event()
+        hold_started = Event()
 
         class Provider(BaseHTTPRequestHandler):
             def log_message(self, *_):
@@ -36,6 +40,25 @@ services:
                     return
                 self.send_error(404)
             def do_POST(self):
+                if self.path == "/__lumen_test/status":
+                    if self.client_address[0] != "127.0.0.1":
+                        self.send_error(403)
+                        return
+                    encoded = json.dumps({"held": hold_started.is_set() and not release.is_set()}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(encoded)))
+                    self.end_headers()
+                    self.wfile.write(encoded)
+                    return
+                if self.path == "/__lumen_test/release":
+                    if self.client_address[0] != "127.0.0.1":
+                        self.send_error(403)
+                        return
+                    release.set()
+                    self.send_response(204)
+                    self.end_headers()
+                    return
                 if self.path != "/v1/chat/completions":
                     self.send_error(404)
                     return
@@ -45,6 +68,11 @@ services:
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 body = json.loads(self.rfile.read(length) or b"{}")
+                if hold_marker and hold_marker in json.dumps(body):
+                    hold_started.set()
+                    if not release.wait(timeout=120):
+                        self.send_error(503)
+                        return
                 if delay > 0:
                     time.sleep(delay)
                 response = {"id":"synthetic-chat","object":"chat.completion","created":0,"model":body.get("model","synthetic-model"),"choices":[{"index":0,"message":{"role":"assistant","content":"synthetic marker"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}
@@ -69,6 +97,7 @@ services:
     restart: unless-stopped
     environment:
       LUMEN_PROVIDER_DELAY_MS: ${LUMEN_PROVIDER_DELAY_MS:-0}
+      LUMEN_PROVIDER_HOLD_MARKER: ${LUMEN_PROVIDER_HOLD_MARKER:-}
     networks: [lumen-private]
   lumen-hermes:
     image: ${LUMEN_HERMES_BUILD_IMAGE:?set isolated Hermes build image}

@@ -6,6 +6,7 @@ import http.server
 import json
 import os
 import threading
+import time
 import urllib.parse
 
 
@@ -14,12 +15,19 @@ STATE_FILE = os.environ["LUMEN_E1_PROXY_STATE"]
 ARM_FILE = os.environ["LUMEN_E1_PROXY_ARM"]
 CREATE_DROP_ARM = os.environ["LUMEN_E1_CREATE_DROP_ARM"]
 GATEWAY_RESTART_ARM = os.environ["LUMEN_E1_GATEWAY_RESTART_ARM"]
+REORDER_ARM = os.environ["LUMEN_E1_REORDER_ARM"]
+REORDER_PREFIX_RELEASE = os.environ["LUMEN_E1_REORDER_PREFIX_RELEASE"]
+REORDER_RELEASE = os.environ["LUMEN_E1_REORDER_RELEASE"]
 LOCK = threading.Lock()
 STATE = {"port": 0, "creates": 0, "e1_creates": 0, "cut_reserved": False,
          "cut_event": False, "event_id": "", "event_type": "", "run_id": "",
          "ambiguous_creates": 0, "drop_reserved": False, "create_dropped": False,
          "ambiguous_run_id": "", "ambiguous_runtime_status": "",
-         "gateway_restart_creates": 0, "gateway_restart_run_id": ""}
+         "gateway_restart_creates": 0, "gateway_restart_run_id": "",
+         "reordered_creates": 0, "reordered_run_id": "", "reorder_reserved": False,
+         "reordered_prefix_sent": False, "reordered_older_sent": False,
+         "reordered_frames_sent": 0,
+         "reordered_barrier_sent": False, "reorder_release_timeout": False}
 
 
 def save():
@@ -51,6 +59,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         drop_create = False
         e1_create = False
         gateway_restart_create = False
+        reordered_create = False
         with LOCK:
             if self.command == "POST" and path == "/v1/runs":
                 STATE["creates"] += 1
@@ -70,12 +79,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         if self.headers.get("Idempotency-Key") == armed.read().strip():
                             STATE["gateway_restart_creates"] += 1
                             gateway_restart_create = True
+                if os.path.exists(REORDER_ARM):
+                    with open(REORDER_ARM, encoding="utf-8") as armed:
+                        if self.headers.get("Idempotency-Key") == armed.read().strip():
+                            STATE["reordered_creates"] += 1
+                            reordered_create = True
                 save()
         connection = http.client.HTTPConnection("127.0.0.1", UPSTREAM_PORT, timeout=180)
         try:
             connection.request(self.command, self.path, body, headers)
             response = connection.getresponse()
-            if e1_create:
+            if e1_create or reordered_create:
                 content_length = response.getheader("Content-Length", "")
                 if 200 <= response.status < 300 and content_length.isdigit() and int(content_length) <= 65536:
                     reply = response.read(int(content_length))
@@ -86,7 +100,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     if not isinstance(metadata, dict):
                         metadata = {}
                     with LOCK:
-                        STATE["run_id"] = metadata.get("run_id", "")
+                        if e1_create:
+                            STATE["run_id"] = metadata.get("run_id", "")
+                        if reordered_create:
+                            STATE["reordered_run_id"] = metadata.get("run_id", "")
                         save()
                     self.send_response(response.status)
                     for key, value in response.getheaders():
@@ -143,12 +160,62 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             if path.endswith("/events") and response.status == 200:
                 with LOCK:
+                    should_reorder = (STATE["reordered_run_id"] and
+                                      path == f"/v1/runs/{STATE['reordered_run_id']}/events" and
+                                      not STATE["reorder_reserved"])
                     should_cut = (os.path.exists(ARM_FILE) and STATE["run_id"] and
                                   path == f"/v1/runs/{STATE['run_id']}/events" and
                                   not STATE["cut_reserved"])
+                    if should_reorder:
+                        STATE["reorder_reserved"] = True
+                        save()
                     if should_cut:
                         STATE["cut_reserved"] = True
                         save()
+                if should_reorder:
+                    first = b'id: 2\nevent: running\ndata: {"status":"running"}\n\n'
+                    older = b'id: 1\nevent: queued\ndata: {"status":"queued"}\n\n'
+                    duplicate = b'id: 2\nevent: failed\ndata: {"status":"failed"}\n\n'
+                    barrier = b'id: 3\nevent: running\ndata: {"status":"running"}\n\n'
+                    self.wfile.write(first)
+                    self.wfile.flush()
+                    with LOCK:
+                        STATE["reordered_prefix_sent"] = True
+                        save()
+                    deadline = time.monotonic() + 30
+                    while not os.path.exists(REORDER_PREFIX_RELEASE) and time.monotonic() < deadline:
+                        time.sleep(0.05)
+                    if not os.path.exists(REORDER_PREFIX_RELEASE):
+                        with LOCK:
+                            STATE["reorder_release_timeout"] = True
+                            save()
+                        return
+                    self.wfile.write(older)
+                    self.wfile.flush()
+                    with LOCK:
+                        STATE["reordered_older_sent"] = True
+                        save()
+                    deadline = time.monotonic() + 30
+                    while not os.path.exists(REORDER_RELEASE) and time.monotonic() < deadline:
+                        time.sleep(0.05)
+                    if not os.path.exists(REORDER_RELEASE):
+                        with LOCK:
+                            STATE["reorder_release_timeout"] = True
+                            save()
+                        return
+                    self.wfile.write(duplicate)
+                    self.wfile.flush()
+                    self.wfile.write(barrier)
+                    self.wfile.flush()
+                    with LOCK:
+                        STATE["reordered_frames_sent"] = 4
+                        STATE["reordered_barrier_sent"] = True
+                        save()
+                    while line := response.readline():
+                        self.wfile.write(line)
+                        if line in (b"\n", b"\r\n"):
+                            self.wfile.flush()
+                    return
                 if should_cut:
                     event = bytearray()
                     while line := response.readline():
