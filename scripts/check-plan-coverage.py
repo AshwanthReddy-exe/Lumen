@@ -13,6 +13,7 @@ SOURCE_PATH = re.compile(
     r"(?<![\w./-])@?((?:\.planning|docs|internal|cmd|apps|deploy|scripts|"
     r"protocol|test|sdk|spikes)/[\w./-]+\.[\w]+)"
 )
+CONTEXT_PATH = re.compile(r"@((?:\.planning|docs|internal|cmd|apps|deploy|scripts|protocol|test|sdk|spikes)/[\w./-]+\.[\w]+)")
 
 
 def table_ids(path: Path) -> Counter[str]:
@@ -57,6 +58,7 @@ def main() -> int:
     plans: dict[str, set[str]] = defaultdict(set)
     produced: dict[str, set[str]] = defaultdict(set)
     read_first: list[tuple[str, str]] = []
+    context_paths: list[tuple[str, str]] = []
     plan_count = 0
     for path in (ROOT / ".planning/phases").rglob("*-PLAN.md"):
         phase = path.name[:2]
@@ -80,12 +82,17 @@ def main() -> int:
         for files in re.findall(r"<files>(.*?)</files>", parts[2], re.S):
             for source in SOURCE_PATH.findall(files):
                 produced[source].add(path.name[:5])
+        for output in re.findall(r"<output>(.*?)</output>", parts[2], re.S):
+            for source in SOURCE_PATH.findall(output):
+                produced[source].add(path.name[:5])
         for reading in re.findall(r"<read_first>(.*?)</read_first>", parts[2], re.S):
             read_first.extend((path.name[:5], source) for source in SOURCE_PATH.findall(reading))
+        for context in re.findall(r"<context>(.*?)</context>", parts[2], re.S):
+            context_paths.extend((path.name[:5], source) for source in CONTEXT_PATH.findall(context))
     for fr, phase in sorted(ownership.items()):
         if "03" <= phase <= "17" and phase not in plans[fr]:
             errors.append(f"{fr} has no Phase {phase} plan")
-    for consumer, source in read_first:
+    for consumer, source in read_first + context_paths:
         if (ROOT / source).exists():
             continue
         producers = produced.get(source, set())
@@ -99,7 +106,8 @@ def main() -> int:
         return 1
     print(
         f"PASS: {len(prd)} FRs, {len(ownership)} phase owners, "
-        f"{plan_count} Phase 03–17 plans, {len(read_first)} source pointers"
+        f"{plan_count} Phase 03–17 plans, {len(read_first)} task source pointers, "
+        f"{len(context_paths)} GSD context pointers"
     )
     return 0
 
