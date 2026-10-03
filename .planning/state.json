@@ -10,47 +10,47 @@
     },
     {
       "number": "02",
-      "name": "Close the existing Host/Hermes foundation",
-      "status": "pending"
+      "name": "Local Host/Hermes product foundation",
+      "status": "complete"
     },
     {
       "number": "03",
-      "name": "Validate mobile, storage, network and wake foundations",
+      "name": "Conversation and web",
       "status": "pending"
     },
     {
       "number": "04",
-      "name": "Canonical conversations and product API",
-      "status": "pending"
-    },
-    {
-      "number": "05",
       "name": "Accepted memory and context controls",
       "status": "pending"
     },
     {
+      "number": "05",
+      "name": "Phone identity and chat",
+      "status": "pending"
+    },
+    {
       "number": "06",
-      "name": "Pairing, client identity and reliable synchronization",
+      "name": "Attention inbox and human input",
       "status": "pending"
     },
     {
       "number": "07",
-      "name": "Attention inbox and cross-device human input",
+      "name": "Mac node and useful action",
       "status": "pending"
     },
     {
       "number": "08",
-      "name": "Mac execution node and useful cross-device action",
+      "name": "Desk voice",
       "status": "pending"
     },
     {
       "number": "09",
-      "name": "Speech and Android desk companion",
+      "name": "Integrated local product",
       "status": "pending"
     },
     {
       "number": "10",
-      "name": "Personal alpha acceptance and recovery",
+      "name": "Always-on deployment and alpha release",
       "status": "pending"
     },
     {
@@ -92,7 +92,7 @@
   "next": {
     "command": "/gsd:progress --next",
     "label": "Advance to the next step",
-    "reason": "Phase 01 PR #21 merged; prepare and verify Phase 02 execution plans"
+    "reason": "Phase 02 local Host/Hermes foundation is complete. Phase 03 conversation and web is next; use the Phase 03 plan and keep memory, tool-event denial, and deployment gates with their owning phases."
   },
-  "updated_at": "2026-09-27T09:04:07Z"
+  "updated_at": "2026-10-02T15:42:45Z"
 }
