@@ -9,6 +9,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 FR = re.compile(r"FR-\d+")
+SOURCE_PATH = re.compile(
+    r"(?<![\w./-])@?((?:\.planning|docs|internal|cmd|apps|deploy|scripts|"
+    r"protocol|test|sdk|spikes)/[\w./-]+\.[\w]+)"
+)
 
 
 def table_ids(path: Path) -> Counter[str]:
@@ -51,6 +55,8 @@ def main() -> int:
         errors.append("roadmap phase ownership differs from requirements register")
 
     plans: dict[str, set[str]] = defaultdict(set)
+    produced: dict[str, set[str]] = defaultdict(set)
+    read_first: list[tuple[str, str]] = []
     plan_count = 0
     for path in (ROOT / ".planning/phases").rglob("*-PLAN.md"):
         phase = path.name[:2]
@@ -69,14 +75,32 @@ def main() -> int:
             plans[fr].add(phase)
             if ownership.get(fr) != phase:
                 errors.append(f"{path.relative_to(ROOT)} assigns {fr} to wrong phase")
+        for source in SOURCE_PATH.findall(parts[1]):
+            produced[source].add(path.name[:5])
+        for files in re.findall(r"<files>(.*?)</files>", parts[2], re.S):
+            for source in SOURCE_PATH.findall(files):
+                produced[source].add(path.name[:5])
+        for reading in re.findall(r"<read_first>(.*?)</read_first>", parts[2], re.S):
+            read_first.extend((path.name[:5], source) for source in SOURCE_PATH.findall(reading))
     for fr, phase in sorted(ownership.items()):
         if "03" <= phase <= "17" and phase not in plans[fr]:
             errors.append(f"{fr} has no Phase {phase} plan")
+    for consumer, source in read_first:
+        if (ROOT / source).exists():
+            continue
+        producers = produced.get(source, set())
+        if not producers:
+            errors.append(f"{consumer} reads missing unowned source {source}")
+        elif min(producers) > consumer:
+            errors.append(f"{consumer} reads {source} before producer {min(producers)}")
 
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1
-    print(f"PASS: {len(prd)} FRs, {len(ownership)} phase owners, {plan_count} Phase 03–17 plans")
+    print(
+        f"PASS: {len(prd)} FRs, {len(ownership)} phase owners, "
+        f"{plan_count} Phase 03–17 plans, {len(read_first)} source pointers"
+    )
     return 0
 
 
