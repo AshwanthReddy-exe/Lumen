@@ -2,7 +2,7 @@
 
 ## Scope
 
-The 17-phase roadmap is preserved. Phases 03–17 have 58 GSD execute plans with 142 implementation/checkpoint tasks, shared contracts, file ownership, task-level behavior/checks and explicit physical/provider/owner gates. All 58 pass GSD frontmatter and plan-structure validators on 2026-10-03. This is **planning coverage**, not product completion, unconditional routine-executor readiness or independent plan convergence. See [the completeness audit](PLANNING-COMPLETENESS-AUDIT.md) for remaining handoff work.
+The 17-phase roadmap is preserved. Phases 03–17 have 58 GSD execute plans with 143 implementation/checkpoint tasks, shared contracts, file ownership, task-level behavior/checks and explicit physical/provider/owner gates. All 58 pass GSD frontmatter and plan-structure validators on 2026-10-03. This is **planning coverage**, not product completion, unconditional routine-executor readiness or independent plan convergence. See [the completeness audit](PLANNING-COMPLETENESS-AUDIT.md) for remaining handoff work.
 
 ## Review record
 
