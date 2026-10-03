@@ -1,0 +1,65 @@
+# Test-only NIM profile: Hermes and its colocated Host can reach the egress
+# network only through a strict CONNECT allowlist sidecar.
+services:
+  lumen-hermes:
+    networks: !override
+      - lumen-private
+    ports: !override []
+    environment:
+      HTTP_PROXY: http://lumen-nim-egress-proxy:3128
+      HTTPS_PROXY: http://lumen-nim-egress-proxy:3128
+      http_proxy: http://lumen-nim-egress-proxy:3128
+      https_proxy: http://lumen-nim-egress-proxy:3128
+      NO_PROXY: ""
+      no_proxy: ""
+  lumen-nim-egress-proxy:
+    image: python:3.11-slim
+    command: ["python", "/opt/lumen/lumen-nim-egress-proxy.py"]
+    read_only: true
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ../../scripts/lumen-nim-egress-proxy.py:/opt/lumen/lumen-nim-egress-proxy.py:ro
+    networks: [lumen-private, lumen-egress]
+    restart: "no"
+  lumen-nim-e2-egress-sink:
+    image: python:3.11-slim
+    command:
+      - python
+      - -c
+      - |
+        import json
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        count = 0
+        class Sink(BaseHTTPRequestHandler):
+            def do_GET(self):
+                global count
+                if self.path == "/__control/mark":
+                    count += 1
+                    body = str(count).encode()
+                elif self.path == "/__control/count":
+                    body = str(count).encode()
+                else:
+                    body = b"sink"
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            def log_message(self, *_): pass
+        HTTPServer(("0.0.0.0", 8081), Sink).serve_forever()
+    read_only: true
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [lumen-egress]
+    restart: "no"
+  lumen-nim-e2-egress-probe:
+    image: python:3.11-slim
+    command: ["python", "-c", "import time; time.sleep(300)"]
+    read_only: true
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [lumen-egress]
+    restart: "no"

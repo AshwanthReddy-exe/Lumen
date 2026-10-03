@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+[ "$(uname -s)" = Linux ] || { printf '%s\n' 'lumen-external-check: Linux is required for this journey' >&2; exit 1; }
+
 repo_root=${LUMEN_REPO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
 project=${COMPOSE_PROJECT_NAME:-lumen-external-check-$$}
 hermes_project=${project}-hermes
@@ -42,7 +44,6 @@ cleanup() {
 trap cleanup EXIT
 
 fail() { printf 'lumen-external-check: %s\n' "$1" >&2; exit 1; }
-[ "$(uname -s)" = Linux ] || fail 'Linux is required for this journey'
 command -v docker >/dev/null 2>&1 || fail 'Docker is required'
 docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
 docker compose version >/dev/null 2>&1 || fail 'Docker Compose is required'

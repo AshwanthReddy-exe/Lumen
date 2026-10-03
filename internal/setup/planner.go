@@ -95,6 +95,11 @@ func Plan(ctx context.Context, req Request, probe Probe) (PlanResult, error) {
 	if req.Profile == Hardened && !result.IsolationReady {
 		return PlanResult{}, ErrIsolationUnavailable
 	}
+	if platform == PlatformMacOS && req.Topology == TopologyCombined {
+		result.Outcome = ActionRequired
+		result.Actions = []Action{{Code: "macos_combined_gateway_unsupported"}}
+		return result, nil
+	}
 	if !available {
 		result.Outcome = ActionRequired
 		result.Actions = []Action{{Code: "supervisor_unavailable"}}

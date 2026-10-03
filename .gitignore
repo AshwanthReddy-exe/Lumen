@@ -8,6 +8,10 @@
 .kotlin/
 **/build/
 
+# Python probe bytecode
+__pycache__/
+*.pyc
+
 # Swift Package Manager and Xcode
 .build/
 .swiftpm/

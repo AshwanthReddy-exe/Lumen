@@ -1,0 +1,291 @@
+#!/bin/sh
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+project=lumen-e2-check-$$-$(date +%s)
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/lumen-e2-check.XXXXXX")
+data_dir=$work_dir/lumen-data
+secret_dir=$work_dir/secrets
+archive=$work_dir/hermes-source.tar.gz
+archive_target=$repo_root/hermes-source.tar.gz
+staged_archive=""
+staged_archive_id=""
+compose_ready=0
+api_key="lumen-e2-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+probe_marker="LUMEN_E2_TOOL_PROBE_$$"
+context_seed_marker="LUMEN_E2_UNRELATED_SESSION_$$"
+context_same_marker="LUMEN_E2_SAME_SESSION_$$"
+context_target_marker="LUMEN_E2_TARGET_SESSION_$$"
+
+compose() {
+	docker compose -p "$project" -f "$repo_root/deploy/docker/compose.yaml" \
+		-f "$repo_root/deploy/docker/compose.milestone1.yaml" \
+		-f "$repo_root/deploy/docker/compose.e2.yaml" "$@"
+}
+
+fail() {
+	printf 'lumen-e2-check: %s\n' "$1" >&2
+	exit 1
+}
+
+has_pinned_archive() {
+	[ -s "$1" ] && [ "$(shasum -a 256 "$1" 2>/dev/null | awk '{print $1}')" = "$HERMES_SOURCE_ARCHIVE_SHA256" ]
+}
+
+file_id() {
+	stat -f '%d:%i' "$1" 2>/dev/null || stat -c '%d:%i' "$1"
+}
+
+cleanup() {
+	status=$?
+	if [ "$compose_ready" -eq 1 ]; then
+		# Provider/runtime logs may contain credentials or prompts; retain no raw failure log.
+		if ! compose --profile e2 down --volumes --remove-orphans >/dev/null 2>&1; then
+			printf 'lumen-e2-check: cleanup failed for Compose project %s; inspect its containers, networks, and volumes\n' "$project" >&2
+			[ "$status" -ne 0 ] || status=1
+		fi
+	fi
+	if [ -n "$staged_archive" ] && [ -e "$staged_archive" ] \
+		&& [ "$(file_id "$staged_archive" 2>/dev/null || true)" = "$staged_archive_id" ]; then
+		rm -f -- "$staged_archive"
+	fi
+	rm -rf -- "$work_dir"
+	exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+[ "$(command -v docker || true)" ] || fail 'Docker is required'
+docker compose version >/dev/null 2>&1 || fail 'Docker Compose is required'
+docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
+mkdir -m 700 "$data_dir" "$secret_dir"
+printf '%s\n' 'host-only E2 data canary' >"$data_dir/e2-host-only-canary"
+printf '%s\n' "$api_key" >"$secret_dir/hermes.token"
+cp "$secret_dir/hermes.token" "$secret_dir/hermes-ca.pem"
+cp "$secret_dir/hermes.token" "$secret_dir/hermes-client.crt"
+cp "$secret_dir/hermes.token" "$secret_dir/hermes-client.key"
+chmod 600 "$secret_dir"/*
+
+export HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
+export HERMES_SOURCE_ARCHIVE_SHA256=907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688
+export LUMEN_HERMES_API_SERVER_KEY=$api_key
+export LUMEN_HERMES_BASE_URL=http://127.0.0.1:28642
+export LUMEN_HERMES_CONTAINER_BASE_URL=http://127.0.0.1:8642
+export LUMEN_DATA_DIR=$data_dir
+export LUMEN_HERMES_TOKEN_SOURCE=$secret_dir/hermes.token
+export LUMEN_HERMES_CA_SOURCE=$secret_dir/hermes-ca.pem
+export LUMEN_HERMES_CLIENT_CERT_SOURCE=$secret_dir/hermes-client.crt
+export LUMEN_HERMES_CLIENT_KEY_SOURCE=$secret_dir/hermes-client.key
+export LUMEN_HERMES_PROFILE=development
+export LUMEN_HERMES_BUILD_IMAGE=$project-lumen-hermes:milestone1
+export LUMEN_PROVIDER_TOOL_CALL_MARKER=$probe_marker
+export LUMEN_PROVIDER_CONTEXT_SEED_MARKER=$context_seed_marker
+export LUMEN_PROVIDER_CONTEXT_SAME_MARKER=$context_same_marker
+export LUMEN_PROVIDER_CONTEXT_TARGET_MARKER=$context_target_marker
+export COMPOSE_PROJECT_NAME=$project
+
+if [ -e "$archive_target" ]; then
+	has_pinned_archive "$archive_target" || fail 'existing Hermes archive checksum mismatch; preserving it unchanged'
+elif [ -n "${LUMEN_HERMES_SOURCE_ARCHIVE:-}" ]; then
+	has_pinned_archive "$LUMEN_HERMES_SOURCE_ARCHIVE" || fail 'provided Hermes archive checksum mismatch'
+	cp -- "$LUMEN_HERMES_SOURCE_ARCHIVE" "$archive"
+else
+	curl -fsSL --connect-timeout 10 --max-time 120 \
+		-o "$archive" https://github.com/NousResearch/hermes-agent/archive/refs/tags/v2026.9.7.tar.gz || fail 'could not fetch the pinned Hermes source archive'
+	has_pinned_archive "$archive" || fail 'pinned Hermes source archive checksum mismatch'
+fi
+if [ ! -e "$archive_target" ]; then
+	staged_archive=$(mktemp "$repo_root/.lumen-e2-hermes-source.XXXXXX")
+	staged_archive_id=$(file_id "$staged_archive")
+	if ! cp -- "$archive" "$staged_archive" || ! has_pinned_archive "$staged_archive"; then
+		rm -f -- "$staged_archive"
+		staged_archive=""
+		fail 'could not stage the verified Hermes archive'
+	fi
+	ln "$staged_archive" "$archive_target" || fail 'Hermes archive appeared during staging; preserving both files'
+	rm -f -- "$staged_archive"
+	staged_archive=""
+fi
+
+LUMEN_HOST_USER=$(docker run --rm --network none -v "$secret_dir:/probe:ro" python:3.11-slim python -c 'import os; item=os.stat("/probe/hermes.token"); assert item.st_mode & 0o777 == 0o600; print(f"{item.st_uid}:{item.st_gid}")') || fail 'could not identify the temporary secret bind-mount owner'
+export LUMEN_HOST_USER
+export LUMEN_HOST_UID=${LUMEN_HOST_USER%%:*}
+export LUMEN_HOST_GID=${LUMEN_HOST_USER#*:}
+printf '%s\n' '=> build pinned, patched Hermes image'
+compose config -q
+compose_ready=1
+compose build lumen-hermes-init lumen-provider lumen-hermes lumen-host >/dev/null
+image_id=$(docker image inspect --format '{{.Id}}' "$LUMEN_HERMES_BUILD_IMAGE")
+case "$image_id" in sha256:*) ;; *) fail 'built Hermes image has no immutable ID' ;; esac
+printf 'pinned_image=%s\n' "$image_id"
+
+printf '%s\n' '=> pinned Hermes runtime with isolated synthetic provider and controlled egress sink'
+compose --profile e2 up -d lumen-e2-egress-probe lumen-e2-egress-sink lumen-hermes >/dev/null
+hermes_container=$(compose ps -q lumen-hermes)
+sink_container=$(compose ps -q lumen-e2-egress-sink)
+[ -n "$(compose ps -q lumen-e2-egress-probe)" ] || fail 'controlled egress probe did not start'
+[ -n "$hermes_container" ] && [ -n "$sink_container" ] || fail 'isolated E2 services did not start'
+compose exec -T lumen-hermes /src/.venv/bin/python -c 'import yaml; from hermes_cli.tools_config import _get_platform_tools; from model_tools import get_tool_definitions; cfg=yaml.safe_load(open("/var/lib/hermes/config.yaml", encoding="utf-8")); assert cfg.get("platform_toolsets", {}).get("api_server") == []; assert ((cfg.get("auxiliary") or {}).get("title_generation") or {}).get("enabled") is False; tools=_get_platform_tools(cfg, "api_server"); assert not tools; assert not get_tool_definitions(enabled_toolsets=tools, quiet_mode=True); print("runtime_toolsets=empty; title_generation=disabled")' || fail 'managed Hermes tool or title-generation policy is not deny-by-default'
+mounts=$(docker inspect --format '{{json .Mounts}}' "$hermes_container")
+printf '%s\n' "$mounts" | python3 -c 'import json,sys; mounts=json.load(sys.stdin); destinations=sorted(m["Destination"] for m in mounts); assert destinations == ["/var/lib/hermes"], destinations; print("Hermes mounts: /var/lib/hermes only")'
+
+sink_ip=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$sink_container")
+[ -n "$sink_ip" ] || fail 'controlled egress sink has no address'
+compose exec -T lumen-e2-egress-probe python -c 'import socket,sys,time
+for attempt in range(30):
+    try:
+        socket.create_connection((sys.argv[1],8081),timeout=3).close()
+        break
+    except OSError:
+        if attempt == 29: raise
+        time.sleep(1)' "$sink_ip" || fail 'egress positive control could not reach its sink'
+blocked_errno=$(compose exec -T lumen-hermes /src/.venv/bin/python -c 'import errno,socket,sys
+try: socket.create_connection((sys.argv[1],8081),timeout=3)
+except OSError as error:
+    if error.errno not in {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ETIMEDOUT}: raise
+    print(error.errno)
+else: raise SystemExit("Hermes reached the controlled egress sink")' "$sink_ip") || fail 'Hermes reached the controlled egress sink or returned an unexpected network error'
+printf 'network=blocked-to-positive-control-sink errno=%s\n' "$blocked_errno"
+
+printf '%s\n' '=> initialize and start the real Lumen Host against the pinned Hermes API'
+compose run --rm --no-deps lumen-host init >/dev/null || fail 'Lumen Host initialization failed'
+compose up -d --no-deps lumen-host >/dev/null || fail 'Lumen Host did not start'
+host_container=$(compose ps -q lumen-host)
+[ -n "$host_container" ] || fail 'Lumen Host container is not running'
+docker inspect --format '{{json .HostConfig.CapDrop}}' "$host_container" | python3 -c 'import json,sys; caps=json.load(sys.stdin); assert "ALL" in caps, caps; print("Host capabilities: all dropped")' || fail 'Host container capabilities were not dropped'
+docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$host_container" | python3 -c 'import json,sys; options=json.load(sys.stdin); assert any("no-new-privileges" in item for item in options), options; print("Host security options: no-new-privileges enabled")' || fail 'Host container no-new-privileges was not enabled'
+host_status=$(compose exec -T lumen-host /usr/local/bin/lumen-host doctor) || fail 'Lumen Host doctor failed'
+printf '%s\n' "$host_status" | python3 -c 'import json,sys; report=json.load(sys.stdin); assert report["host_initialized"] is True, report; print("Host initialized and running")'
+host_uid=$(docker inspect --format '{{.Config.User}}' "$host_container")
+case "$host_uid" in *:*) ;; *) fail 'Lumen Host runtime UID/GID was not explicit' ;; esac
+host_mounts=$(docker inspect --format '{{json .Mounts}}' "$host_container")
+printf '%s\n' "$host_mounts" | LUMEN_DATA_DIR="$data_dir" LUMEN_HERMES_TOKEN_SOURCE="$secret_dir/hermes.token" LUMEN_HERMES_CA_SOURCE="$secret_dir/hermes-ca.pem" LUMEN_HERMES_CLIENT_CERT_SOURCE="$secret_dir/hermes-client.crt" LUMEN_HERMES_CLIENT_KEY_SOURCE="$secret_dir/hermes-client.key" python3 -c 'import json,os,sys; mounts=json.load(sys.stdin); by_path={m["Destination"]:m for m in mounts}; expected={"/run/secrets/hermes_token":os.environ["LUMEN_HERMES_TOKEN_SOURCE"],"/run/secrets/hermes_ca.pem":os.environ["LUMEN_HERMES_CA_SOURCE"],"/run/secrets/hermes_client.crt":os.environ["LUMEN_HERMES_CLIENT_CERT_SOURCE"],"/run/secrets/hermes_client.key":os.environ["LUMEN_HERMES_CLIENT_KEY_SOURCE"]}; assert by_path["/var/lib/lumen"]["Source"] == os.environ["LUMEN_DATA_DIR"] and by_path["/var/lib/lumen"]["RW"] is True, by_path; assert all(by_path[path]["Source"] == source and by_path[path]["RW"] is False for path,source in expected.items()), by_path; print("Host-only state and four read-only runtime secret mounts verified")'
+printf 'Host configured UID/GID: %s\n' "$host_uid"
+host_canary=$(docker run --rm --network none --user "$host_uid" --volumes-from "$host_container:ro" python:3.11-slim python -c 'from pathlib import Path; data=Path("/var/lib/lumen/e2-host-only-canary").read_bytes(); assert data.strip() == b"host-only E2 data canary", "Host canary mismatch"; print("Host data canary readable through the live Host mount")') || fail 'Host-owned canary was not readable through the Host mount'
+printf '%s\n' "$host_canary"
+
+compose exec -T lumen-hermes /src/.venv/bin/python -c 'import errno; from pathlib import Path; own=Path("/var/lib/hermes/e2-file-control"); own.write_text("ok"); own.unlink(); paths=("/var/lib/lumen/e2-host-only-canary", "/run/secrets/hermes_token", "/run/secrets/hermes_ca.pem", "/run/secrets/hermes_client.crt", "/run/secrets/hermes_client.key");
+for name in paths:
+    path=Path(name)
+    try: path.read_bytes()
+    except FileNotFoundError: pass
+    else: raise SystemExit("unexpectedly readable: "+name)
+    try: path.write_bytes(b"LUMEN_E2_UNAUTHORIZED_WRITE")
+    except OSError as error:
+        if error.errno not in {errno.ENOENT, errno.EACCES, errno.EPERM, errno.EROFS}: raise
+    else: raise SystemExit("unexpectedly writable: "+name)
+print("file=Host-only canary and all four secret paths denied for read/write by mount separation; Hermes state write control succeeded")'
+
+compose exec -T lumen-hermes /src/.venv/bin/python - <<'PY'
+import os
+import time
+import urllib.request
+
+request = urllib.request.Request(
+    "http://127.0.0.1:8642/v1/models",
+    headers={"Authorization": "Bearer " + os.environ["API_SERVER_KEY"]},
+)
+for attempt in range(60):
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            if response.status == 200:
+                break
+    except Exception:
+        if attempt == 59:
+            raise
+        time.sleep(1)
+else:
+    raise SystemExit("Hermes API did not become ready")
+PY
+
+printf '%s\n' '=> runtime tool-denial and self-grant probe'
+compose exec -T lumen-hermes /src/.venv/bin/python - <<'PY'
+import json
+import os
+import time
+import urllib.error
+import urllib.request
+
+base = "http://127.0.0.1:8642"
+headers = {"Authorization": "Bearer " + os.environ["API_SERVER_KEY"], "Content-Type": "application/json"}
+
+def call(path, body=None, key=None):
+    request_headers = dict(headers)
+    if key:
+        request_headers["Idempotency-Key"] = key
+    request = urllib.request.Request(base + path, None if body is None else json.dumps(body).encode(), request_headers)
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status, json.loads(response.read() or b"{}")
+    except urllib.error.HTTPError as error:
+        return error.code, json.loads(error.read() or b"{}")
+
+def require_room_grant_denial(label, status, body):
+    error = body.get("error") if isinstance(body, dict) else None
+    if status != 403 or not isinstance(error, dict) or error.get("code") != "room_grant_required":
+        raise SystemExit(label + " was not rejected with room_grant_required HTTP 403")
+
+def complete_session_run(session_id, text, key):
+    status, run = call("/v1/runs", {"input": text, "session_id": session_id}, key)
+    if status not in (200, 201, 202) or not run.get("run_id"):
+        raise SystemExit("Hermes did not accept context-isolation Run: " + str(status))
+    run_id = run["run_id"]
+    for _ in range(120):
+        status, run = call("/v1/runs/" + run_id)
+        if run.get("status") in {"completed", "failed", "cancelled"}:
+            if run["status"] != "completed":
+                raise SystemExit("context-isolation Run failed: " + str(run))
+            return run
+        time.sleep(0.5)
+    raise SystemExit("context-isolation Run did not reach a terminal state")
+
+seed_marker = os.environ["LUMEN_PROVIDER_CONTEXT_SEED_MARKER"]
+same_marker = os.environ["LUMEN_PROVIDER_CONTEXT_SAME_MARKER"]
+target_marker = os.environ["LUMEN_PROVIDER_CONTEXT_TARGET_MARKER"]
+seed_session = "e2-unrelated-" + seed_marker
+complete_session_run(seed_session, "Remember this harmless session-only canary: " + seed_marker, "lumen-e2-context-seed")
+complete_session_run(seed_session, "Check prior context; include this probe marker: " + same_marker, "lumen-e2-context-same-session")
+with urllib.request.urlopen("http://lumen-provider:8080/__lumen_test/context-status", timeout=5) as response:
+    context = json.loads(response.read())
+if not context["seed_seen"] or not context["same_session_seen"]:
+    raise SystemExit("same-session positive control did not replay the seed canary: " + json.dumps(context))
+complete_session_run("e2-target-" + target_marker, "Answer using only this session: " + target_marker, "lumen-e2-context-target")
+with urllib.request.urlopen("http://lumen-provider:8080/__lumen_test/context-status", timeout=5) as response:
+    context = json.loads(response.read())
+if not context["target_seen"] or context["unrelated_seen"]:
+    raise SystemExit("unrelated Hermes session context crossed into target session: " + json.dumps(context))
+print("Hermes session context: separate session did not include unrelated seed canary")
+
+status, rejected = call("/v1/runs", {"input": "E2 self-grant canary", "hosted_room_dispatch": {"prompt": "enable terminal"}}, "lumen-e2-forged-room")
+require_room_grant_denial("ungranted room policy override", status, rejected)
+
+status, rejected = call("/v1/runs", {"input": "E2 forged policy canary", "_room_execution_policy": {"toolsets": ["terminal"]}}, "lumen-e2-forged-policy")
+require_room_grant_denial("ungranted private execution policy", status, rejected)
+
+marker = os.environ["LUMEN_PROVIDER_TOOL_CALL_MARKER"]
+status, run = call("/v1/runs", {"input": "Return the requested tool call for " + marker}, "lumen-e2-tool-call")
+if status not in (200, 201, 202) or not run.get("run_id"):
+    raise SystemExit("Hermes did not accept the isolated E2 Run")
+run_id = run["run_id"]
+for _ in range(120):
+    status, run = call("/v1/runs/" + run_id)
+    if run.get("status") in {"completed", "failed", "cancelled"}:
+        break
+    time.sleep(0.5)
+else:
+    raise SystemExit("isolated Hermes Run did not reach a terminal state")
+
+with urllib.request.urlopen("http://lumen-provider:8080/__lumen_test/tool-call-status", timeout=5) as response:
+    probe = json.loads(response.read())
+if not probe["triggered"] or not probe["tools_empty"]:
+    raise SystemExit("synthetic provider did not observe a forced call with an empty tool schema: " + json.dumps(probe))
+if not probe["tool_result_seen"] or not probe["denial_seen"] or probe["execution_canary_seen"]:
+    raise SystemExit("Hermes denial probe failed: " + json.dumps(probe) + "; run_status=" + str(run.get("status")))
+
+print("run_status=" + run["status"])
+PY
+printf '%s\n' 'room_dispatch_override=403; private_policy_override=403; unapproved_tool=rejected_by_Hermes_name_validation; execution_marker=absent'
+
+printf '%s\n' 'session_context=separate Hermes session excluded unrelated seed canary; Lumen-owned memory remains unavailable in this foundation'

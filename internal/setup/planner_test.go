@@ -58,15 +58,39 @@ func TestPlanFacts(t *testing.T) {
 }
 func TestPlanPlatforms(t *testing.T) {
 	for _, x := range []struct {
-		o, p string
-		w    Platform
-	}{{"darwin", "", PlatformMacOS}, {"linux", "", PlatformLinux}, {"android", "", PlatformTermux}, {"linux", "/data/data/com.termux/files/usr", PlatformTermux}} {
-		g, e := Plan(context.Background(), Request{Topology: TopologyCombined, Profile: Development}, &fakeProbe{goos: x.o, prefix: x.p, available: true})
-		if e != nil || g.Platform != x.w {
+		o, p       string
+		topology   Topology
+		platform   Platform
+		outcome    Outcome
+		actionCode string
+	}{
+		{"darwin", "", TopologyExternal, PlatformMacOS, Ready, ""},
+		{"darwin", "", TopologyCombined, PlatformMacOS, ActionRequired, "macos_combined_gateway_unsupported"},
+		{"linux", "", TopologyCombined, PlatformLinux, Ready, ""},
+		{"android", "", TopologyCombined, PlatformTermux, Ready, ""},
+		{"linux", "/data/data/com.termux/files/usr", TopologyCombined, PlatformTermux, Ready, ""},
+	} {
+		probe := &fakeProbe{goos: x.o, prefix: x.p, available: true}
+		if x.actionCode != "" {
+			probe.supervisor = SupervisorLaunchd
+		}
+		g, e := Plan(context.Background(), Request{Topology: x.topology, Profile: Development}, probe)
+		if e != nil || g.Platform != x.platform || g.Outcome != x.outcome || (x.actionCode != "" && (len(g.Actions) != 1 || g.Actions[0].Code != x.actionCode)) {
 			t.Fatalf("%#v %v", g, e)
 		}
 	}
 }
+
+func TestCombinedMacOSIsUnsupportedRegardlessOfSupervisor(t *testing.T) {
+	for _, supervisor := range []Supervisor{SupervisorLaunchd, SupervisorSystemd, SupervisorDocker} {
+		probe := &fakeProbe{goos: "darwin", available: true, supervisor: supervisor}
+		result, err := Plan(context.Background(), Request{Topology: TopologyCombined, Profile: Development}, probe)
+		if err != nil || result.Outcome != ActionRequired || len(result.Actions) != 1 || result.Actions[0].Code != "macos_combined_gateway_unsupported" {
+			t.Fatalf("supervisor=%s result=%#v err=%v", supervisor, result, err)
+		}
+	}
+}
+
 func TestPlanValidationCancellationSupervisor(t *testing.T) {
 	p := &fakeProbe{goos: "darwin"}
 	if _, e := Plan(context.Background(), Request{Topology: TopologyCombined, Profile: Profile("bad")}, p); e == nil || p.calls != 0 {

@@ -24,9 +24,10 @@ archive_target=$repo_root/hermes-source.tar.gz
 archive_copied=0
 compose_ready=0
 host_pid=
+proxy_pid=
 api_key=
 hermes_host_port=${LUMEN_HERMES_HOST_PORT:-28652}
-provider_delay_ms=${LUMEN_PROVIDER_DELAY_MS:-3000}
+provider_delay_ms=${LUMEN_PROVIDER_DELAY_MS:-10000}
 
 cd "$repo_root"
 
@@ -46,8 +47,21 @@ cleanup() {
 	if [ -n "$host_pid" ]; then
 		kill "$host_pid" 2>/dev/null || :
 	fi
+	if [ -n "$proxy_pid" ]; then
+		kill "$proxy_pid" 2>/dev/null || :
+	fi
 	if [ "$status" -ne 0 ] && [ "$compose_ready" -eq 1 ]; then
 		printf '%s\n' '--- redacted macOS journey logs ---' >&2
+		for host_log in "$work_dir/host.log" "$work_dir/host-restart.log"; do
+			if [ -f "$host_log" ]; then
+				printf '%s\n' '--- native Host ---' >&2
+				redact <"$host_log" >&2
+			fi
+		done
+		if [ -f "$work_dir/host-status.err" ]; then
+			printf '%s\n' '--- Host readiness probe ---' >&2
+			redact <"$work_dir/host-status.err" >&2
+		fi
 		if ! compose logs --no-color 2>&1 | redact >&2; then
 			:
 		fi
@@ -55,7 +69,7 @@ cleanup() {
 	fi
 	if [ "$compose_ready" -eq 1 ]; then
 		if ! compose down --volumes --remove-orphans >/dev/null 2>&1; then
-			:
+			printf 'lumen-macos-check: cleanup failed for Compose project %s\n' "$project" >&2
 		fi
 	fi
 	if [ "$archive_copied" -eq 1 ]; then
@@ -84,6 +98,7 @@ command -v curl >/dev/null 2>&1 || fail 'curl is required'
 command -v jq >/dev/null 2>&1 || fail 'jq is required'
 command -v zsh >/dev/null 2>&1 || fail 'zsh is required'
 command -v shasum >/dev/null 2>&1 || fail 'shasum is required'
+command -v python3 >/dev/null 2>&1 || fail 'python3 is required'
 
 printf '%s\n' '=> private state'
 mkdir -m 700 "$data_dir" "$secret_dir"
@@ -107,6 +122,7 @@ export LUMEN_HERMES_CA_SOURCE="$secret_dir/hermes.token"
 export LUMEN_HERMES_CLIENT_CERT_SOURCE="$secret_dir/hermes.token"
 export LUMEN_HERMES_CLIENT_KEY_SOURCE="$secret_dir/hermes.token"
 export LUMEN_PROVIDER_DELAY_MS="$provider_delay_ms"
+export LUMEN_PROVIDER_HOLD_MARKER='E1 stream interruption probe|E1 duplicate and reordered event probe'
 export HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
 export HERMES_SOURCE_ARCHIVE_SHA256=907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688
 export COMPOSE_PROJECT_NAME="$project"
@@ -165,10 +181,34 @@ wait_for_hermes() {
 
 wait_for_hermes || fail 'pinned Hermes gateway did not become ready'
 
+printf '%s\n' '=> one-shot E1 SSE interruption proxy'
+export LUMEN_E1_UPSTREAM_PORT="$hermes_host_port"
+export LUMEN_E1_PROXY_STATE="$work_dir/e1-proxy.json"
+export LUMEN_E1_PROXY_ARM="$work_dir/e1-arm"
+export LUMEN_E1_CREATE_DROP_ARM="$work_dir/e1-create-drop-arm"
+export LUMEN_E1_GATEWAY_RESTART_ARM="$work_dir/e1-gateway-restart-arm"
+export LUMEN_E1_REORDER_ARM="$work_dir/e1-reorder-arm"
+export LUMEN_E1_REORDER_PREFIX_RELEASE="$work_dir/e1-reorder-prefix-release"
+export LUMEN_E1_REORDER_RELEASE="$work_dir/e1-reorder-release"
+python3 scripts/lumen-e1-proxy.py >"$work_dir/e1-proxy.log" 2>&1 &
+proxy_pid=$!
+i=0
+while [ ! -s "$LUMEN_E1_PROXY_STATE" ] && [ "$i" -lt 20 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ -s "$LUMEN_E1_PROXY_STATE" ] || fail 'E1 proxy did not start'
+kill -0 "$proxy_pid" 2>/dev/null || fail 'E1 proxy exited after readiness'
+e1_proxy_port=$(jq -er '.port | select(. > 0 and . < 65536)' "$LUMEN_E1_PROXY_STATE") || fail 'E1 proxy did not report a bound port'
+curl -fsS -m 5 -o /dev/null -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$e1_proxy_port/v1/capabilities" || fail 'E1 proxy did not forward authenticated discovery'
+kill -0 "$proxy_pid" 2>/dev/null || fail 'E1 proxy exited before Host start'
+export LUMEN_HERMES_BASE_URL="http://127.0.0.1:$e1_proxy_port"
+
 printf '%s\n' '=> native Host start'
 umask 077
 "$host_artifact" init
-"$host_artifact" serve >"$work_dir/host.log" 2>&1 &
+"$host_artifact" serve --manual >"$work_dir/host.log" 2>&1 &
 host_pid=$!
 
 wait_for_host() {
@@ -187,6 +227,16 @@ wait_for_host() {
 wait_for_host || fail 'native Host did not become ready'
 host_node_id=$(jq -r '.active_host_id // .host_id // empty' "$work_dir/host-status.json")
 [ -n "$host_node_id" ] || fail 'live Host status did not expose a node ID'
+initial_identity=$("$host_artifact" status) || fail 'Host identity unavailable after initialization'
+initial_space_id=$(printf '%s' "$initial_identity" | jq -r '.space_id // empty')
+initial_owner_id=$(printf '%s' "$initial_identity" | jq -r '.owner_id // empty')
+initial_host_id=$(printf '%s' "$initial_identity" | jq -r '.host_id // empty')
+[ -n "$initial_space_id" ] && [ -n "$initial_owner_id" ] && [ -n "$initial_host_id" ] || fail 'initialized Host omitted bootstrap identities'
+initial_initialized_marker=$(shasum -a 256 "$data_dir/initialized" | cut -d ' ' -f 1)
+initial_operator_credential=$(shasum -a 256 "$data_dir/operator.credential" | cut -d ' ' -f 1)
+[ "$(stat -f '%Lp' "$data_dir/operator.credential")" = 600 ] || fail 'operator credential is not owner-only'
+"$host_artifact" doctor >"$work_dir/initial-doctor.json" || fail 'Host doctor failed after initialization'
+[ "$(jq -r '.host_initialized' "$work_dir/initial-doctor.json")" = true ] || fail 'Host doctor did not observe initialized state'
 
 printf '%s\n' '=> configured synthetic task'
 export LUMEN_BINARY="$host_artifact"
@@ -258,6 +308,363 @@ while [ "$i" -lt 60 ]; do
 	sleep 1
 done
 [ "$cancelled_status" = cancelled ] || fail 'cancellation did not converge'
+
+printf '%s\n' '=> pinned E1 gateway restart'
+gateway_creates_before=$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")
+gateway_now=$(date +%s)
+gateway_reconcile=$((gateway_now + 180))
+gateway_task="macos-gateway-restart-$probe_suffix"
+gateway_request="macos-gateway-restart-submit-$probe_suffix"
+printf '%s\n' "$gateway_request" >"$LUMEN_E1_GATEWAY_RESTART_ARM"
+"$host_artifact" task submit \
+	--request_id "$gateway_request" --task_id "$gateway_task" \
+	--capability_id agent.run/execute --action run \
+	--action_fingerprint macos-gateway-restart-input --input 'E1 gateway restart probe' \
+	--runtime_profile_digest dev-local-v1 --reconcile_by "$gateway_reconcile" >/dev/null
+"$host_artifact" approval resolve \
+	--request_id "macos-gateway-restart-approve-$probe_suffix" --task_id "$gateway_task" \
+	--target_node_id "$host_node_id" --action_fingerprint macos-gateway-restart-input \
+	--approval_id "macos-gateway-restart-approval-$probe_suffix" --approved_at "$gateway_now" \
+	--expires_at "$gateway_reconcile" --reconcile_by "$gateway_reconcile" \
+	--runtime_profile_digest dev-local-v1 --input 'E1 gateway restart probe' --decision once >/dev/null
+i=0
+gateway_run=
+while [ "$i" -lt 60 ]; do
+	gateway_run=$(jq -r '.gateway_restart_run_id // empty' "$LUMEN_E1_PROXY_STATE")
+	[ -n "$gateway_run" ] && break
+	i=$((i + 1))
+	sleep 1
+done
+[ -n "$gateway_run" ] || fail 'gateway restart probe did not capture the pinned Run ID'
+[ "$(jq -r '.gateway_restart_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'gateway restart task issued multiple Run creates'
+gateway_before_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$gateway_run" | jq -r '.status')
+case "$gateway_before_status" in
+	started|running) ;;
+	*) fail "gateway restart probe was not active before restart: $gateway_before_status" ;;
+esac
+gateway_before_host=$(
+	"$host_artifact" task show --task_id "$gateway_task" | jq -r '.task.status'
+)
+case "$gateway_before_host" in
+	dispatched|running) ;;
+	*) fail "Host task was not in flight before Hermes restart: $gateway_before_host" ;;
+esac
+compose restart lumen-hermes >/dev/null
+wait_for_hermes || fail 'pinned Hermes gateway did not recover after container restart'
+gateway_status=
+gateway_host_status=
+i=0
+while [ "$i" -lt 180 ]; do
+	if gateway_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+		"http://127.0.0.1:$hermes_host_port/v1/runs/$gateway_run" 2>/dev/null | jq -r '.status'); then
+		:
+	else
+		gateway_status=
+	fi
+	gateway_shown=$("$host_artifact" task show --task_id "$gateway_task") || fail 'gateway restart task unavailable from Host'
+	gateway_host_status=$(printf '%s' "$gateway_shown" | jq -r '.task.status')
+	if [ "$gateway_status" = completed ] && [ "$gateway_host_status" = completed ]; then
+		break
+	fi
+	case "$gateway_status:$gateway_host_status" in
+		failed:*|*:failed|cancelled:*|*:cancelled|unknown_outcome:*|*:unknown_outcome)
+			printf 'E1 gateway restart: task=%s run=%s runtime=%s host=%s\n' \
+				"$gateway_task" "$gateway_run" "$gateway_status" "$gateway_host_status" >&2
+			fail 'gateway or Host did not recover the in-flight task to completed' ;;
+	esac
+	i=$((i + 1))
+	sleep 1
+done
+[ "$gateway_status" = completed ] || fail "gateway Run did not complete after restart: $gateway_status"
+[ "$gateway_host_status" = completed ] || fail "Host did not reconcile gateway restart: $gateway_host_status"
+[ "$(jq -r '.gateway_restart_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'gateway restart task issued more than one POST /v1/runs'
+[ "$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")" -eq "$((gateway_creates_before + 1))" ] || fail 'unexpected Run create during gateway restart probe'
+[ "$(printf '%s' "$gateway_shown" | jq -r '.run.runtimeRunId')" = "$gateway_run" ] || fail 'Host Run mapping changed across gateway restart'
+gateway_host_output=$(printf '%s' "$gateway_shown" | jq -r '.task.output // empty')
+[ -n "$gateway_host_output" ] || fail 'Hermes and Host reported completed after gateway restart without durable output'
+gateway_runtime_json=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$gateway_run")
+gateway_runtime_output=$(printf '%s' "$gateway_runtime_json" | jq -r '.output // empty')
+[ "$gateway_host_output" = "$gateway_runtime_output" ] || fail 'Host output differs from pinned Run status after gateway restart'
+case "$gateway_host_output" in
+	'Operation interrupted: waiting for model response ('*) ;;
+	*) fail 'gateway restart returned an unrecognized durable output' ;;
+esac
+printf 'E1 gateway restart: task=%s run=%s before_runtime=%s before_host=%s after_runtime=%s after_host=%s creates_for_task=1 host_mapping_preserved=true output=interrupted host_runtime_output_match=true\n' \
+	"$gateway_task" "$gateway_run" "$gateway_before_status" "$gateway_before_host" \
+	"$gateway_status" "$gateway_host_status"
+
+printf '%s\n' '=> pinned E1 stream cut and Host restart'
+e1_creates_before=$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")
+printf '%s\n' "macos-e1-submit-$probe_suffix" >"$LUMEN_E1_PROXY_ARM"
+e1_now=$(date +%s)
+e1_reconcile=$((e1_now + 180))
+e1_task="macos-e1-$probe_suffix"
+"$host_artifact" task submit \
+	--request_id "macos-e1-submit-$probe_suffix" --task_id "$e1_task" \
+	--capability_id agent.run/execute --action run \
+	--action_fingerprint macos-e1-input --input 'E1 stream interruption probe' \
+	--runtime_profile_digest dev-local-v1 --reconcile_by "$e1_reconcile" >/dev/null
+"$host_artifact" approval resolve \
+	--request_id "macos-e1-approve-$probe_suffix" --task_id "$e1_task" \
+	--target_node_id "$host_node_id" --action_fingerprint macos-e1-input \
+	--approval_id "macos-e1-approval-$probe_suffix" --approved_at "$e1_now" \
+	--expires_at "$e1_reconcile" --reconcile_by "$e1_reconcile" \
+	--runtime_profile_digest dev-local-v1 --input 'E1 stream interruption probe' --decision once >/dev/null
+i=0
+while [ "$(jq -r '.cut_event' "$LUMEN_E1_PROXY_STATE")" != true ] && [ "$i" -lt 60 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.cut_event' "$LUMEN_E1_PROXY_STATE")" = true ] || fail 'no complete pinned SSE event was cut'
+state_before_observation=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+prekill=$("$host_artifact" task show --task_id "$e1_task") || fail 'E1 task unavailable before Host interruption'
+prekill_status=$(printf '%s' "$prekill" | jq -r '.task.status')
+case "$prekill_status" in
+	dispatched|running) ;;
+	*) fail "E1 task was not durably in flight before Host interruption: $prekill_status" ;;
+esac
+e1_run=$(jq -r '.run_id' "$LUMEN_E1_PROXY_STATE")
+[ "$(printf '%s' "$prekill" | jq -r '.run.runtimeRunId')" = "$e1_run" ] || fail 'prekill durable Host run mapping differs from interrupted SSE run'
+printf 'E1 prekill: task=%s run=%s status=%s cut_event=true\n' "$e1_task" "$e1_run" "$prekill_status"
+state_before_kill=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+[ "$state_before_observation" = "$state_before_kill" ] || fail 'canonical state changed during in-flight observation'
+kill -KILL "$host_pid"
+wait "$host_pid" 2>/dev/null || :
+host_pid=
+state_after_kill=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+[ "$state_before_kill" = "$state_after_kill" ] || fail 'canonical state changed between in-flight observation and Host exit'
+"$host_artifact" serve --manual >"$work_dir/host-restart.log" 2>&1 &
+host_pid=$!
+wait_for_host || fail 'Host did not restart against the same canonical state'
+restarted_host_node_id=$(jq -r '.active_host_id // .host_id // empty' "$work_dir/host-status.json")
+[ "$restarted_host_node_id" = "$host_node_id" ] || fail 'Host identity changed after restart'
+restarted_identity=$(cat "$work_dir/host-status.json")
+[ "$(printf '%s' "$restarted_identity" | jq -r '.space_id // empty')" = "$initial_space_id" ] || fail 'Space identity changed after Host restart'
+[ "$(printf '%s' "$restarted_identity" | jq -r '.owner_id // empty')" = "$initial_owner_id" ] || fail 'owner identity changed after Host restart'
+[ "$(printf '%s' "$restarted_identity" | jq -r '.host_id // empty')" = "$initial_host_id" ] || fail 'Host identity changed after restart'
+[ "$(shasum -a 256 "$data_dir/initialized" | cut -d ' ' -f 1)" = "$initial_initialized_marker" ] || fail 'initialized marker changed across Host restart'
+[ "$(shasum -a 256 "$data_dir/operator.credential" | cut -d ' ' -f 1)" = "$initial_operator_credential" ] || fail 'operator credential changed across Host restart'
+[ "$(stat -f '%Lp' "$data_dir/operator.credential")" = 600 ] || fail 'operator credential permissions changed across Host restart'
+"$host_artifact" doctor >"$work_dir/restarted-doctor.json" || fail 'Host doctor failed after restart'
+[ "$(jq -r '.host_initialized' "$work_dir/restarted-doctor.json")" = true ] || fail 'Host doctor lost initialized state after restart'
+compose exec -T lumen-provider python -c \
+	'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/release", data=b"").close()' \
+	>/dev/null || fail 'synthetic provider did not release the interrupted Run after Host restart'
+e1_status=
+i=0
+while [ "$i" -lt 180 ]; do
+	shown=$("$host_artifact" task show --task_id "$e1_task") || fail 'E1 task status unavailable after restart'
+	e1_status=$(printf '%s' "$shown" | jq -r '.task.status')
+	case "$e1_status" in
+		completed|failed|cancelled) break ;;
+	esac
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")" -eq "$((e1_creates_before + 1))" ] || fail 'E1 did not issue exactly one POST /v1/runs'
+[ "$(jq -r '.e1_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'E1 idempotency key did not issue exactly one POST /v1/runs'
+[ "$(printf '%s' "$shown" | jq -r '.run.runtimeRunId')" = "$e1_run" ] || fail 'durable Host run mapping differs from interrupted SSE run'
+runtime_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$e1_run" | jq -r '.status')
+printf 'E1 postrestart: task=%s run=%s prekill_status=%s durable_status=%s runtime_status=%s creates_for_task=1 space_owner_host_identity_preserved=true initialized_marker_preserved=true operator_credential_preserved=true state_unchanged_at_exit=true\n' \
+	"$e1_task" "$e1_run" "$prekill_status" "$e1_status" "$runtime_status"
+[ "$runtime_status" = completed ] || fail "pinned E1 runtime ended as $runtime_status"
+[ "$e1_status" = completed ] || fail "Host did not reconcile pinned E1 completion: $e1_status"
+printf 'E1: task=%s run=%s event_type=%s event_id=%s creates_for_task=1 prekill_status=%s durable_status=%s runtime_status=%s host_id_preserved=true\n' \
+	"$e1_task" "$(jq -r '.run_id' "$LUMEN_E1_PROXY_STATE")" \
+	"$(jq -r '.event_type' "$LUMEN_E1_PROXY_STATE")" \
+	"$(jq -r '.event_id' "$LUMEN_E1_PROXY_STATE")" "$prekill_status" "$e1_status" "$runtime_status"
+
+printf '%s\n' '=> pinned E1 duplicate and reordered SSE delivery'
+reordered_creates_before=$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")
+reordered_now=$(date +%s)
+reordered_reconcile=$((reordered_now + 180))
+reordered_request="macos-reordered-submit-$probe_suffix"
+reordered_task="macos-reordered-$probe_suffix"
+printf '%s\n' "$reordered_request" >"$LUMEN_E1_REORDER_ARM"
+"$host_artifact" task submit \
+	--request_id "$reordered_request" --task_id "$reordered_task" \
+	--capability_id agent.run/execute --action run \
+	--action_fingerprint macos-reordered-input --input 'E1 duplicate and reordered event probe' \
+	--runtime_profile_digest dev-local-v1 --reconcile_by "$reordered_reconcile" >/dev/null
+"$host_artifact" approval resolve \
+	--request_id "macos-reordered-approve-$probe_suffix" --task_id "$reordered_task" \
+	--target_node_id "$host_node_id" --action_fingerprint macos-reordered-input \
+	--approval_id "macos-reordered-approval-$probe_suffix" --approved_at "$reordered_now" \
+	--expires_at "$reordered_reconcile" --reconcile_by "$reordered_reconcile" \
+	--runtime_profile_digest dev-local-v1 --input 'E1 duplicate and reordered event probe' --decision once >/dev/null
+i=0
+while [ "$(jq -r '.reordered_prefix_sent' "$LUMEN_E1_PROXY_STATE")" != true ] && [ "$i" -lt 60 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.reordered_prefix_sent' "$LUMEN_E1_PROXY_STATE")" = true ] || fail 'reordered SSE prefix was not delivered'
+reordered_run=$(jq -r '.reordered_run_id' "$LUMEN_E1_PROXY_STATE")
+[ -n "$reordered_run" ] || fail 'duplicate/reordered probe Run ID was not captured'
+[ "$(jq -r '.reordered_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'duplicate/reordered probe issued multiple Run creates'
+i=0
+reordered_prefix_shown=
+while [ "$i" -lt 20 ]; do
+	reordered_prefix_shown=$("$host_artifact" task show --task_id "$reordered_task") || fail 'duplicate/reordered task unavailable before conflicting duplicate'
+	reordered_prefix_status=$(printf '%s' "$reordered_prefix_shown" | jq -r '.task.status')
+	[ "$reordered_prefix_status" = running ] && break
+	case "$reordered_prefix_status" in failed|cancelled|unknown_outcome) fail "task became terminal before duplicate probe: $reordered_prefix_status" ;; esac
+	i=$((i + 1))
+	sleep 1
+done
+[ "$reordered_prefix_status" = running ] || fail 'Host did not durably observe the injected running prefix'
+[ "$(printf '%s' "$reordered_prefix_shown" | jq -r '.run.runtimeRunId')" = "$reordered_run" ] || fail 'duplicate/reordered task Run mapping changed before conflicting duplicate'
+reordered_prefix_runtime=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status')
+case "$reordered_prefix_runtime" in
+	queued|started|running) ;;
+	*) fail "runtime was not in flight before conflicting duplicate: $reordered_prefix_runtime" ;;
+esac
+provider_hold=$(compose exec -T lumen-provider python -c \
+	'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/status", data=b""))["held"])')
+[ "$provider_hold" = True ] || fail 'synthetic provider did not confirm the marked Run is held'
+printf 'E1 duplicate/reordered precondition: task=%s run=%s host=running runtime=%s provider_held=true prefix_sent=true\n' \
+	"$reordered_task" "$reordered_run" "$reordered_prefix_runtime"
+reordered_first_hash=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+: >"$LUMEN_E1_REORDER_PREFIX_RELEASE"
+i=0
+while [ "$(jq -r '.reordered_older_sent' "$LUMEN_E1_PROXY_STATE")" != true ] && [ "$i" -lt 30 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.reordered_older_sent' "$LUMEN_E1_PROXY_STATE")" = true ] || fail 'out-of-order older SSE frame was not delivered'
+i=0
+reordered_after_older_hash=$reordered_first_hash
+while [ "$reordered_after_older_hash" = "$reordered_first_hash" ] && [ "$i" -lt 30 ]; do
+	reordered_after_older_hash=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+	i=$((i + 1))
+	sleep 1
+done
+[ "$reordered_after_older_hash" != "$reordered_first_hash" ] || fail 'Host did not durably process the out-of-order older event before duplicate injection'
+reordered_before_hash=$reordered_after_older_hash
+: >"$LUMEN_E1_REORDER_RELEASE"
+i=0
+while [ "$(jq -r '.reordered_barrier_sent' "$LUMEN_E1_PROXY_STATE")" != true ] && [ "$i" -lt 60 ]; do
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.reordered_barrier_sent' "$LUMEN_E1_PROXY_STATE")" = true ] || fail 'post-duplicate barrier frame was not delivered'
+i=0
+reordered_after_hash=$reordered_before_hash
+while [ "$reordered_after_hash" = "$reordered_before_hash" ] && [ "$i" -lt 30 ]; do
+	reordered_after_hash=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
+	i=$((i + 1))
+	sleep 1
+done
+[ "$reordered_after_hash" != "$reordered_before_hash" ] || fail 'Host did not durably process the post-duplicate barrier event'
+reordered_barrier_shown=$("$host_artifact" task show --task_id "$reordered_task") || fail 'duplicate/reordered task unavailable after barrier'
+[ "$(printf '%s' "$reordered_barrier_shown" | jq -r '.task.status')" = running ] || fail 'Host applied the conflicting duplicate instead of ignoring it'
+reordered_barrier_runtime=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status')
+case "$reordered_barrier_runtime" in
+	queued|started|running) ;;
+	*) fail "runtime completed before duplicate handling was observed: $reordered_barrier_runtime" ;;
+esac
+printf 'E1 duplicate/reordered barrier: task=%s run=%s host=running runtime=%s durable_event_processed=true\n' \
+	"$reordered_task" "$reordered_run" "$reordered_barrier_runtime"
+provider_hold=$(compose exec -T lumen-provider python -c \
+	'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/status", data=b""))["held"])')
+[ "$provider_hold" = True ] || fail 'synthetic provider released before Host durably processed the duplicate barrier'
+printf '%s\n' '=> stop the exact pinned Run while inference is held'
+reordered_before_stop=$("$host_artifact" task show --task_id "$reordered_task") || fail 'Host task unavailable immediately before stop'
+[ "$(printf '%s' "$reordered_before_stop" | jq -r '.task.status')" = running ] || fail 'Host task was not running immediately before stop'
+reordered_runtime_before_stop=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status') || fail 'pinned Run status unavailable immediately before stop'
+case "$reordered_runtime_before_stop" in queued|started|running) ;; *) fail "pinned Run not in flight immediately before stop: $reordered_runtime_before_stop" ;; esac
+"$host_artifact" task cancel \
+	--request_id "macos-reordered-cancel-$probe_suffix" --task_id "$reordered_task" >/dev/null || fail 'Host rejected stop for the in-flight pinned Run'
+i=0
+while [ "$i" -lt 60 ]; do
+	reordered_stopped=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+		"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status') || fail 'pinned Run status unavailable after stop'
+	case "$reordered_stopped" in cancelled|canceled) break ;; esac
+	i=$((i + 1))
+	sleep 1
+done
+case "$reordered_stopped" in cancelled|canceled) ;; *) fail "pinned Run did not cancel while provider was held: $reordered_stopped" ;; esac
+reordered_stopped_shown=$("$host_artifact" task show --task_id "$reordered_task") || fail 'Host task status unavailable after stop'
+[ "$(printf '%s' "$reordered_stopped_shown" | jq -r '.task.status')" = cancelled ] || fail 'Host did not durably record cancellation of the in-flight Run'
+provider_hold=$(compose exec -T lumen-provider python -c \
+	'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/status", data=b""))["held"])')
+[ "$provider_hold" = True ] || fail 'provider was not still held when Hermes confirmed cancellation'
+printf 'E1 in-flight stop: task=%s run=%s before_host=running before_runtime=%s after_host=cancelled after_runtime=%s provider_held=true\n' \
+	"$reordered_task" "$reordered_run" "$reordered_runtime_before_stop" "$reordered_stopped"
+compose exec -T lumen-provider python -c \
+	'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/release", data=b"").close()' \
+	>/dev/null || fail 'synthetic provider did not release after cancellation'
+i=0
+while [ "$i" -lt 180 ]; do
+	reordered_shown=$("$host_artifact" task show --task_id "$reordered_task") || fail 'duplicate/reordered E1 task status unavailable'
+	reordered_status=$(printf '%s' "$reordered_shown" | jq -r '.task.status')
+	case "$reordered_status" in cancelled) break ;; completed|failed|unknown_outcome) fail "stopped task changed to $reordered_status after provider release" ;; esac
+	i=$((i + 1))
+	sleep 1
+done
+[ "$(jq -r '.reordered_frames_sent' "$LUMEN_E1_PROXY_STATE")" -eq 4 ] || fail 'duplicate/reordered frame sequence was incomplete'
+[ "$(jq -r '.reordered_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'duplicate/reordered probe issued multiple Run creates'
+[ "$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")" -eq "$((reordered_creates_before + 1))" ] || fail 'unexpected Run create during duplicate/reordered probe'
+[ "$(printf '%s' "$reordered_shown" | jq -r '.run.runtimeRunId')" = "$reordered_run" ] || fail 'duplicate/reordered task Run mapping changed'
+reordered_runtime_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+	"http://127.0.0.1:$hermes_host_port/v1/runs/$reordered_run" | jq -r '.status')
+printf 'E1 duplicate/reordered: task=%s run=%s frames=4 sequence=2,1,2,3 conflicting_duplicate=failed host=%s runtime=%s creates_for_task=1 injected_frames=true provider_held_through_barrier=true\n' \
+	"$reordered_task" "$reordered_run" "$reordered_status" "$reordered_runtime_status"
+case "$reordered_runtime_status" in cancelled|canceled) ;; *) fail "stopped duplicate/reordered runtime ended as $reordered_runtime_status" ;; esac
+[ "$reordered_status" = cancelled ] || fail "Host did not preserve cancellation after provider release: $reordered_status"
+
+if [ "${LUMEN_E1_AMBIGUOUS_CREATE:-0}" = 1 ]; then
+	printf '%s\n' '=> pinned E1 ambiguous create response'
+	ambiguous_now=$(date +%s)
+	ambiguous_reconcile=$((ambiguous_now + 20))
+	ambiguous_task="macos-ambiguous-$probe_suffix"
+	ambiguous_request="macos-ambiguous-submit-$probe_suffix"
+	ambiguous_creates_before=$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")
+	printf '%s\n' "$ambiguous_request" >"$LUMEN_E1_CREATE_DROP_ARM"
+	"$host_artifact" task submit \
+		--request_id "$ambiguous_request" --task_id "$ambiguous_task" \
+		--capability_id agent.run/execute --action run \
+		--action_fingerprint macos-ambiguous-input --input 'E1 ambiguous create probe' \
+		--runtime_profile_digest dev-local-v1 --reconcile_by "$ambiguous_reconcile" >/dev/null
+	"$host_artifact" approval resolve \
+		--request_id "macos-ambiguous-approve-$probe_suffix" --task_id "$ambiguous_task" \
+		--target_node_id "$host_node_id" --action_fingerprint macos-ambiguous-input \
+		--approval_id "macos-ambiguous-approval-$probe_suffix" --approved_at "$ambiguous_now" \
+		--expires_at "$ambiguous_reconcile" --reconcile_by "$ambiguous_reconcile" \
+		--runtime_profile_digest dev-local-v1 --input 'E1 ambiguous create probe' --decision once >/dev/null
+	i=0
+	while [ "$i" -lt 30 ]; do
+		ambiguous_shown=$("$host_artifact" task show --task_id "$ambiguous_task") || fail 'ambiguous task status unavailable'
+		ambiguous_status=$(printf '%s' "$ambiguous_shown" | jq -r '.task.status')
+		[ "$ambiguous_status" = unknown_outcome ] && break
+		i=$((i + 1))
+		sleep 1
+	done
+	[ "$ambiguous_status" = unknown_outcome ] || fail "ambiguous create did not produce durable unknown_outcome: $ambiguous_status"
+	while [ "$(date +%s)" -le "$ambiguous_reconcile" ]; do
+		sleep 1
+	done
+	ambiguous_shown=$("$host_artifact" task show --task_id "$ambiguous_task") || fail 'ambiguous task status unavailable after reconcile deadline'
+	ambiguous_status=$(printf '%s' "$ambiguous_shown" | jq -r '.task.status')
+	[ "$ambiguous_status" = unknown_outcome ] || fail "ambiguous create changed after reconcile deadline: $ambiguous_status"
+	[ "$(jq -r '.create_dropped' "$LUMEN_E1_PROXY_STATE")" = true ] || fail 'pinned create response was not captured and dropped'
+	[ "$(jq -r '.ambiguous_creates' "$LUMEN_E1_PROXY_STATE")" -eq 1 ] || fail 'ambiguous create idempotency key was posted more than once'
+	[ "$(jq -r '.creates' "$LUMEN_E1_PROXY_STATE")" -eq "$((ambiguous_creates_before + 1))" ] || fail 'additional Run create occurred during ambiguous probe'
+	[ "$(printf '%s' "$ambiguous_shown" | jq -r '.run.runtimeRunId // empty')" = '' ] || fail 'ambiguous create invented a durable Run mapping'
+	[ "$(printf '%s' "$ambiguous_shown" | jq -r '.task.output // empty')" = '' ] || fail 'ambiguous create invented completed output'
+	ambiguous_run=$(jq -r '.ambiguous_run_id' "$LUMEN_E1_PROXY_STATE")
+	[ -n "$ambiguous_run" ] || fail 'pinned gateway did not return a run ID for ambiguous create'
+	ambiguous_runtime_status=$(curl -fsS -m 5 -H "Authorization: Bearer $api_key" \
+		"http://127.0.0.1:$hermes_host_port/v1/runs/$ambiguous_run" | jq -r '.status')
+	[ "$ambiguous_runtime_status" = completed ] || fail "pinned Hermes run did not complete after Host response loss: $ambiguous_runtime_status"
+	printf 'E1 ambiguous: task=%s runtime_run=%s host_status=%s host_mapping=none creates_for_key=1 runtime_status=%s\n' \
+		"$ambiguous_task" "$ambiguous_run" "$ambiguous_status" "$ambiguous_runtime_status"
+fi
 
 printf '%s\n' 'All native macOS journey checkpoints passed.'
 if [ "${LUMEN_MACOS_CHECK_PRESERVE:-0}" = 1 ]; then

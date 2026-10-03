@@ -92,7 +92,13 @@ func NewJournal(d string) (*Journal, error) {
 	if e = dec.Decode(&extra); e != io.EOF {
 		return nil, fmt.Errorf("%w: trailing content", ErrInvalidJournal)
 	}
-	return j, validateEvidence(j.evidence)
+	if err := validateEvidence(j.evidence); err != nil {
+		return nil, err
+	}
+	if j.binding != nil && validateEvidenceBinding(j.evidence, *j.binding) != nil {
+		return nil, ErrInvalidJournal
+	}
+	return j, nil
 }
 func (j *Journal) Bind(b JournalBinding) error {
 	if !validProfile(b.Profile) || b.Topology.Validate() != nil || (b.Supervisor != "" && b.Supervisor.Validate() != nil) || validateComposeBinding(b.Supervisor, b.ComposeProject) != nil || (b.Supervisor == SupervisorDocker && b.ComposeProject == "") || !validDigest(b.PlanDigest) || (b.EndpointOriginDigest != "" && !validDigest(b.EndpointOriginDigest)) || (b.EndpointIdentityDigest != "" && !validDigest(b.EndpointIdentityDigest)) {
@@ -113,6 +119,9 @@ func (j *Journal) Bind(b JournalBinding) error {
 	}
 	if !validArtifactRefs(b.ArtifactRefs) || !disjointArtifactBindings(b.ArtifactPaths, b.ArtifactRefs) {
 		return ErrInvalidJournal
+	}
+	if err := validateEvidenceBinding(j.evidence, b); err != nil {
+		return err
 	}
 	if j.binding != nil {
 		if ((j.binding.Supervisor == "" && b.Supervisor != "") || (j.binding.Supervisor == SupervisorDocker && j.binding.ComposeProject == "" && b.ComposeProject != "")) && legacyBindingCanUpgrade(*j.binding, b) {
@@ -273,12 +282,35 @@ func (j *Journal) Next() Stage {
 	}
 	return Validated
 }
+
+// IsValidated reports whether setup's terminal readiness decision was durably recorded.
+func (j *Journal) IsValidated() bool {
+	return len(j.evidence) == len(stageOrder) && j.evidence[len(j.evidence)-1].Stage == Validated
+}
+
+// IsValidatedForBinding reports whether terminal evidence authorizes this exact
+// immutable setup selection. Unbound/legacy journals cannot authorize launch.
+func (j *Journal) IsValidatedForBinding() bool {
+	if j == nil || j.binding == nil || !j.IsValidated() {
+		return false
+	}
+	last := j.evidence[len(j.evidence)-1]
+	return last.Profile == j.binding.Profile && last.PlanDigest == j.binding.PlanDigest && last.BindingDigest == bindingDigest(*j.binding) && validateEvidenceBinding(j.evidence, *j.binding) == nil
+}
+
 func (j *Journal) Record(e StageEvidence) error {
 	if !validStage(e.Stage) || !validDigest(e.InputDigest) {
 		return ErrInvalidDigest
 	}
+	if j.binding != nil && (e.Profile != j.binding.Profile || e.PlanDigest != j.binding.PlanDigest) {
+		return ErrInputChanged
+	}
+	if e.Stage == Validated && j.binding != nil {
+		e.BindingDigest = bindingDigest(*j.binding)
+	}
 	if len(j.evidence) > 0 && e.Stage == j.evidence[len(j.evidence)-1].Stage {
-		if e.InputDigest != j.evidence[len(j.evidence)-1].InputDigest {
+		previous := j.evidence[len(j.evidence)-1]
+		if e.InputDigest != previous.InputDigest || e.BindingDigest != previous.BindingDigest {
 			return ErrInputChanged
 		}
 		return nil
@@ -297,6 +329,36 @@ func (j *Journal) Record(e StageEvidence) error {
 	j.evidence = c
 	if er != nil {
 		return fmt.Errorf("%w: %v", ErrDurabilityUncertain, er)
+	}
+	return nil
+}
+
+// BindValidatedEvidence upgrades a previously verified terminal record to the
+// current exact binding. Call only after the caller re-verifies the deployment.
+func (j *Journal) BindValidatedEvidence() error {
+	if j == nil || j.binding == nil || !j.IsValidated() {
+		return ErrInvalidJournal
+	}
+	last := j.evidence[len(j.evidence)-1]
+	if last.Profile != j.binding.Profile || last.PlanDigest != j.binding.PlanDigest || validateEvidenceBinding(j.evidence, *j.binding) != nil {
+		return ErrInvalidJournal
+	}
+	want := bindingDigest(*j.binding)
+	if last.BindingDigest == want {
+		return nil
+	}
+	if last.BindingDigest != "" {
+		return ErrInvalidJournal
+	}
+	candidate := append([]StageEvidence(nil), j.evidence...)
+	candidate[len(candidate)-1].BindingDigest = want
+	renamed, err := persist(j.dir, j.path, candidate, j.syncParent)
+	if !renamed {
+		return err
+	}
+	j.evidence = candidate
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrDurabilityUncertain, err)
 	}
 	return nil
 }
@@ -340,11 +402,28 @@ func persist(d, p string, e []StageEvidence, sync func(string) error) (bool, err
 }
 func validateEvidence(e []StageEvidence) error {
 	for i, v := range e {
-		if i >= len(stageOrder) || v.Stage != stageOrder[i] || !validDigest(v.InputDigest) || (v.Profile != "" && !validProfile(v.Profile)) || (v.PlanDigest != "" && !validDigest(v.PlanDigest)) {
+		if i >= len(stageOrder) || v.Stage != stageOrder[i] || !validDigest(v.InputDigest) || (v.Profile != "" && !validProfile(v.Profile)) || (v.PlanDigest != "" && !validDigest(v.PlanDigest)) || (v.BindingDigest != "" && (v.Stage != Validated || !validDigest(v.BindingDigest))) {
 			return ErrInvalidJournal
 		}
 	}
 	return nil
+}
+
+func validateEvidenceBinding(evidence []StageEvidence, binding JournalBinding) error {
+	for _, item := range evidence {
+		if (item.Profile != "" && item.Profile != binding.Profile) || (item.PlanDigest != "" && item.PlanDigest != binding.PlanDigest) {
+			return ErrInvalidJournal
+		}
+		if item.BindingDigest != "" && item.Stage != Validated {
+			return ErrInvalidJournal
+		}
+	}
+	return nil
+}
+
+func bindingDigest(binding JournalBinding) string {
+	encoded, _ := json.Marshal(binding)
+	return digest(string(encoded))
 }
 
 func validProfile(p Profile) bool { return p == Development || p == PersonalAlpha || p == Hardened }

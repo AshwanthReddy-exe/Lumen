@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +18,9 @@ import (
 	"time"
 
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
+	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
+	"github.com/AshwanthReddy-exe/Lumen/internal/host"
+	"github.com/AshwanthReddy-exe/Lumen/internal/setup"
 )
 
 func TestWriteJSONUsesStableObjectEncoding(t *testing.T) {
@@ -29,6 +34,185 @@ func TestWriteJSONUsesStableObjectEncoding(t *testing.T) {
 	var decoded map[string]any
 	if err := json.Unmarshal(out.Bytes(), &decoded); err != nil {
 		t.Fatalf("output is not JSON: %v", err)
+	}
+}
+
+func TestLaunchActivationGateFailsClosedWithoutValidatedJournal(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LUMEN_REQUIRE_VALIDATED_SETUP", "1")
+	cfg := host.Config{
+		DataDir: dir, SocketPath: filepath.Join(dir, "host.sock"),
+		CredentialPath: filepath.Join(dir, "operator.credential"),
+	}
+	if launchActivationAllowedFor(cfg, "1", false, false, "darwin") {
+		t.Fatal("launch activation allowed without a validated setup journal")
+	}
+	if launchActivationAllowedFor(cfg, "invalid", false, false, "darwin") {
+		t.Fatal("unknown activation-gate value was accepted")
+	}
+	if launchActivationAllowedFor(cfg, "", false, false, "darwin") {
+		t.Fatal("ungated LaunchAgent unexpectedly allowed on macOS")
+	}
+	if !launchActivationAllowedFor(cfg, "", true, false, "darwin") {
+		t.Fatal("explicit manual serve was denied on macOS")
+	}
+	if !launchActivationAllowedFor(cfg, "", false, false, "linux") {
+		t.Fatal("manual Linux serve unexpectedly required setup journal")
+	}
+}
+
+func TestLaunchActivationGateIsNotLaunchdSpecificOnOtherPlatforms(t *testing.T) {
+	dir := t.TempDir()
+	cfg := host.Config{
+		DataDir: dir, SocketPath: filepath.Join(dir, "host.sock"),
+		CredentialPath: filepath.Join(dir, "operator.credential"),
+	}
+	t.Setenv("LUMEN_REQUIRE_VALIDATED_SETUP", "")
+	if !launchActivationAllowedFor(cfg, "", false, false, "linux") {
+		t.Fatal("manual serve without setup metadata unexpectedly required a journal")
+	}
+	if err := os.Mkdir(filepath.Join(dir, "setup"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if !launchActivationAllowedFor(cfg, "", false, false, "linux") {
+		t.Fatal("Linux serve was subjected to Launchd validation because setup metadata existed")
+	}
+}
+
+func TestLaunchActivationGateAcceptsMatchingBoundJournal(t *testing.T) {
+	dir := t.TempDir()
+	cfg := host.Config{
+		DataDir: dir, SocketPath: filepath.Join(dir, "host.sock"),
+		CredentialPath: filepath.Join(dir, "operator.credential"),
+		HermesBaseURL:  "http://127.0.0.1:8642", HermesProfile: hermes.ProfileDevelopment,
+	}
+	endpointDigest, err := setup.EndpointOriginDigest(cfg.HermesBaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err = filepath.EvalSymlinks(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactDigest := sha256.Sum256(contents)
+	planDigest := "sha256:" + strings.Repeat("b", 64)
+	binding := setup.JournalBinding{
+		Profile: setup.Development, Topology: setup.TopologyExternal, Supervisor: setup.SupervisorLaunchd,
+		PlanDigest: planDigest, EndpointOriginDigest: endpointDigest,
+		ReferenceDigests: setup.DigestReferences(map[string]string{}),
+		ArtifactPaths:    map[string]string{"lumen": executable},
+		ArtifactDigests:  map[string]string{"lumen": "sha256:" + hex.EncodeToString(artifactDigest[:])},
+	}
+	journal, err := setup.NewJournal(filepath.Join(dir, "setup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Bind(binding); err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range []setup.Stage{setup.Detected, setup.ArtifactsReady, setup.DirectoriesReady, setup.CredentialsReady, setup.ConfigurationReady, setup.HostInitialized} {
+		if err := journal.Record(setup.StageEvidence{Stage: stage, InputDigest: "sha256:" + strings.Repeat("a", 64), Profile: setup.Development, PlanDigest: planDigest}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !launchActivationAllowedFor(cfg, "", false, true, "darwin") {
+		t.Fatal("matching setup binding did not authorize the staged LaunchAgent")
+	}
+	for _, stage := range []setup.Stage{setup.ServicesInstalled, setup.ServicesStarted, setup.Validated} {
+		if stage == setup.Validated && !launchActivationAllowedFor(cfg, "", false, true, "darwin") {
+			t.Fatal("staged LaunchAgent was denied before the terminal validation record")
+		}
+		if err := journal.Record(setup.StageEvidence{Stage: stage, InputDigest: "sha256:" + strings.Repeat("a", 64), Profile: setup.Development, PlanDigest: planDigest}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !launchActivationAllowedFor(cfg, "", false, true, "darwin") {
+		t.Fatal("recovery staged activation was denied after validated evidence was committed")
+	}
+	t.Setenv("LUMEN_REQUIRE_VALIDATED_SETUP", "1")
+	if !launchActivationAllowedFor(cfg, "1", false, false, "darwin") {
+		t.Fatal("matching validated journal did not authorize activation")
+	}
+	cfg.HermesProfile = hermes.ProfileHardened
+	if launchActivationAllowedFor(cfg, "1", false, false, "darwin") {
+		t.Fatal("activation accepted a profile that differs from the bound journal")
+	}
+}
+
+func TestLaunchActivationGateUsesCommittedReleaseDigest(t *testing.T) {
+	dir := t.TempDir()
+	dir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := host.Config{
+		DataDir: dir, SocketPath: filepath.Join(dir, "host.sock"),
+		CredentialPath: filepath.Join(dir, "operator.credential"),
+		HermesBaseURL:  "http://127.0.0.1:8642", HermesProfile: hermes.ProfileDevelopment,
+	}
+	endpointDigest, err := setup.EndpointOriginDigest(cfg.HermesBaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err = filepath.EvalSymlinks(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentDigest := sha256.Sum256(contents)
+	planDigest := "sha256:" + strings.Repeat("b", 64)
+	binding := setup.JournalBinding{
+		Profile: setup.Development, Topology: setup.TopologyExternal, Supervisor: setup.SupervisorLaunchd,
+		PlanDigest: planDigest, EndpointOriginDigest: endpointDigest,
+		ReferenceDigests: setup.DigestReferences(map[string]string{}),
+		ArtifactPaths:    map[string]string{"lumen": executable},
+		ArtifactDigests:  map[string]string{"lumen": "sha256:" + strings.Repeat("a", 64)},
+	}
+	journal, err := setup.NewJournal(filepath.Join(dir, "setup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Bind(binding); err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range []setup.Stage{setup.Detected, setup.ArtifactsReady, setup.DirectoriesReady, setup.CredentialsReady, setup.ConfigurationReady, setup.HostInitialized, setup.ServicesInstalled, setup.ServicesStarted, setup.Validated} {
+		if err := journal.Record(setup.StageEvidence{Stage: stage, InputDigest: planDigest, Profile: setup.Development, PlanDigest: planDigest}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("LUMEN_REQUIRE_VALIDATED_SETUP", "1")
+	if launchActivationAllowedFor(cfg, "1", false, false, "darwin") {
+		t.Fatal("accepted the original setup digest after the executable was updated")
+	}
+	record := setup.ReleaseRecord{
+		Generation: 2, Profile: setup.Development, Topology: setup.TopologyExternal,
+		Current: map[string]setup.ReleaseArtifact{"lumen": {
+			Kind: setup.ArtifactExecutable, Digest: "sha256:" + hex.EncodeToString(currentDigest[:]), Path: executable,
+		}},
+	}
+	if err := setup.SaveReleaseRecord(filepath.Join(dir, "setup", "release-record.json"), record); err != nil {
+		t.Fatal(err)
+	}
+	if !launchActivationAllowedFor(cfg, "1", false, false, "darwin") {
+		t.Fatal("denied the executable digest from the committed release generation")
 	}
 }
 
@@ -77,7 +261,7 @@ func TestCLIProcessLifecycleAndBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	serve := exec.Command(bin, "serve")
+	serve := exec.Command(bin, "serve", "--manual")
 	serve.Env = append(os.Environ(), cfg...)
 	stdout, err := serve.StdoutPipe()
 	if err != nil {
@@ -181,6 +365,12 @@ func TestCLIServeReportsActionableStartupCause(t *testing.T) {
 		"LUMEN_HERMES_PROFILE=development",
 		"LUMEN_HERMES_BEARER_FILE=" + filepath.Join(dataDir, "missing.token"),
 	}, "serve")
+	if runtime.GOOS == "darwin" {
+		if code != 78 || !strings.Contains(out, "service activation denied: validated setup required") {
+			t.Fatalf("serve activation gate: code=%d output=%q", code, out)
+		}
+		return
+	}
 	if code != 3 || !strings.Contains(out, "startup unavailable: Hermes configuration unavailable") {
 		t.Fatalf("serve: code=%d output=%q", code, out)
 	}

@@ -40,8 +40,14 @@ host_id=$(printf '%s' "$host_status_json" | jq -r '.active_host_id // .host_id /
 [[ -n "$host_id" ]] || fail "Host identity unavailable"
 
 token=$(<"$bearer_file")
-curl -fsS -o /dev/null -H "Authorization: Bearer $token" "$hermes_url/v1/capabilities" || fail "Hermes is not ready at $hermes_url"
-unset token
+case "$token" in
+  ""|*[!a-zA-Z0-9._~+/=-]*) fail "Hermes credential has unsupported characters" ;;
+esac
+auth_config=$(printf 'header = "Authorization: Bearer %s"\n' "$token")
+printf '%s' "$auth_config" | curl --config - -fsS -o /dev/null "$hermes_url/v1/capabilities" || fail "Hermes is not ready at $hermes_url"
+toolsets=$(printf '%s' "$auth_config" | curl --config - -fsS "$hermes_url/v1/toolsets") || fail "Hermes toolsets are unavailable"
+printf '%s' "$toolsets" | jq -e 'if type == "object" then (.data // .toolsets) as $items | ($items | type == "array") and all($items[]; .enabled == false) else false end' >/dev/null || fail "Hermes exposes enabled or unverifiable API toolsets; configure platform_toolsets.api_server: [] in its config and restart the gateway"
+unset token auth_config
 
 now=$(date +%s)
 suffix="$now-$$-$(openssl rand -hex 4)"
@@ -60,6 +66,14 @@ submit=$($binary task submit \
   --input "$prompt") || fail "task submission failed (task: $task_id)"
 
 outcome=$(printf '%s' "$submit" | jq -r '.outcome // empty')
+case "$outcome" in
+  awaiting_permission|queued)
+    printf 'Host task receipt: %s status=%s host=%s\n' "$task_id" "$outcome" "$host_id" >&2
+    ;;
+  *)
+    fail "task was not accepted: ${outcome:-unknown} (task: $task_id)"
+    ;;
+esac
 if [[ "$outcome" == awaiting_permission ]]; then
   approved_at=$(date +%s)
   $binary approval resolve \
@@ -74,8 +88,6 @@ if [[ "$outcome" == awaiting_permission ]]; then
     --decision once \
     --runtime_profile_digest dev-local-v1 \
     --input "$prompt" >/dev/null || fail "one-time policy approval failed (task: $task_id)"
-elif [[ "$outcome" != queued ]]; then
-  fail "task was not accepted: ${outcome:-unknown} (task: $task_id)"
 fi
 
 while (( $(date +%s) <= reconcile_by )); do
@@ -91,10 +103,12 @@ while (( $(date +%s) <= reconcile_by )); do
     completed)
       output=$(printf '%s' "$shown" | jq -r '.task.output // empty')
       [[ -n "$output" ]] || fail "Hermes completed without durable output (task: $task_id)"
+      printf 'Host task receipt: %s status=completed host=%s\n' "$task_id" "$host_id" >&2
       printf '%s\n' "$output"
       exit 0
       ;;
     failed|cancelled|unknown_outcome)
+      printf 'Host task receipt: %s status=%s host=%s\n' "$task_id" "$task_status" "$host_id" >&2
       fail "task ended as $task_status (task: $task_id)"
       ;;
   esac
