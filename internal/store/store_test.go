@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -31,6 +32,184 @@ func testStore(t *testing.T) (*Store, string, string) {
 
 func testState() space.State {
 	return space.State{SchemaVersion: 1, SpaceID: "space", OwnerID: "owner", HostID: "host", Audit: []space.AuditEvent{}}
+}
+
+func TestAbruptProcessExitDuringCommitLeavesWholeSnapshot(t *testing.T) {
+	const (
+		stageEnv = "LUMEN_STORE_CRASH_STAGE"
+		stateEnv = "LUMEN_STORE_CRASH_STATE"
+		keyEnv   = "LUMEN_STORE_CRASH_KEY"
+		exitCode = 86
+	)
+
+	if stage := os.Getenv(stageEnv); stage != "" {
+		s, err := New(os.Getenv(stateEnv), os.Getenv(keyEnv))
+		if err != nil {
+			t.Fatal(err)
+		}
+		die := func() { os.Exit(exitCode) }
+		dirSyncCalls := 0
+		s.hooks = Hooks{
+			Write: func(f *os.File, b []byte) error {
+				if _, err := f.Write(b); err != nil {
+					return err
+				}
+				if stage == "after-temp-write" {
+					die()
+				}
+				return nil
+			},
+			Sync: func(f *os.File) error {
+				if err := f.Sync(); err != nil {
+					return err
+				}
+				if stage == "after-file-sync" {
+					die()
+				}
+				return nil
+			},
+			Rename: func(from, to string) error {
+				if stage == "before-replace" {
+					die()
+				}
+				if err := os.Rename(from, to); err != nil {
+					return err
+				}
+				if stage == "after-replace" {
+					die()
+				}
+				return nil
+			},
+			DirSync: func(f *os.File) error {
+				dirSyncCalls++
+				if stage == "before-dir-sync" && dirSyncCalls == 2 {
+					die()
+				}
+				return f.Sync()
+			},
+		}
+		_, err = s.Update(func(st space.State) space.Transition {
+			st.SpaceID = "updated"
+			return space.Transition{State: st}
+		})
+		t.Fatalf("child update unexpectedly returned: %v", err)
+	}
+
+	for _, stage := range []string{"after-temp-write", "after-file-sync", "before-replace", "after-replace", "before-dir-sync"} {
+		t.Run(stage, func(t *testing.T) {
+			d := t.TempDir()
+			if err := os.Chmod(d, 0700); err != nil {
+				t.Fatal(err)
+			}
+			statePath, keyPath := filepath.Join(d, "state.json"), filepath.Join(d, "state.key")
+			s, err := New(statePath, keyPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Initialize(testState()); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			cmd := exec.Command(os.Args[0], "-test.run=^TestAbruptProcessExitDuringCommitLeavesWholeSnapshot$")
+			cmd.Env = append(os.Environ(), stageEnv+"="+stage, stateEnv+"="+statePath, keyEnv+"="+keyPath)
+			if err := cmd.Run(); err == nil {
+				t.Fatal("child did not terminate at the requested commit boundary")
+			} else if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != exitCode {
+				t.Fatalf("child exit = %v, want status %d", err, exitCode)
+			}
+
+			reopened, err := New(statePath, keyPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.Close()
+			got, err := reopened.Read()
+			if err != nil {
+				t.Fatalf("snapshot unreadable after process exit: %v", err)
+			}
+			wantSpaceID := "space"
+			if stage == "after-replace" || stage == "before-dir-sync" {
+				wantSpaceID = "updated"
+			}
+			if got.SpaceID != wantSpaceID {
+				t.Fatalf("snapshot after process exit = %q, want %q", got.SpaceID, wantSpaceID)
+			}
+			for _, entry := range mustReadDir(t, d) {
+				kind, ok := commitArtifactKind(entry.Name())
+				if ok && kind == "temp" {
+					t.Fatalf("stale uncommitted temp remains after reopen: %s", entry.Name())
+				}
+			}
+		})
+	}
+}
+
+func TestReopenPreservesPriorSnapshotAfterRollbackFailure(t *testing.T) {
+	s, statePath, keyPath := testStore(t)
+	if err := s.Initialize(testState()); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(statePath)
+	linkCalls := 0
+	s.hooks.Link = func(from, to string) error {
+		linkCalls++
+		if linkCalls == 2 {
+			return errors.New("injected rollback recovery-link failure")
+		}
+		return os.Link(filepath.Join(dir, from), filepath.Join(dir, to))
+	}
+	dirSyncCalls := 0
+	s.hooks.DirSync = func(f *os.File) error {
+		dirSyncCalls++
+		if dirSyncCalls > 1 {
+			return errors.New("injected commit directory-sync failure")
+		}
+		return f.Sync()
+	}
+	if _, err := s.Update(func(st space.State) space.Transition {
+		st.SpaceID = "updated"
+		return space.Transition{State: st}
+	}); err == nil {
+		t.Fatal("expected the commit and rollback to report failure")
+	}
+	if got, err := s.Read(); err != nil || got.SpaceID != "updated" {
+		t.Fatalf("active state after rollback failure = %#v, %v", got, err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(statePath, keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if got, err := reopened.Read(); err != nil || got.SpaceID != "updated" {
+		t.Fatalf("active snapshot after reopen = %#v, %v", got, err)
+	}
+	for _, entry := range mustReadDir(t, dir) {
+		kind, ok := commitArtifactKind(entry.Name())
+		if !ok || kind != "backup" {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		key, err := reopened.loadKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		prior, err := decodeEnvelope(key, b)
+		if err != nil || prior.SpaceID != "space" {
+			t.Fatalf("preserved backup = %#v, %v", prior, err)
+		}
+		return
+	}
+	t.Fatal("reopen discarded the only preserved prior snapshot")
 }
 
 func TestInitializeIsCreateOnlyAndRoundTrips(t *testing.T) {
@@ -274,15 +453,16 @@ func TestFailedCommitPreservesLastCommittedState(t *testing.T) {
 	syncCalls := 0
 	s.hooks.DirSync = func(f *os.File) error {
 		syncCalls++
-		if syncCalls == 1 {
+		if syncCalls == 2 {
 			return errors.New("injected directory sync failure")
 		}
 		return f.Sync()
 	}
-	if _, err := s.Update(func(st space.State) space.Transition {
+	_, updateErr := s.Update(func(st space.State) space.Transition {
 		st.SpaceID = "lost"
 		return space.Transition{State: st}
-	}); err == nil {
+	})
+	if updateErr == nil {
 		t.Fatal("expected directory sync failure")
 	}
 	if got, err := s.Read(); err != nil || string(mustRead(t, state)) != string(original) || !stateEqual(got, testState()) {
@@ -293,7 +473,7 @@ func TestFailedCommitPreservesLastCommittedState(t *testing.T) {
 	} else {
 		for _, entry := range entries {
 			if strings.HasPrefix(entry.Name(), ".state.tmp-") {
-				t.Fatalf("temporary file remains: %s", entry.Name())
+				t.Fatalf("temporary file remains: %s (update error: %v)", entry.Name(), updateErr)
 			}
 		}
 	}
@@ -310,12 +490,48 @@ func TestFailedCommitPreservesLastCommittedState(t *testing.T) {
 	}
 }
 
+func TestBackupDirectorySyncFailureNeverReplacesActiveState(t *testing.T) {
+	s, statePath, _ := testStore(t)
+	if err := s.Initialize(testState()); err != nil {
+		t.Fatal(err)
+	}
+	original := mustRead(t, statePath)
+	renamed := false
+	s.hooks.DirSync = func(*os.File) error { return errors.New("injected backup directory sync failure") }
+	s.hooks.Rename = func(string, string) error {
+		renamed = true
+		return nil
+	}
+	if _, err := s.Update(func(st space.State) space.Transition {
+		st.SpaceID = "uncommitted"
+		return space.Transition{State: st}
+	}); err == nil {
+		t.Fatal("expected backup directory sync failure")
+	}
+	if renamed {
+		t.Fatal("replacement attempted before backup directory sync succeeded")
+	}
+	if got := mustRead(t, statePath); !bytes.Equal(got, original) {
+		t.Fatal("active snapshot changed after backup directory sync failure")
+	}
+	if got, err := s.Read(); err != nil || !stateEqual(got, testState()) {
+		t.Fatalf("old snapshot unavailable: %#v %v", got, err)
+	}
+}
+
 func TestPersistentRollbackSyncFailureRetainsRecoveryAndReopens(t *testing.T) {
 	s, statePath, keyPath := testStore(t)
 	if err := s.Initialize(testState()); err != nil {
 		t.Fatal(err)
 	}
-	s.hooks.DirSync = func(*os.File) error { return errors.New("persistent directory sync failure") }
+	dirSyncCalls := 0
+	s.hooks.DirSync = func(f *os.File) error {
+		dirSyncCalls++
+		if dirSyncCalls > 1 {
+			return errors.New("persistent directory sync failure")
+		}
+		return f.Sync()
+	}
 	if _, err := s.Update(func(st space.State) space.Transition {
 		st.SpaceID = "must-not-commit"
 		return space.Transition{State: st}
