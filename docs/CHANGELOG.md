@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Synced the encrypted snapshot backup directory entry before replacing the active state file; fault-injection and process-exit tests cover recovery, while physical power-loss and retained-artifact cleanup remain open gates.
 - Reconciled Phase 02 acceptance with the chat-only boundary: zero enabled Hermes tools and a no-effect action canary qualify the tested profile; tool-event denial, memory denial, VPS recovery and laptop-off acceptance remain later gates.
 - Restored the manual macOS Lumen-to-Hermes chat path: the Host helper uses explicit foreground mode, and the Hermes API server is configured with an empty toolset list for chat-only use. The manual NIM request completed through the Host with a durable receipt; the earlier 13-enabled-toolset preflight block is recorded without saving prompt or response content.
 - Reordered delivery under D-060: build and validate the local personal-alpha product before VPS, installer and release qualification. Phase 02 is the local Host/Hermes foundation; Phases 03–09 deliver conversation, accepted memory, phone, approvals/questions, Mac action, desk voice and integrated local use; Phase 10 retains deployment, reboot, update/rollback, backup/restore, laptop-off journey, soak and owner sign-off. Existing deployment evidence and failures remain historical and no deferred gate is claimed passed.
