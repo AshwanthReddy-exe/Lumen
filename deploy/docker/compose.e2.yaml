@@ -1,0 +1,49 @@
+# Test-only profile: Hermes and the colocated Host get internal service traffic
+# only. Use with a combined deployment; a native Host cannot reach published
+# ports on Docker's internal networks.
+services:
+  lumen-e2-egress-probe:
+    image: python:3.11-slim
+    profiles: [e2]
+    command: ["python", "-c", "import time; time.sleep(300)"]
+    read_only: true
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [lumen-egress]
+  lumen-e2-egress-sink:
+    image: python:3.11-slim
+    profiles: [e2]
+    command:
+      - python
+      - -c
+      - |
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        class Sink(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"controlled egress probe")
+            def log_message(self, *_):
+                pass
+
+        HTTPServer(("0.0.0.0", 8081), Sink).serve_forever()
+    read_only: true
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [lumen-egress]
+  lumen-hermes-init:
+    network_mode: none
+  lumen-hermes:
+    networks: !override
+      - lumen-private
+    ports: !override []
+  lumen-host:
+    environment:
+      LUMEN_SOCKET_PATH: /run/lumen/host.sock
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /run/lumen:mode=0700,uid=${LUMEN_HOST_UID:?},gid=${LUMEN_HOST_GID:?}

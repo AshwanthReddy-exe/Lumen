@@ -95,11 +95,12 @@ func (s Supervisor) Validate() error {
 }
 
 type StageEvidence struct {
-	Stage       Stage   `json:"stage"`
-	InputDigest string  `json:"inputDigest"`
-	Profile     Profile `json:"profile,omitempty"`
-	PlanDigest  string  `json:"planDigest,omitempty"`
-	CompletedAt int64   `json:"completedAt"`
+	Stage         Stage   `json:"stage"`
+	InputDigest   string  `json:"inputDigest"`
+	Profile       Profile `json:"profile,omitempty"`
+	PlanDigest    string  `json:"planDigest,omitempty"`
+	BindingDigest string  `json:"bindingDigest,omitempty"`
+	CompletedAt   int64   `json:"completedAt"`
 }
 
 type Action struct {

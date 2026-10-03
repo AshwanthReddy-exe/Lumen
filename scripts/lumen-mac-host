@@ -40,7 +40,7 @@ case "$command" in
       "$binary" init
     fi
     echo "Starting Lumen Host in foreground. Logs: $log_file" >&2
-    "$binary" serve 2>&1 | tee -a "$log_file"
+    "$binary" serve --manual 2>&1 | tee -a "$log_file"
     ;;
   status)
     exec "$binary" status

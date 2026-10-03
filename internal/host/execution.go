@@ -903,7 +903,7 @@ func (e *executor) consumeOnce(taskID string, run space.HostRun) (terminal, retr
 			event, nextErr := stream.Next(streamCtx)
 			if nextErr != nil {
 				if errors.Is(nextErr, context.DeadlineExceeded) {
-					return e.service.persistEvidence(taskID, run, space.EvidenceUnavailable, "stream-deadline") == nil, false
+					return false, false
 				}
 				return false, false
 			}
@@ -915,7 +915,7 @@ func (e *executor) consumeOnce(taskID string, run space.HostRun) (terminal, retr
 	}
 	events, err := e.runtime.Events(streamCtx, run.RuntimeRunID)
 	if errors.Is(err, context.DeadlineExceeded) {
-		return e.service.persistEvidence(taskID, run, space.EvidenceUnavailable, "stream-deadline") == nil, false
+		return false, false
 	}
 	if err != nil && len(events) == 0 {
 		return false, false

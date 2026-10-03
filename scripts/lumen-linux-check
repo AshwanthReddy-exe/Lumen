@@ -35,7 +35,7 @@ registry_host_port=${LUMEN_REGISTRY_HOST_PORT:-0}
 cd "$repo_root"
 
 compose() {
-	docker compose -p "$project" -f "$compose_file" -f "$compose_override" "$@"
+	docker compose -p "$project" -f "$compose_file" -f "$compose_override" "$@" </dev/null
 }
 
 redact() {
@@ -117,7 +117,7 @@ export LUMEN_HERMES_CLIENT_KEY_SOURCE="$secret_dir/hermes.token"
 export LUMEN_SETUP_PROFILE=development
 export LUMEN_SETUP_TOPOLOGY=combined
 export LUMEN_SUPERVISOR=docker
-export LUMEN_HOST_USER="$(id -u):$(id -g)"
+export LUMEN_HOST_USER="${LUMEN_HOST_USER:-$(id -u):$(id -g)}"
 export HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
 export COMPOSE_PROJECT_NAME="$project"
 export COMPOSE_FILE=deploy/docker/compose.yaml:deploy/docker/compose.milestone1.yaml
@@ -191,7 +191,21 @@ export LUMEN_LUMEN_ARTIFACT="$host_artifact"
 printf '%s\n' '=> lumen setup'
 setup_report=$($cli setup)
 printf '%s\n' "$setup_report" | redact
-printf '%s\n' "$setup_report" | grep -q '"outcome":"ready"' || fail 'lumen setup did not report ready'
+if ! printf '%s\n' "$setup_report" | grep -q '"outcome":"ready"'; then
+	printf '%s\n' '=> doctor after setup failure'
+	doctor_report=$($cli doctor 2>&1 || :)
+	printf '%s\n' "$doctor_report" | grep -o -E '"(outcome|host|hermes|supervisor|boot|artifacts)":"[^"]*"|"code":"[a-z_]+"' | redact || :
+	printf '%s\n' '=> services after setup failure'
+	service_report=$($cli service status 2>&1 || :)
+	printf '%s\n' "$service_report" | grep -o -E '"(outcome|host|hermes|supervisor|boot|artifacts)":"[^"]*"|"code":"[a-z_]+"' | redact || :
+	printf '%s\n' '=> Host control status from inside the container'
+	if compose exec -T lumen-host lumen-host status >"$work_dir/host-control-status.json" 2>"$work_dir/host-control-status.err"; then
+		grep -o '"status":"[^"]*"' "$work_dir/host-control-status.json" || :
+	else
+		redact <"$work_dir/host-control-status.err" >&2
+	fi
+	fail 'lumen setup did not report ready'
+fi
 
 wait_for_host() {
 	i=0
@@ -219,6 +233,7 @@ wait_for_hermes() {
 }
 
 wait_for_hermes || fail 'Hermes api_server did not become ready'
+compose exec -T lumen-hermes /src/.venv/bin/python -c 'import yaml; from hermes_cli.tools_config import _get_platform_tools; from model_tools import get_tool_definitions; cfg=yaml.safe_load(open("/var/lib/hermes/config.yaml", encoding="utf-8")); assert cfg.get("platform_toolsets", {}).get("api_server") == []; assert not _get_platform_tools(cfg, "api_server"); assert not get_tool_definitions(enabled_toolsets=_get_platform_tools(cfg, "api_server"), quiet_mode=True); print("Hermes api_server exposes zero model tools")' || fail 'Hermes API tool policy is not deny-by-default'
 wait_for_host || fail 'Host did not become ready'
 host_status=$(cat "$work_dir/host-status.json")
 host_node_id=$(printf '%s\n' "$host_status" | sed -n 's/.*"host_id":"\([^"]*\)".*/\1/p')

@@ -52,6 +52,16 @@ cleanup() {
 	fi
 	if [ "$status" -ne 0 ] && [ "$compose_ready" -eq 1 ]; then
 		printf '%s\n' '--- redacted macOS journey logs ---' >&2
+		for host_log in "$work_dir/host.log" "$work_dir/host-restart.log"; do
+			if [ -f "$host_log" ]; then
+				printf '%s\n' '--- native Host ---' >&2
+				redact <"$host_log" >&2
+			fi
+		done
+		if [ -f "$work_dir/host-status.err" ]; then
+			printf '%s\n' '--- Host readiness probe ---' >&2
+			redact <"$work_dir/host-status.err" >&2
+		fi
 		if ! compose logs --no-color 2>&1 | redact >&2; then
 			:
 		fi
@@ -59,7 +69,7 @@ cleanup() {
 	fi
 	if [ "$compose_ready" -eq 1 ]; then
 		if ! compose down --volumes --remove-orphans >/dev/null 2>&1; then
-			:
+			printf 'lumen-macos-check: cleanup failed for Compose project %s\n' "$project" >&2
 		fi
 	fi
 	if [ "$archive_copied" -eq 1 ]; then
@@ -112,7 +122,7 @@ export LUMEN_HERMES_CA_SOURCE="$secret_dir/hermes.token"
 export LUMEN_HERMES_CLIENT_CERT_SOURCE="$secret_dir/hermes.token"
 export LUMEN_HERMES_CLIENT_KEY_SOURCE="$secret_dir/hermes.token"
 export LUMEN_PROVIDER_DELAY_MS="$provider_delay_ms"
-export LUMEN_PROVIDER_HOLD_MARKER='E1 duplicate and reordered event probe'
+export LUMEN_PROVIDER_HOLD_MARKER='E1 stream interruption probe|E1 duplicate and reordered event probe'
 export HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
 export HERMES_SOURCE_ARCHIVE_SHA256=907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688
 export COMPOSE_PROJECT_NAME="$project"
@@ -198,7 +208,7 @@ export LUMEN_HERMES_BASE_URL="http://127.0.0.1:$e1_proxy_port"
 printf '%s\n' '=> native Host start'
 umask 077
 "$host_artifact" init
-"$host_artifact" serve >"$work_dir/host.log" 2>&1 &
+"$host_artifact" serve --manual >"$work_dir/host.log" 2>&1 &
 host_pid=$!
 
 wait_for_host() {
@@ -425,7 +435,7 @@ wait "$host_pid" 2>/dev/null || :
 host_pid=
 state_after_kill=$(shasum -a 256 "$data_dir/state.json" | cut -d ' ' -f 1)
 [ "$state_before_kill" = "$state_after_kill" ] || fail 'canonical state changed between in-flight observation and Host exit'
-"$host_artifact" serve >"$work_dir/host-restart.log" 2>&1 &
+"$host_artifact" serve --manual >"$work_dir/host-restart.log" 2>&1 &
 host_pid=$!
 wait_for_host || fail 'Host did not restart against the same canonical state'
 restarted_host_node_id=$(jq -r '.active_host_id // .host_id // empty' "$work_dir/host-status.json")
@@ -439,6 +449,9 @@ restarted_identity=$(cat "$work_dir/host-status.json")
 [ "$(stat -f '%Lp' "$data_dir/operator.credential")" = 600 ] || fail 'operator credential permissions changed across Host restart'
 "$host_artifact" doctor >"$work_dir/restarted-doctor.json" || fail 'Host doctor failed after restart'
 [ "$(jq -r '.host_initialized' "$work_dir/restarted-doctor.json")" = true ] || fail 'Host doctor lost initialized state after restart'
+compose exec -T lumen-provider python -c \
+	'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8080/__lumen_test/release", data=b"").close()' \
+	>/dev/null || fail 'synthetic provider did not release the interrupted Run after Host restart'
 e1_status=
 i=0
 while [ "$i" -lt 180 ]; do

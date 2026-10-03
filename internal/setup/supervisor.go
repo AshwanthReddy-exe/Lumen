@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -21,10 +22,11 @@ const (
 )
 
 type ServiceDefinition struct {
-	Name        ServiceName
-	Path        string
-	Source      string
-	Destination string
+	Name          ServiceName
+	Path          string
+	AlternatePath string
+	Source        string
+	Destination   string
 }
 type ServicePlan struct {
 	Hermes, Host ServiceDefinition
@@ -249,6 +251,9 @@ func (s CommandSupervisor) Install(ctx context.Context, p ServicePlan) error {
 			return err
 		}
 		if d.Source != "" {
+			if s.Manager == SupervisorLaunchd {
+				return errors.New("LaunchAgent definitions must be generated for the current user")
+			}
 			if err := copyDefinition(d.Source, d.Destination); err != nil {
 				return fmt.Errorf("manager=%s service=%s operation=install: %w", s.Manager, d.Name, err)
 			}
@@ -383,7 +388,19 @@ func (s CommandSupervisor) BootStatus(ctx context.Context, names []ServiceName) 
 		return true, nil
 	}
 	if s.Manager == SupervisorLaunchd {
-		return false, &ActionRequiredError{Manager: s.Manager, Service: names[0], Operation: "boot-status"}
+		for _, name := range names {
+			if err := validateName(name); err != nil {
+				return false, err
+			}
+			out, _, err := s.call(ctx, name, "boot-status", "launchctl", "print-disabled", launchdDomain())
+			if err != nil {
+				return false, err
+			}
+			if !launchdEnabled(out, name) {
+				return false, nil
+			}
+		}
+		return true, nil
 	}
 	if s.Manager != SupervisorSystemd {
 		return false, &ActionRequiredError{Manager: s.Manager, Service: names[0], Operation: "boot-status"}
@@ -409,16 +426,90 @@ func unitName(d ServiceDefinition) string {
 	}
 	return "lumen-" + string(d.Name) + ".service"
 }
-func launchdBootstrap(ctx context.Context, d ServiceDefinition) error {
-	domain := "system"
-	if strings.HasPrefix(d.Path, "gui/") {
-		domain = "gui/" + strings.TrimPrefix(d.Path, "gui/")
+func launchdDomain() string { return fmt.Sprintf("gui/%d", os.Getuid()) }
+func launchdTarget(n ServiceName) string {
+	return launchdDomain() + "/dev.lumen." + string(n)
+}
+func launchdEnabled(output []byte, n ServiceName) bool {
+	want := fmt.Sprintf("\"dev.lumen.%s\" => enabled", n)
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.TrimSpace(line) == want {
+			return true
+		}
 	}
+	return false
+}
+func launchdHasPath(output []byte, path string) bool {
+	for _, line := range strings.Split(string(output), "\n") {
+		fields := strings.SplitN(strings.TrimSpace(line), "=", 2)
+		if len(fields) == 2 && strings.TrimSpace(fields[0]) == "path" {
+			got := strings.Trim(strings.TrimSpace(fields[1]), "\"")
+			return filepath.Clean(got) == filepath.Clean(path)
+		}
+	}
+	return false
+}
+func launchdBootstrap(ctx context.Context, d ServiceDefinition) error {
+	if err := validateLaunchdDefinition(d.Path); err != nil {
+		return err
+	}
+	if d.AlternatePath != "" {
+		if !filepath.IsAbs(d.AlternatePath) {
+			return errors.New("alternate LaunchAgent path must be absolute")
+		}
+		if _, err := os.Lstat(d.AlternatePath); err == nil {
+			if err := validateLaunchdDefinition(d.AlternatePath); err != nil {
+				return err
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	var err error
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	_, _, err := commandRunner.Run(bounded, "launchctl", "bootstrap", domain, unitName(d))
+	target := launchdTarget(d.Name)
+	if out, _, printErr := commandRunner.Run(bounded, "launchctl", "print", target); printErr == nil {
+		if !launchdHasPath(out, d.Path) && (d.AlternatePath == "" || !launchdHasPath(out, d.AlternatePath)) {
+			return errors.New("LaunchAgent label is already loaded from a different path")
+		}
+		if launchdHasPath(out, d.Path) {
+			return nil
+		}
+		if _, _, bootoutErr := commandRunner.Run(bounded, "launchctl", "bootout", target); bootoutErr != nil {
+			return fmt.Errorf("LaunchAgent bootout outcome is uncertain: %w", bootoutErr)
+		}
+	}
+	_, _, err = commandRunner.Run(bounded, "launchctl", "bootstrap", launchdDomain(), d.Path)
+	if err == nil {
+		return nil
+	}
 	return err
 }
+
+func validateLaunchdDefinition(path string) error {
+	if !filepath.IsAbs(path) {
+		return errors.New("LaunchAgent path must be absolute")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 || !ownedByCurrentUser(info) {
+		return errors.New("unsafe LaunchAgent definition")
+	}
+	parent, err := os.Lstat(filepath.Dir(path))
+	if err != nil || !parent.IsDir() || parent.Mode()&os.ModeSymlink != 0 || parent.Mode().Perm()&0022 != 0 || !ownedByCurrentUser(parent) {
+		return errors.New("unsafe LaunchAgent directory")
+	}
+	return nil
+}
+
+func ownedByCurrentUser(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat.Uid == uint32(os.Getuid())
+}
+
 func (s CommandSupervisor) observe(ctx context.Context, n ServiceName) (ServiceState, error) {
 	out, errout, err := s.runOutput(ctx, "status", ServiceDefinition{Name: n})
 	if s.Manager == SupervisorDocker {
@@ -429,6 +520,12 @@ func (s CommandSupervisor) observe(ctx context.Context, n ServiceName) (ServiceS
 			return ServiceState{Name: n, State: StateRunning}, nil
 		}
 		return ServiceState{Name: n, State: StateStopped}, nil
+	}
+	if s.Manager == SupervisorLaunchd {
+		if err != nil {
+			return ServiceState{}, fmt.Errorf("manager=%s service=%s operation=status: %w", s.Manager, n, err)
+		}
+		return ServiceState{Name: n, State: launchdServiceState(out)}, nil
 	}
 	text := strings.ToLower(string(out) + " " + string(errout))
 	st := StateUnknown
@@ -446,6 +543,28 @@ func (s CommandSupervisor) observe(ctx context.Context, n ServiceName) (ServiceS
 	}
 	return ServiceState{Name: n, State: st}, nil
 }
+
+func launchdServiceState(output []byte) string {
+	for _, line := range strings.Split(string(output), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok || strings.TrimSpace(key) != "state" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "running":
+			return StateRunning
+		case "waiting", "not running", "stopped", "exited":
+			return StateStopped
+		case "failed":
+			return StateFailed
+		default:
+			return StateUnknown
+
+		}
+	}
+	return StateUnknown
+}
+
 func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDefinition) error {
 	for _, d := range defs {
 		var name string
@@ -457,9 +576,18 @@ func (s CommandSupervisor) run(ctx context.Context, op string, defs ...ServiceDe
 			args = []string{op, unitName(d)}
 		case SupervisorLaunchd:
 			name = "launchctl"
-			args = []string{"kickstart", "system/dev.lumen." + string(d.Name)}
-			if op == "stop" {
-				args = []string{"kill", "SIGTERM", "system/dev.lumen." + string(d.Name)}
+			target := launchdTarget(d.Name)
+			switch op {
+			case "enable":
+				args = []string{"enable", target}
+			case "start":
+				args = []string{"kickstart", target}
+			case "restart":
+				args = []string{"kickstart", "-k", target}
+			case "stop":
+				args = []string{"kill", "SIGTERM", target}
+			default:
+				return &ActionRequiredError{Manager: s.Manager, Service: d.Name, Operation: op}
 			}
 		case SupervisorDocker:
 			name = "docker"
@@ -507,7 +635,7 @@ func (s CommandSupervisor) runOutput(ctx context.Context, op string, d ServiceDe
 		args = []string{"status", unitName(d), "--no-pager"}
 	case SupervisorLaunchd:
 		name = "launchctl"
-		args = []string{"print", "system/" + "dev.lumen." + string(d.Name)}
+		args = []string{"print", launchdTarget(d.Name)}
 	case SupervisorDocker:
 		name = "docker"
 		var err error

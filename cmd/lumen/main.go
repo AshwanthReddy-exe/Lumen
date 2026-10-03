@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -8,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -63,6 +66,13 @@ type doctorDeps struct {
 var doctorDepsOverride *doctorDeps
 
 var dockerImageInspect = inspectDockerImage
+
+// Test overrides let the CLI journey tests exercise the Linux supervisor path
+// and a separately qualified Host-status observer on non-Linux developer hosts.
+var (
+	setupPlatformOverride   string
+	setupHostStatusOverride func(context.Context, host.Config) (string, error)
+)
 
 var (
 	errDeploymentUnavailable = errors.New("deployment unavailable")
@@ -170,6 +180,7 @@ func setupCommand(ctx context.Context) setup.Report {
 	if err != nil {
 		return setup.Report{Outcome: setup.ActionRequired, Profile: profile, Topology: topology, Actions: []setup.Action{{Code: "journal_unavailable"}}}
 	}
+	state.journal = journal
 	composeProject := state.composeProject
 	if existingBindingOK && existingBinding.Supervisor == setup.SupervisorDocker {
 		if existingBinding.ComposeProject != "" {
@@ -453,25 +464,7 @@ func validDurableDigest(value string) bool {
 // A record that does not describe the same deployment is refused rather than
 // silently ignored, so a tampered record fails the deployment closed.
 func effectiveArtifactDigests(binding setup.JournalBinding, dataDir string) (map[string]string, error) {
-	path := releaseRecordPath(dataDir)
-	if _, err := os.Lstat(path); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return binding.ArtifactDigests, nil
-		}
-		return nil, err
-	}
-	record, err := setup.LoadReleaseRecord(path)
-	if err != nil {
-		return nil, err
-	}
-	if err := setup.ReleaseMatchesBinding(record, binding); err != nil {
-		return nil, err
-	}
-	digests := make(map[string]string, len(record.Current))
-	for name, artifact := range record.Current {
-		digests[name] = artifact.Digest
-	}
-	return digests, nil
+	return setup.EffectiveReleaseDigests(binding, dataDir)
 }
 
 func verifyDurableArtifacts(binding setup.JournalBinding, digests map[string]string) bool {
@@ -965,7 +958,12 @@ type cliProbe struct {
 	preferredSupervisor setup.Supervisor
 }
 
-func (p cliProbe) GOOS() string         { return runtime.GOOS }
+func (p cliProbe) GOOS() string {
+	if setupPlatformOverride != "" {
+		return setupPlatformOverride
+	}
+	return runtime.GOOS
+}
 func (p cliProbe) GOARCH() string       { return runtime.GOARCH }
 func (p cliProbe) TermuxPrefix() string { return os.Getenv("PREFIX") }
 func (p cliProbe) SetupDir() string     { return filepath.Join(p.dataDir, "setup") }
@@ -1005,9 +1003,9 @@ type setupState struct {
 	topology       setup.Topology
 	composeProject string
 	adoption       *setup.ExternalAdoption
+	journal        *setup.Journal
 	manager        setup.Supervisor
 	installed      bool
-	started        bool
 }
 
 func (s *setupState) hostConfig() (host.Config, error) {
@@ -1059,9 +1057,11 @@ func (s *setupState) runStage(ctx context.Context, stage setup.Stage) error {
 		if _, err := (setup.CommandSupervisor{Manager: manager, Topology: s.topology, Compose: setup.ComposeConfig{Project: s.composeProject}}).Control(ctx, setup.Action{Code: "start"}, ownedServices(s.topology)); err != nil {
 			return err
 		}
-		s.started = true
 		return nil
 	case setup.Validated:
+		if s.manager == setup.SupervisorLaunchd || s.plan.Supervisor == setup.SupervisorLaunchd {
+			return s.publishLaunchAgent(ctx)
+		}
 		return nil
 	default:
 		return errors.New("unsupported setup stage")
@@ -1109,18 +1109,111 @@ func (s *setupState) verifyStage(ctx context.Context, stage setup.Stage) error {
 			return errors.New("services not installed")
 		}
 	case setup.ServicesStarted:
-		if !s.started {
-			return errors.New("services not started")
-		}
+		return s.verifyRuntimeReady(ctx)
 	case setup.Validated:
-		cfg, err := s.hostConfig()
-		if err != nil {
-			return err
+		manager := s.manager
+		if manager == "" {
+			manager = s.plan.Supervisor
 		}
-		_, err = host.VerifyInitialized(cfg)
-		return err
+		if manager == setup.SupervisorLaunchd {
+			if err := s.resumeLaunchAgent(ctx); err != nil {
+				return err
+			}
+		}
+		return s.verifyRuntimeReady(ctx)
 	}
 	return nil
+}
+
+func (s *setupState) verifyRuntimeReady(ctx context.Context) error {
+	manager := s.manager
+	if manager == "" {
+		manager = s.plan.Supervisor
+	}
+	services := ownedServices(s.topology)
+	supervisor := setup.CommandSupervisor{Manager: manager, Topology: s.topology, Compose: setup.ComposeConfig{Project: s.composeProject}}
+	if err := waitForServicesReady(ctx, services, func(ctx context.Context) ([]setup.ServiceState, error) {
+		return supervisor.Control(ctx, setup.Action{Code: "status"}, services)
+	}); err != nil {
+		return err
+	}
+	cfg, err := s.hostConfig()
+	if err != nil {
+		return err
+	}
+	return waitForHostReady(ctx, cfg)
+}
+
+func waitForServicesReady(parent context.Context, services []setup.ServiceName, status func(context.Context) ([]setup.ServiceState, error)) error {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		states, err := status(ctx)
+		ready := err == nil && len(states) == len(services)
+		if ready {
+			for i, state := range states {
+				if state.Name != services[i] || state.State != setup.StateRunning {
+					ready = false
+					break
+				}
+			}
+		}
+		if ready {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return errors.New("owned services are not ready")
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s *setupState) resumeLaunchAgent(ctx context.Context) error {
+	services := ownedServices(s.topology)
+	supervisor := setup.CommandSupervisor{Manager: setup.SupervisorLaunchd, Topology: s.topology, Compose: setup.ComposeConfig{Project: s.composeProject}}
+	states, err := supervisor.Control(ctx, setup.Action{Code: "status"}, services)
+	if err == nil && len(states) == len(services) {
+		allRunning := true
+		for i, state := range states {
+			if state.Name != services[i] || state.State != setup.StateRunning {
+				allRunning = false
+				break
+			}
+		}
+		if allRunning {
+			return nil
+		}
+	}
+	if err := s.installServices(ctx); err != nil {
+		return err
+	}
+	_, err = supervisor.Control(ctx, setup.Action{Code: "start"}, services)
+	return err
+}
+
+func waitForHostReady(ctx context.Context, cfg host.Config) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	status := defaultHostStatus
+	if setupHostStatusOverride != nil {
+		status = setupHostStatusOverride
+	}
+	for {
+		state, err := status(ctx, cfg)
+		if err == nil && state == setup.StateRunning {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return errors.New("Host readiness check failed")
+		case <-ticker.C:
+		}
+	}
 }
 
 func (s *setupState) writeConfig() error {
@@ -1245,7 +1338,8 @@ func (s *setupState) selectedArtifacts() (map[string]setup.Artifact, error) {
 	}
 	defer f.Close()
 	manifest, err := setup.LoadManifest(f)
-	if err != nil || manifest.Topology != s.topology || manifest.Topology != s.plan.Topology {
+	compatibleManifest := manifest.Topology == s.topology || (manifest.Topology == setup.TopologyCombined && s.topology == setup.TopologyExternal)
+	if err != nil || s.plan.Topology != s.topology || !compatibleManifest {
 		if err == nil {
 			err = errors.New("manifest topology mismatch")
 		}
@@ -1369,10 +1463,59 @@ func (s *setupState) installServices(ctx context.Context) error {
 	if manager.Validate() != nil {
 		return errors.New("supervisor unavailable")
 	}
+	serviceRoot := filepath.Join(s.dataDir, "setup", "services")
+	var serviceDefs []setup.ServiceDefinition
+	if manager == setup.SupervisorLaunchd {
+		if s.topology != setup.TopologyExternal {
+			return errors.New("combined macOS setup requires a managed pinned Hermes gateway")
+		}
+		launchAgents, err := launchAgentDirectory()
+		if err != nil {
+			return err
+		}
+		stagePath, publishedPath := launchAgentDefinitionPaths(s.dataDir, launchAgents)
+		serviceRoot = filepath.Dir(stagePath)
+		if err := ensurePrivateDir(serviceRoot); err != nil {
+			return err
+		}
+		if err := validateProtectedPath(serviceRoot, true); err != nil {
+			return errors.New("unsafe staged LaunchAgent directory")
+		}
+		cfg, err := s.hostConfig()
+		if err != nil {
+			return err
+		}
+		artifacts, err := s.selectedArtifacts()
+		if err != nil {
+			return errors.New("verified Host artifact unavailable")
+		}
+		executable, err := verifiedLaunchAgentArtifactPath(os.Getenv("LUMEN_LUMEN_ARTIFACT"), artifacts["lumen"])
+		if err != nil {
+			return errors.New("unsafe or unverified Host artifact")
+		}
+		defs := serviceDefinitions(manager, s.topology, serviceRoot)
+		if len(defs) != 1 || defs[0].Path == "" {
+			return errors.New("LaunchAgent definition unavailable")
+		}
+		defs[0].AlternatePath = publishedPath
+		serviceDefs = defs
+		publishedContent, err := launchAgentContent(executable, cfg, "validated")
+		if err != nil {
+			return err
+		}
+		if err := verifyExistingLaunchAgent(publishedPath, publishedContent); err != nil {
+			return err
+		}
+		if err := writeLaunchAgent(defs[0].Path, executable, cfg); err != nil {
+			return err
+		}
+	}
+	if serviceDefs == nil {
+		serviceDefs = serviceDefinitions(manager, s.topology, serviceRoot)
+	}
 	s.manager = manager
-	root := filepath.Join(s.dataDir, "setup", "services")
 	plan := setup.ServicePlan{
-		Services: serviceDefinitions(manager, s.topology, root),
+		Services: serviceDefs,
 		Initializer: setup.HostInitializerFuncs{InitializeFunc: func(context.Context) error {
 			cfg, err := s.hostConfig()
 			if err != nil {
@@ -1399,7 +1542,204 @@ func (s *setupState) installServices(ctx context.Context) error {
 	return nil
 }
 
+func (s *setupState) publishLaunchAgent(ctx context.Context) error {
+	if s.topology != setup.TopologyExternal {
+		return errors.New("LaunchAgent publication requires external topology")
+	}
+	cfg, err := s.hostConfig()
+	if err != nil {
+		return err
+	}
+	artifacts, err := s.selectedArtifacts()
+	if err != nil {
+		return errors.New("verified Host artifact unavailable")
+	}
+	executable, err := verifiedLaunchAgentArtifactPath(os.Getenv("LUMEN_LUMEN_ARTIFACT"), artifacts["lumen"])
+	if err != nil {
+		return errors.New("unsafe or unverified Host artifact")
+	}
+	if s.journal == nil || !s.journal.IsValidatedForBinding() {
+		return errors.New("setup validation is not durably committed")
+	}
+	stageContent, err := launchAgentContent(executable, cfg, "staging")
+	if err != nil {
+		return err
+	}
+	launchAgents, err := launchAgentDirectory()
+	if err != nil {
+		return err
+	}
+	stagePath, publishedPath := launchAgentDefinitionPaths(s.dataDir, launchAgents)
+	if err := verifyExistingLaunchAgent(stagePath, stageContent); err != nil {
+		return err
+	}
+	publishedContent, err := launchAgentContent(executable, cfg, "validated")
+	if err != nil {
+		return err
+	}
+	if err := writePrivateLaunchAgent(publishedPath, publishedContent); err != nil {
+		var info os.FileInfo
+		var statErr error
+		if errors.Is(err, setup.ErrDurabilityUncertain) {
+			info, statErr = os.Lstat(publishedPath)
+		}
+		return launchAgentPublicationError(err, info, statErr)
+	}
+	services := setup.ServicePlan{Services: []setup.ServiceDefinition{{
+		Name: setup.ServiceHost, Path: publishedPath, AlternatePath: stagePath,
+	}}}
+	if err := (setup.CommandSupervisor{Manager: setup.SupervisorLaunchd, Topology: setup.TopologyExternal}).Install(ctx, services); err != nil {
+		return fmt.Errorf("%w: %w", setup.ErrLaunchAgentActivationPending, err)
+	}
+	if err := s.verifyRuntimeReady(ctx); err != nil {
+		return fmt.Errorf("%w: %w", setup.ErrLaunchAgentActivationPending, err)
+	}
+	return nil
+}
+
+func launchAgentPublicationError(err error, info os.FileInfo, statErr error) error {
+	if !errors.Is(err, setup.ErrDurabilityUncertain) {
+		return err
+	}
+	if (statErr == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0) ||
+		(statErr != nil && !errors.Is(statErr, os.ErrNotExist)) {
+		return fmt.Errorf("%w: %w", setup.ErrLaunchAgentActivationPending, err)
+	}
+	return err
+}
+
+func launchAgentDefinitionPaths(dataDir, launchAgentsDir string) (stage, published string) {
+	const name = "dev.lumen.host.plist"
+	return filepath.Join(dataDir, "setup", "services", name), filepath.Join(launchAgentsDir, name)
+}
+
+func launchAgentDirectory() (string, error) {
+	home, err := canonicalAccountHome()
+	if err != nil {
+		return "", err
+	}
+	return launchAgentDirectoryForHome(home)
+}
+
+func launchAgentDirectoryForHome(home string) (string, error) {
+	home, err := filepath.Abs(home)
+	if err != nil {
+		return "", err
+	}
+	home, err = filepath.EvalSymlinks(home)
+	if err != nil || validateProtectedPath(home, true) != nil || !ownedByCurrentUser(home) {
+		return "", errors.New("unsafe user home directory")
+	}
+	dir := home
+	for _, component := range []string{"Library", "LaunchAgents"} {
+		dir = filepath.Join(dir, component)
+		if err := os.Mkdir(dir, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+			return "", err
+		}
+		if err := validateOwnedDirectory(dir); err != nil {
+			return "", err
+		}
+	}
+	return dir, nil
+}
+
+func verifiedLaunchAgentArtifactPath(path string, artifact setup.Artifact) (string, error) {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return "", errors.New("Host artifact path must be absolute and clean")
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0022 != 0 || info.Mode().Perm()&0111 == 0 {
+		return "", errors.New("unsafe Host artifact")
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", err
+	}
+	if err := validateProtectedPath(resolved, false); err != nil {
+		return "", err
+	}
+	if err := setup.VerifyArtifact(resolved, artifact); err != nil {
+		return "", err
+	}
+	return resolved, nil
+}
+
+func validateProtectedPath(path string, directoryLeaf bool) error {
+	for current := path; ; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("unsafe artifact path component")
+		}
+		if runtime.GOOS == "darwin" {
+			if err := rejectPathACL(current); err != nil {
+				return err
+			}
+		}
+		if current == path {
+			if (directoryLeaf && !info.IsDir()) || (!directoryLeaf && !info.Mode().IsRegular()) {
+				return errors.New("invalid protected path leaf")
+			}
+		} else if !info.IsDir() {
+			return errors.New("invalid protected path parent")
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || (stat.Uid != 0 && stat.Uid != uint32(os.Getuid())) {
+			return errors.New("protected path has unexpected owner")
+		}
+		if info.Mode().Perm()&0022 != 0 && !(info.IsDir() && stat.Uid == 0 && info.Mode()&os.ModeSticky != 0) {
+			return errors.New("protected path is writable by another principal")
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return nil
+		}
+	}
+}
+
+func rejectPathACL(path string) error {
+	if strings.ContainsAny(path, "\r\n") {
+		return errors.New("unsafe artifact path component")
+	}
+	out, err := exec.Command("/bin/ls", "-lde", path).Output()
+	if err != nil || len(out) == 0 || out[len(out)-1] != '\n' {
+		return errors.New("artifact path has an ACL or cannot be verified")
+	}
+	lines := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) < 3 || !strings.HasSuffix(fields[0], ":") || fields[1] == "" || fields[2] != "deny" {
+			return errors.New("artifact path has an ACL or cannot be verified")
+		}
+	}
+	return nil
+}
+
+func validateOwnedDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0022 != 0 || !ownedByCurrentUser(path) {
+		return errors.New("unsafe LaunchAgents directory")
+	}
+	if runtime.GOOS == "darwin" {
+		if err := rejectPathACL(path); err != nil {
+			return errors.New("unsafe LaunchAgents directory")
+		}
+	}
+	return nil
+}
+
+func ownedByCurrentUser(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat.Uid == uint32(os.Getuid())
+}
+
 func serviceDefinitions(manager setup.Supervisor, topology setup.Topology, root string) []setup.ServiceDefinition {
+	if manager == setup.SupervisorLaunchd && topology == setup.TopologyCombined {
+		return nil
+	}
 	names := ownedServices(topology)
 	defs := make([]setup.ServiceDefinition, 0, len(names))
 	for _, name := range names {
@@ -1409,8 +1749,7 @@ func serviceDefinitions(manager setup.Supervisor, topology setup.Topology, root 
 			d.Source = filepath.Join("deploy", "systemd", "lumen-"+string(name)+".service")
 			d.Destination = filepath.Join(root, string(name)+".service")
 		case setup.SupervisorLaunchd:
-			d.Source = filepath.Join("deploy", "launchd", "dev.lumen."+string(name)+".plist")
-			d.Destination = filepath.Join(root, "dev.lumen."+string(name)+".plist")
+			d.Path = filepath.Join(root, "dev.lumen."+string(name)+".plist")
 		case setup.SupervisorRunit:
 			source := "run"
 			if name == setup.ServiceHermes {
@@ -1426,6 +1765,175 @@ func serviceDefinitions(manager setup.Supervisor, topology setup.Topology, root 
 		defs = append(defs, d)
 	}
 	return defs
+}
+
+func writeLaunchAgent(path, executable string, cfg host.Config) error {
+	if !filepath.IsAbs(path) {
+		return errors.New("LaunchAgent path must be absolute")
+	}
+	content, err := launchAgentContent(executable, cfg, "staging")
+	if err != nil {
+		return err
+	}
+	return writePrivateLaunchAgent(path, content)
+}
+
+func launchAgentContent(executable string, cfg host.Config, activation string) ([]byte, error) {
+	if !filepath.IsAbs(executable) || cfg.DataDir == "" || cfg.HermesBaseURL == "" {
+		return nil, errors.New("LaunchAgent configuration is incomplete")
+	}
+	environment := map[string]string{
+		"LUMEN_DATA_DIR":                 cfg.DataDir,
+		"LUMEN_SOCKET_PATH":              cfg.SocketPath,
+		"LUMEN_OPERATOR_CREDENTIAL_FILE": cfg.CredentialPath,
+		"LUMEN_HERMES_BASE_URL":          cfg.HermesBaseURL,
+		"LUMEN_HERMES_PROFILE":           cfg.HermesProfile,
+		"LUMEN_HERMES_BEARER_FILE":       cfg.HermesBearerPath,
+		"LUMEN_HERMES_CA_FILE":           cfg.HermesCAPath,
+		"LUMEN_HERMES_CLIENT_CERT_FILE":  cfg.HermesClientCertPath,
+		"LUMEN_HERMES_CLIENT_KEY_FILE":   cfg.HermesClientKeyPath,
+		"LUMEN_HERMES_SERVER_CERT_PIN":   cfg.HermesServerPin,
+	}
+	if activation == "validated" {
+		environment["LUMEN_REQUIRE_VALIDATED_SETUP"] = "1"
+	} else if activation != "staging" {
+		return nil, errors.New("LaunchAgent activation mode is invalid")
+	}
+	for key, value := range environment {
+		if value != "" && (strings.HasSuffix(key, "_FILE") || key == "LUMEN_DATA_DIR" || key == "LUMEN_SOCKET_PATH" || key == "LUMEN_OPERATOR_CREDENTIAL_FILE") && !filepath.IsAbs(value) {
+			return nil, errors.New("LaunchAgent paths must be absolute")
+		}
+	}
+	var plist strings.Builder
+	plist.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict>\n")
+	writePlistString(&plist, "Label", "dev.lumen.host")
+	plist.WriteString("<key>ProgramArguments</key><array><string>")
+	writePlistValue(&plist, executable)
+	plist.WriteString("</string><string>serve</string>")
+	if activation == "staging" {
+		plist.WriteString("<string>--setup-staging</string>")
+	}
+	plist.WriteString("</array>\n<key>EnvironmentVariables</key><dict>\n")
+	keys := make([]string, 0, len(environment))
+	for key, value := range environment {
+		if value != "" {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		writePlistString(&plist, key, environment[key])
+	}
+	plist.WriteString("</dict>\n")
+	writePlistString(&plist, "WorkingDirectory", cfg.DataDir)
+	plist.WriteString("<key>RunAtLoad</key><true/><key>Umask</key><integer>63</integer><key>ProcessType</key><string>Background</string>\n")
+	plist.WriteString("<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict><key>ThrottleInterval</key><integer>5</integer><key>ExitTimeOut</key><integer>30</integer></dict></plist>\n")
+	return []byte(plist.String()), nil
+}
+
+func writePlistString(plist *strings.Builder, key, value string) {
+	plist.WriteString("<key>")
+	writePlistValue(plist, key)
+	plist.WriteString("</key><string>")
+	writePlistValue(plist, value)
+	plist.WriteString("</string>\n")
+}
+
+func writePlistValue(plist *strings.Builder, value string) {
+	var escaped bytes.Buffer
+	_ = xml.EscapeText(&escaped, []byte(value))
+	plist.WriteString(escaped.String())
+}
+
+func writePrivateLaunchAgent(path string, content []byte) error {
+	if err := ensurePrivateDir(filepath.Dir(path)); err != nil {
+		return err
+	}
+	if existing, err := os.Lstat(path); err == nil {
+		if !existing.Mode().IsRegular() || existing.Mode()&os.ModeSymlink != 0 || existing.Mode().Perm() != 0600 || !ownedByCurrentUser(path) || (runtime.GOOS == "darwin" && rejectPathACL(path) != nil) {
+			return errors.New("unsafe existing LaunchAgent definition")
+		}
+		current, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if !bytes.Equal(current, content) {
+			return errors.New("existing LaunchAgent definition differs")
+		}
+		return syncLaunchAgentDirectory(path)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".launch-agent-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(content); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Link(tmpPath, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			if err := verifyExistingLaunchAgent(path, content); err != nil {
+				return err
+			}
+			return syncLaunchAgentDirectory(path)
+		}
+		return err
+	}
+	return syncLaunchAgentDirectory(path)
+}
+
+func syncLaunchAgentDirectory(path string) error {
+	dir, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return fmt.Errorf("%w: LaunchAgent publication directory open failed", setup.ErrDurabilityUncertain)
+	}
+	defer dir.Close()
+	if err := dir.Sync(); err != nil {
+		return fmt.Errorf("%w: LaunchAgent publication sync failed", setup.ErrDurabilityUncertain)
+	}
+	return nil
+}
+
+func verifyExistingLaunchAgent(path string, content []byte) error {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return errors.New("LaunchAgent path must be absolute and clean")
+	}
+	if err := validateProtectedPath(filepath.Dir(path), true); err != nil {
+		return errors.New("unsafe LaunchAgent directory")
+	}
+	existing, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !existing.Mode().IsRegular() || existing.Mode()&os.ModeSymlink != 0 || existing.Mode().Perm() != 0600 || !ownedByCurrentUser(path) || (runtime.GOOS == "darwin" && rejectPathACL(path) != nil) {
+		return errors.New("unsafe existing LaunchAgent definition")
+	}
+	current, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(current, content) {
+		return errors.New("existing LaunchAgent definition differs")
+	}
+	return nil
 }
 
 func (s *setupState) observe(ctx context.Context) setup.DoctorEvidence {

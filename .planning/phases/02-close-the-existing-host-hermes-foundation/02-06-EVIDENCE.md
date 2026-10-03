@@ -9,4 +9,8 @@
 
 `rtk sh scripts/lumen-phase02-verify --pr20-only` passed after independently checking GitHub PR state and the preserved branch's remote SHA. README and docs README relative links passed the path check in plan 06. No protected or user-authored PR #20 content was deleted.
 
+## Fresh remote verification — 2026-09-28
+
+Read-only `gh pr view 20` reports PR #20 is `CLOSED`, still a draft, not merged, and closed at `2026-09-27T12:55:44Z`; its head remains `feat/lumen-continuity` at `0b67f814dbe7fc5a6099f85ca900079bf2706ab1`. `git ls-remote --heads origin` reports the preserved `feat/lumen-continuity-preserved` branch at `017e0fe5cfe91fe3379ebe85b61e61e12cd951a9`, and the local commit object is readable with the expected ten-file stat. The original head branch also remains remote. This freshly confirms preservation and closure without merge or mutation.
+
 Gate verdict: PASS

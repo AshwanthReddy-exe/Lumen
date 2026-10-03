@@ -30,10 +30,10 @@ coverage:
     requirement: FR-01
     verification:
       - kind: other
-        ref: .planning/phases/02-close-the-existing-host-hermes-foundation/02-06-EVIDENCE.md; rtk sh scripts/lumen-phase02-verify --pr20-only (prior recorded pass)
+        ref: .planning/phases/02-close-the-existing-host-hermes-foundation/02-06-EVIDENCE.md; live `gh pr view 20`, `git ls-remote --heads origin`, and `git show --stat` verification on 2026-09-28
         status: pass
     human_judgment: true
-    rationale: Remote preservation and PR closure are externally mutable GitHub state; the current refresh attempt is network-blocked and cannot independently reconfirm it.
+    rationale: Fresh read-only GitHub and remote-ref queries reconfirm the closed, unmerged draft and exact preservation commit.
   - id: P02-06-HYGIENE
     description: Repository bloat and navigation were audited; no unproven deletions or unnecessary ignore changes were made.
     requirement: FR-38
@@ -60,7 +60,7 @@ PR #20's useful work remains preserved on its separate branch, and the scoped hy
 
 ## Verification limits
 
-- `rtk sh scripts/lumen-phase02-verify --pr20-only` was attempted on 2026-09-28 but could not connect to `api.github.com`. The earlier successful verification remains recorded in `02-06-EVIDENCE.md`; current GitHub state was not refreshed in this resumed session.
+- Fresh read-only queries on 2026-09-28 reconfirm the PR and branch state recorded above; no PR or branch mutation occurred in this verification.
 - Plan 02-06 closes only its preservation and hygiene scope. It does not complete shared requirements while sibling Phase 02 plans remain open, and it does not certify Phase 02.
 
 ## Next phase readiness

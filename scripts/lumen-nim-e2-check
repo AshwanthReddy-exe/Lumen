@@ -1,0 +1,162 @@
+#!/bin/sh
+set -eu
+
+repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+project="lumen-nim-e2-$$-$(date +%s)"
+work=$(mktemp -d "${TMPDIR:-/tmp}/lumen-nim-e2.XXXXXX")
+data="$work/data"
+secrets="$work/secrets"
+ready=0
+export HERMES_COMMIT=2237be355906fbe6065ce1815711eee52b2d646e
+export HERMES_SOURCE_ARCHIVE_SHA256=907c2a72db1c5dd637ea8eeae97f4cb5b32cef615c17258f6b190924ec5bf688
+export LUMEN_HERMES_API_SERVER_KEY="lumen-nim-e2-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+export LUMEN_DATA_DIR="$data"
+export LUMEN_HERMES_TOKEN_SOURCE="$secrets/token"
+export LUMEN_HERMES_CA_SOURCE="$secrets/ca.pem"
+export LUMEN_HERMES_CLIENT_CERT_SOURCE="$secrets/client.crt"
+export LUMEN_HERMES_CLIENT_KEY_SOURCE="$secrets/client.key"
+export LUMEN_HERMES_PROFILE=development
+export LUMEN_HERMES_BASE_URL=http://127.0.0.1:28642
+export LUMEN_HERMES_CONTAINER_BASE_URL=http://127.0.0.1:8642
+export COMPOSE_PROJECT_NAME="$project"
+
+compose() {
+	docker compose -p "$project" -f "$repo/deploy/docker/compose.yaml" \
+		-f "$repo/deploy/docker/compose.nim-e2.yaml" "$@"
+}
+
+cleanup() {
+	result=$?
+	trap - EXIT HUP INT TERM
+	if [ "$ready" -eq 1 ]; then
+		# Provider/runtime logs may contain credentials or prompts; retain no raw failure log.
+		if ! compose down --volumes --remove-orphans >/dev/null 2>&1; then
+			printf 'lumen-nim-e2-check: cleanup failed; recovery directory retained at %s (project %s)\n' "$work" "$project" >&2
+			exit 1
+		fi
+	fi
+	if [ "$result" -ne 0 ]; then
+		printf 'lumen-nim-e2-check: probe failed; redacted diagnostics retained at %s\n' "$work" >&2
+		exit "$result"
+	fi
+	rm -rf -- "$work"
+	exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+[ -s "$repo/hermes-source.tar.gz" ] || { echo 'verified Hermes source archive is required' >&2; exit 1; }
+[ "$(shasum -a 256 "$repo/hermes-source.tar.gz" | awk '{print $1}')" = "$HERMES_SOURCE_ARCHIVE_SHA256" ] || {
+	echo 'Hermes source archive checksum mismatch' >&2
+	exit 1
+}
+mkdir -m 700 "$data" "$secrets"
+host_marker="$data/host-only-canary"
+printf '%s\n' 'synthetic-host-only-canary' >"$host_marker"
+chmod 600 "$host_marker"
+for file in "$secrets/token" "$secrets/ca.pem" "$secrets/client.crt" "$secrets/client.key"; do
+	: >"$file"
+	chmod 600 "$file"
+done
+
+compose config -q
+ready=1
+compose run --rm --no-deps lumen-hermes-init >/dev/null
+compose run --rm --no-deps --entrypoint /src/.venv/bin/python lumen-hermes-init -c '
+import os, stat, yaml
+from pathlib import Path
+path=Path("/var/lib/hermes/config.yaml")
+cfg=yaml.safe_load(path.read_text()) or {}
+cfg["model"]={"provider":"nvidia", "default":"nvidia/nemotron-3.5-lightning-30b-a3b"}
+assert cfg.get("platform_toolsets",{}).get("api_server")==[]
+assert (cfg.get("auxiliary") or {}).get("title_generation",{}).get("enabled") is False
+tmp=path.with_suffix(".tmp")
+fd=os.open(tmp, os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW, 0o600)
+with os.fdopen(fd,"w") as f:
+    yaml.safe_dump(cfg,f,sort_keys=True); f.flush(); os.fsync(f.fileno())
+os.chown(tmp,65532,65532); os.replace(tmp,path); os.chown(path,65532,65532); path.chmod(0o400)
+print("provider=nvidia model=nvidia/nemotron-3.5-lightning-30b-a3b tools=empty")
+' >/dev/null
+
+compose --profile nim-e2 up -d lumen-hermes lumen-nim-egress-proxy lumen-nim-e2-egress-sink lumen-nim-e2-egress-probe >/dev/null
+hermes=$(compose ps -q lumen-hermes)
+proxy=$(compose ps -q lumen-nim-egress-proxy)
+sink=$(compose ps -q lumen-nim-e2-egress-sink)
+probe=$(compose ps -q lumen-nim-e2-egress-probe)
+[ -n "$hermes" ] && [ -n "$proxy" ] && [ -n "$sink" ] && [ -n "$probe" ] || {
+	echo 'NIM E2 containers did not start' >&2
+	exit 1
+}
+docker inspect --format '{{json .NetworkSettings.Networks}}' "$hermes" | python3 -c 'import json,sys; names=set(json.load(sys.stdin)); assert len(names)==1 and any("lumen-private" in n for n in names), names; print("Hermes network: internal private only")'
+docker inspect --format '{{json .HostConfig.PortBindings}}' "$hermes" | python3 -c 'import json,sys; ports=json.load(sys.stdin); assert not ports, ports; print("Hermes host-published ports: none")'
+docker inspect --format '{{json .NetworkSettings.Networks}}' "$proxy" | python3 -c 'import json,sys; names=set(json.load(sys.stdin)); assert len(names)==2 and any("lumen-private" in n for n in names) and any("lumen-egress" in n for n in names), names; print("allowlist proxy networks: private plus egress")'
+docker inspect --format '{{json .HostConfig.CapDrop}} {{json .HostConfig.SecurityOpt}}' "$proxy" | python3 -c 'import json,sys; caps,opts=sys.stdin.read().split(" ",1); assert "ALL" in json.loads(caps) and any("no-new-privileges" in x for x in json.loads(opts)), (caps,opts); print("proxy capabilities dropped; no-new-privileges enabled")'
+docker inspect --format '{{json .Mounts}}' "$hermes" | python3 -c 'import json,sys; mounts=json.load(sys.stdin); expected=sys.argv[1]+"_lumen-hermes-state"; assert len(mounts)==1 and mounts[0]["Type"]=="volume" and mounts[0]["Destination"]=="/var/lib/hermes" and mounts[0]["Name"]==expected, mounts; print("Hermes mount boundary: exact private state volume only")' "$project"
+
+sink_ip=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$sink")
+[ -n "$sink_ip" ] || { echo 'controlled sink network address missing' >&2; exit 1; }
+compose exec -T lumen-hermes /src/.venv/bin/python -c 'import yaml; c=yaml.safe_load(open("/var/lib/hermes/config.yaml")); assert c.get("model")=={"provider":"nvidia","default":"nvidia/nemotron-3.5-lightning-30b-a3b"}; assert c.get("platform_toolsets",{}).get("api_server")==[]; assert (c.get("auxiliary") or {}).get("title_generation",{}).get("enabled") is False; print("Hermes profile: NVIDIA NIM default; API tools empty; title generation off")'
+docker inspect --format 'Hermes image ID: {{.Image}}' "$hermes"
+compose exec -T lumen-hermes /src/.venv/bin/python -c 'import hashlib; p="/var/lib/hermes/config.yaml"; print("Hermes config sha256="+hashlib.sha256(open(p,"rb").read()).hexdigest())'
+compose exec -T lumen-hermes /bin/sh -ec 'test -s /var/lib/hermes/config.yaml; for path in /var/lib/lumen/host-only-canary /run/secrets/hermes_token /run/secrets/hermes_ca.pem /run/secrets/hermes_client.crt /run/secrets/hermes_client.key; do test ! -r "$path" && test ! -w "$path" || { echo "Host data or secret path is accessible" >&2; exit 1; }; done; echo "Host data canary and four Host secret paths unreadable and unwritable"'
+test -s "$host_marker"
+compose exec -T lumen-nim-e2-egress-probe python -c 'import urllib.request; base="http://lumen-nim-e2-egress-sink:8081"; urllib.request.urlopen(base+"/__control/mark",timeout=5).read(); print("controlled sink positive control passed")'
+sink_before=$(compose exec -T lumen-nim-e2-egress-probe python -c 'import urllib.request; print(urllib.request.urlopen("http://lumen-nim-e2-egress-sink:8081/__control/count",timeout=5).read().decode())')
+
+compose exec -T lumen-hermes /src/.venv/bin/python - "$sink_ip" <<'PY'
+import errno, http.client, ipaddress, json, socket, ssl, sys, urllib.error, urllib.request
+sink_ip = sys.argv[1]
+proxy = "lumen-nim-egress-proxy:3128"
+
+# Exercise the policy parser with suffix confusion, alternate ports and literals.
+for destination in ("integrate.api.nvidia.com.evil.test:443", "evil.integrate.api.nvidia.com:443", "integrate.api.nvidia.com:444", "127.0.0.1:443", "lumen-nim-e2-egress-sink:8081"):
+    conn=http.client.HTTPConnection(proxy,timeout=4)
+    conn.set_tunnel(destination.split(":",1)[0], int(destination.rsplit(":",1)[1]))
+    try:
+        conn.connect()
+    except OSError as error:
+        if "Tunnel connection failed: 403" not in str(error):
+            raise SystemExit("unapproved destination was not denied by policy: "+destination) from error
+    else:
+        raise SystemExit("unapproved CONNECT succeeded: "+destination)
+    finally:
+        conn.close()
+
+# A credential-free GET validates DNS, CONNECT, TLS and the exact NIM endpoint.
+opener=urllib.request.build_opener(urllib.request.ProxyHandler({"https":"http://"+proxy}), urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+try:
+    result=opener.open("https://integrate.api.nvidia.com/v1/models",timeout=20)
+    status=result.status
+    result.close()
+except urllib.error.HTTPError as error:
+    status=error.code
+except Exception as error:
+    raise SystemExit("NIM endpoint was not reached through the allowlist") from error
+if status in (407, 502):
+    raise SystemExit("NIM endpoint/proxy connection failed with HTTP "+str(status))
+control=http.client.HTTPConnection(proxy,timeout=5)
+control.request("GET","/__lumen_test/last-upstream",headers={"Host":"lumen-nim-egress-proxy"})
+last_response=control.getresponse()
+if last_response.status != 200:
+    raise SystemExit("proxy did not retain the successful upstream IP")
+last_ip=ipaddress.ip_address(json.loads(last_response.read()))
+control.close()
+if not last_ip.is_global:
+    raise SystemExit("proxy connected to a non-public NIM address")
+for address, port in ((last_ip,443),(ipaddress.ip_address(sink_ip),8081)):
+    try:
+        socket.create_connection((str(address),port),timeout=2).close()
+    except OSError as error:
+        if not isinstance(error, TimeoutError) and error.errno not in {errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ETIMEDOUT}:
+            raise SystemExit("direct connection failure is not evidence of route denial: "+repr(error)) from error
+    else:
+        raise SystemExit("direct egress bypass succeeded")
+print("NIM endpoint TLS/HTTP reached through allowlist; status="+str(status)+"; response body discarded")
+print("direct NIM and controlled-sink routes: blocked")
+PY
+
+sink_after=$(compose exec -T lumen-nim-e2-egress-probe python -c 'import urllib.request; print(urllib.request.urlopen("http://lumen-nim-e2-egress-sink:8081/__control/count",timeout=5).read().decode())')
+[ "$sink_after" = "$sink_before" ] || { echo 'controlled sink observed a denied-path connection' >&2; exit 1; }
+printf '%s\n' 'controlled destination denied before reaching sink; no sink request observed'
