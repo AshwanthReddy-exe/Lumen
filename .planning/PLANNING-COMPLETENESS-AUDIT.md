@@ -6,6 +6,8 @@
 
 The 58 plans list 347 file entries, representing 296 distinct paths. Of those, 51 exist in the current checkout and 245 are proposed. Proposed paths are ownership targets, not proof that a package compiles, a function contract fits current callers, or a device/provider works. The [generated inventory](FILE-INVENTORY.md) is conditional on the D-056 client branch.
 
+**Requirement trace check:** `python3 scripts/check-plan-coverage.py` compares the PRD IDs, requirements register, roadmap phase ownership, and Phase 03–17 plan frontmatter. It passes for all 58 FRs and 58 phase owners; the five Phase 02 requirements are deliberately outside the Phase 03–17 plan check. This checks assignment only, not implementation or the adequacy of each task's acceptance evidence.
+
 ## Handoff gaps by phase band
 
 | Phases | What is already decided | What still requires design or proof before a basic executor can safely finish |
