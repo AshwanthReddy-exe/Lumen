@@ -2,7 +2,7 @@
 
 ## Result
 
-All 163 executable GSD tasks across Phases 01–17 now contain a task-specific `<fails_when>` predicate and `<result_contract>`. The 132 executable tasks in Phases 03–17 are covered across all 58 plans; the other 31 tasks belong to the completed Phase 01–02 baseline plans. Eleven Phase 03–17 blocking human checkpoints remain separate from executable task counts and retain their explicit owner gates.
+All 165 executable GSD tasks across Phases 01–17 now contain a task-specific `<fails_when>` predicate and `<result_contract>`. The 134 executable tasks in Phases 03–17 are covered across all 58 plans; the other 31 tasks belong to the completed Phase 01–02 baseline plans. Eleven Phase 03–17 blocking human checkpoints remain separate from executable task counts and retain their explicit owner gates.
 
 | Phase | Executable tasks with both fields |
 | --- | ---: |
@@ -15,23 +15,23 @@ All 163 executable GSD tasks across Phases 01–17 now contain a task-specific `
 | 07 | 6/6 |
 | 08 | 4/4 |
 | 09 | 4/4 |
-| 10 | 11/11 |
+| 10 | 12/12 |
 | 11 | 11/11 |
 | 12 | 11/11 |
 | 13 | 11/11 |
 | 14 | 12/12 |
 | 15 | 8/8 |
 | 16 | 8/8 |
-| 17 | 10/10 |
-| **Total** | **163/163** |
+| 17 | 11/11 |
+| **Total** | **165/165** |
 
 The predicates and result contracts name concrete forbidden outcomes and explicit `PASS`, `FAIL`, `BLOCKED`, or `UNSUPPORTED` conditions. They do not treat an automated command as proof of physical, provider, independent-review, or owner-approval gates. In particular, absent hardware/runtime/provider evidence remains `BLOCKED`; unsupported capability remains disabled and cannot satisfy a phase exit.
 
 ## Validation performed
 
 - Installed GSD `verify plan-structure`: all 73 plan files passed.
-- `python3 scripts/check-plan-task-contracts.py`: passed with 163/163 executable task contracts, a runnable automated check on each executable task, and exact equality between task `<files>` and each active plan's `files_modified`. Historical plans marked superseded are excluded from file-edit ownership comparison but retain their outcome contracts.
-- `python3 scripts/check-plan-coverage.py`: passed for 58 FRs and phase owners; 493 task source pointers and 459 GSD context pointers on this branch's current `main` base.
+- `python3 scripts/check-plan-task-contracts.py`: passed with 165/165 executable task contracts, a runnable automated check on each executable task, and exact equality between task `<files>` and each active plan's `files_modified`. Historical plans marked superseded are excluded from file-edit ownership comparison but retain their outcome contracts.
+- `python3 scripts/check-plan-coverage.py`: passed for 58 FRs and phase owners; 501 task source pointers and 459 GSD context pointers on the stacked planning branch.
 - Installed GSD `validate consistency`: passed with zero warnings.
 - Installed GSD `query roadmap.validate`: passed with zero warnings.
 - `git diff --check`: passed.

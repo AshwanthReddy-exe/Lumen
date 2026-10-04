@@ -1,5 +1,7 @@
 # Planning completeness audit — 2026-10-03
 
+> Historical completeness snapshot. The 2026-10-04 audit adds the PR #29 source reconciliation, current Future OS revision delta, refreshed file inventory, and local branch/worktree findings; see [current-state delta](PLANNING-CURRENT-STATE-2026-10-04.md). The distinction here between plan structure/coverage and evidence-backed executor readiness remains binding.
+
 ## Verdict
 
 **The roadmap is complete in coverage, with explicit branch and evidence gates; unconditional execution handoff remains open.** There are 17 phases and 58 GSD plans containing 143 implementation/checkpoint tasks for Phases 03–17. All 58 pass GSD syntax/structure checks. Those checks establish document shape, not that a basic executor can implement every task without a qualified platform/provider or owner decision. No plan has passed the invoked external cross-AI convergence loop. None of Phases 03–17 has live product acceptance evidence.
@@ -39,4 +41,4 @@ The current plan set is a valuable architecture and dependency map. It is **not 
 
 ## 2026-10-04 task-contract recheck
 
-The current plan revision now gives all 163 executable tasks across Phases 01–17 a task-specific `<fails_when>` predicate and `<result_contract>`; all 132 executable Phase 03–17 tasks are included, and the 11 phase checkpoints remain explicit. See [task-contract coverage](TASK-CONTRACT-COVERAGE-2026-10-04.md) for the per-phase ledger and validation commands. This closes the missing task-outcome-field gap, but does not satisfy every handoff criterion above: current-source caller/function reconciliation, independent external convergence, and live product/device/provider/release evidence remain open. The roadmap and product are therefore still not execution-complete or product-complete.
+The current plan revision now gives all 165 executable tasks across Phases 01–17 a task-specific `<fails_when>` predicate and `<result_contract>`; all 134 executable Phase 03–17 tasks are included, and the 11 phase checkpoints remain explicit. See [task-contract coverage](TASK-CONTRACT-COVERAGE-2026-10-04.md) for the per-phase ledger and validation commands. This closes the missing task-outcome-field gap, but does not satisfy every handoff criterion above: current-source caller/function reconciliation, independent external convergence, and live product/device/provider/release evidence remain open. The roadmap and product are therefore still not execution-complete or product-complete.

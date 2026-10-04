@@ -1,8 +1,10 @@
 # Plan review status — 2026-10-03
 
+> Historical review snapshot. PRs #22–#29 have since merged, and PR #29 adds conversation/runtime implementation that Phase 03 plans must now account for. See [the 2026-10-04 current-state delta](PLANNING-CURRENT-STATE-2026-10-04.md). The existing external-review, decision, physical, and live-evidence gates below remain open unless a newer artifact explicitly closes them.
+
 ## Scope
 
-The 17-phase roadmap is preserved. Phases 03–17 have 58 GSD execute plans with 132 executable tasks and 11 blocking human checkpoints, shared contracts, file ownership, task-level behavior/checks and explicit physical/provider/owner gates. All 73 GSD plans across Phases 01–17 pass the installed plan-structure validator. The repeatable task-contract audit passes 163 executable tasks across all phases, including exact per-task file ownership and non-empty outcomes. This is **planning coverage**, not product completion, unconditional routine-executor readiness or independent plan convergence. See [the completeness audit](PLANNING-COMPLETENESS-AUDIT.md) for remaining handoff work.
+The 17-phase roadmap is preserved. Phases 03–17 have 58 GSD execute plans with 134 executable tasks and 11 blocking human checkpoints, shared contracts, file ownership, task-level behavior/checks and explicit physical/provider/owner gates. All 73 GSD plans across Phases 01–17 pass the installed plan-structure validator. The repeatable task-contract audit passes 165 executable tasks across all phases, including exact per-task file ownership and non-empty outcomes. This is **planning coverage**, not product completion, unconditional routine-executor readiness or independent plan convergence. See [the completeness audit](PLANNING-COMPLETENESS-AUDIT.md) for remaining handoff work.
 
 ## Review record
 
@@ -30,4 +32,4 @@ Until these gates pass, the corresponding plan may be ready for implementation b
 
 ## 2026-10-04 task-level result contracts
 
-The current revision has task-specific failure predicates and result contracts on all 163 executable GSD tasks across Phases 01–17. The 132 executable tasks in Phases 03–17 are covered in the 58 plans; the remaining 11 plan tasks in that phase band are blocking human checkpoints. This improves executor handoff and does not replace the required current-revision source review, external convergence, owner decisions, or live acceptance. See [the coverage ledger](TASK-CONTRACT-COVERAGE-2026-10-04.md).
+The current revision has task-specific failure predicates and result contracts on all 165 executable GSD tasks across Phases 01–17. The 134 executable tasks in Phases 03–17 are covered in the 58 plans; the remaining 11 plan tasks in that phase band are blocking human checkpoints. This improves executor handoff and does not replace the required current-revision source review, external convergence, owner decisions, or live acceptance. See [the coverage ledger](TASK-CONTRACT-COVERAGE-2026-10-04.md).

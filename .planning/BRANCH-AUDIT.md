@@ -1,5 +1,7 @@
 # Branch and PR audit — 2026-10-03
 
+> Historical snapshot. Current GitHub PR state, post-#29 implementation overlap, and local branch/worktree disposition are recorded in [the 2026-10-04 current-state delta](PLANNING-CURRENT-STATE-2026-10-04.md). PRs #22–#29 have since merged; do not use the table below to decide whether they are still drafts or need duplicate PRs.
+
 The three review units created or updated for this planning effort are separate and stacked: [#22](https://github.com/AshwanthReddy-exe/Lumen/pull/22) is the Phase 02 foundation draft against `main`; [#23](https://github.com/AshwanthReddy-exe/Lumen/pull/23) is the 17-phase plan draft against #22; [#24](https://github.com/AshwanthReddy-exe/Lumen/pull/24) is the focused encrypted store backup draft against #23. They are drafts because the listed independent/live gates remain open. Merge order is #22, #23, then #24 after review and rebase if GitHub changes the base relationship.
 
 | Branch/worktree | Distinct work and audit result | PR action |
