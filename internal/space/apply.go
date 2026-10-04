@@ -15,7 +15,17 @@ func Apply(s State, c Command) Transition {
 	if id == "" {
 		return reject(s, c, "invalid_identifier")
 	}
-	contentBytes, _ := json.Marshal(c)
+	identity := c
+	// Host-generated timestamps do not change the user's idempotent intent.
+	// Retries after a lost response may arrive with a later local clock value.
+	switch identity.Type {
+	case CommandCreateConversation, CommandSetPreference, CommandSaveMemory:
+		identity.CreatedAt = 0
+	case CommandSendConversation:
+		identity.CreatedAt = 0
+		identity.ReconcileBy = 0
+	}
+	contentBytes, _ := json.Marshal(identity)
 	content := string(contentBytes)
 	if c.Type == CommandSaveMemory {
 		// Keep replay identity without retaining deleted memory text in the command ledger.

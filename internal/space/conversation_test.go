@@ -11,7 +11,7 @@ func TestOwnerMemoryLifecycleControlsFutureContext(t *testing.T) {
 	if saved.Rejection != "" || saved.State.ContextRecords["fact-1"].Namespace != "user.memory/v1" {
 		t.Fatalf("memory save: %#v", saved)
 	}
-	if tr := Apply(saved.State, Command{Type: CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "save-1", MemoryID: "fact-1", Content: "I prefer concise answers", CreatedAt: 100}); !tr.Replayed || tr.Rejection != "" {
+	if tr := Apply(saved.State, Command{Type: CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "save-1", MemoryID: "fact-1", Content: "I prefer concise answers", CreatedAt: 999}); !tr.Replayed || tr.Rejection != "" {
 		t.Fatalf("identical save did not replay: %#v", tr)
 	}
 	if tr := Apply(saved.State, Command{Type: CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "save-1", MemoryID: "fact-1", Content: "changed", CreatedAt: 100}); tr.Rejection != "idempotency_key_reused" {
@@ -32,6 +32,20 @@ func TestOwnerMemoryLifecycleControlsFutureContext(t *testing.T) {
 		if strings.Contains(command.Content, "I prefer concise answers") {
 			t.Fatal("deleted memory retained in idempotency ledger")
 		}
+	}
+}
+
+func TestConversationSendReplayIgnoresRegeneratedHostTimestamps(t *testing.T) {
+	state := conversationWithSend(t)
+	command := conversationSendCommand()
+	command.CreatedAt, command.ReconcileBy = 900, 930
+	replayed := Apply(state, command)
+	if !replayed.Replayed || replayed.Rejection != "" || replayed.Receipt.Outcome != OutcomeQueued {
+		t.Fatalf("retry after clock advance did not replay original intent: %#v", replayed)
+	}
+	command.Content = "different input"
+	if conflict := Apply(state, command); conflict.Rejection != "idempotency_key_reused" {
+		t.Fatalf("changed payload reused request ID: %#v", conflict)
 	}
 }
 
