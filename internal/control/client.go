@@ -45,13 +45,20 @@ func CallContext(ctx context.Context, socket, credentialPath string, q Request) 
 			return Response{}, err
 		}
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(commandTimeout(q.Command))
 	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
 		deadline = ctxDeadline
 	}
 	_ = c.SetReadDeadline(deadline)
 	rr, err := ReadResponse(c)
 	return rr, err
+}
+
+func commandTimeout(command string) time.Duration {
+	if command == "conversation send" {
+		return 40 * time.Second
+	}
+	return 5 * time.Second
 }
 func writeRequest(c net.Conn, q Request) error {
 	b, err := jsonMarshal(q)

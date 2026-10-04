@@ -122,8 +122,9 @@ func decodeEnvelope(key []byte, data []byte) (space.State, error) {
 	if err := strictJSON(plain, &state); err != nil {
 		return space.State{}, fmt.Errorf("invalid state: %w", err)
 	}
-	if state.SchemaVersion != FormatVersion {
-		return space.State{}, fmt.Errorf("unsupported state schema")
+	state = space.NormalizeState(state)
+	if err := space.ValidateState(state); err != nil {
+		return space.State{}, err
 	}
 	return state, nil
 }
