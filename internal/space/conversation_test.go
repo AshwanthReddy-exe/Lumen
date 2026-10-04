@@ -150,6 +150,26 @@ func TestRuntimeSessionBindingRequiresDurableReservation(t *testing.T) {
 	}
 }
 
+func TestRuntimeSessionCanRebindAfterPriorTurnCompletes(t *testing.T) {
+	s := conversationWithSend(t)
+	profile := DefaultRuntimeProfile()
+	reserve := Command{Type: CommandReserveRuntimeSession, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "reserve-1", ConversationID: "conversation-1", HermesSessionID: "lumen-session:conversation-1", RuntimeProfileDigest: profile.Digest}
+	s = Apply(s, reserve).State
+	bind := Command{Type: CommandBindRuntimeSession, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "bind-1", ConversationID: "conversation-1", HermesSessionID: "lumen-session:conversation-1", RuntimeIdentity: "docker:old", RuntimeProfileDigest: profile.Digest}
+	s = Apply(s, bind).State
+	s = Apply(s, Command{Type: CommandCompleteConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", TaskID: "task-1", Outcome: OutcomeFailed, RequestID: "finish-1"}).State
+	s = Apply(s, Command{Type: CommandSendConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", TaskID: "task-2", Content: "next", CreatedAt: 101, ReconcileBy: 201, RequestID: "send-2"}).State
+	reserve.RequestID = "reserve-2"
+	rebound := Apply(s, reserve)
+	if rebound.Rejection != "" || !rebound.State.RuntimeSessions["conversation-1"].Pending || rebound.State.RuntimeSessions["conversation-1"].RuntimeIdentity != "" {
+		t.Fatalf("runtime binding did not reset for requalification: %#v", rebound)
+	}
+	bind.RequestID, bind.RuntimeIdentity = "bind-2", "docker:new"
+	if got := Apply(rebound.State, bind); got.Rejection != "" || got.State.RuntimeSessions["conversation-1"].RuntimeIdentity != "docker:new" {
+		t.Fatalf("replacement runtime could not bind: %#v", got)
+	}
+}
+
 func TestRuntimeCertificationInvalidationRequiresExactHostRun(t *testing.T) {
 	s := conversationWithSend(t)
 	reserve := Apply(s, Command{Type: CommandReserveRuntimeSession, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "reserve", ConversationID: "conversation-1", HermesSessionID: "session-1", RuntimeProfileDigest: DefaultRuntimeProfile().Digest})

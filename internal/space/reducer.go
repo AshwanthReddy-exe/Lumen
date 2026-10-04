@@ -302,6 +302,12 @@ func reserveRuntimeSession(s State, c Command) Transition {
 		if existing.HermesSessionID != c.HermesSessionID || existing.PersonaDigest != profile.PersonaDigest || existing.ProfileDigest != c.RuntimeProfileDigest || existing.HostEpoch != s.Epoch {
 			return reject(s, c, "runtime_session_mismatch")
 		}
+		// Every new Host-authorized turn starts from canonical history. Reset
+		// the adapter binding so a replaced runtime container can be certified.
+		existing.Pending = true
+		existing.RuntimeIdentity = ""
+		existing.LastProjectedSequence = conversation.NextSequence - 1
+		s.RuntimeSessions[c.ConversationID] = existing
 		return accepted(s, c, OutcomeApplied, c.ConversationID)
 	}
 	s.RuntimeSessions[c.ConversationID] = RuntimeSessionMapping{ConversationID: c.ConversationID, Pending: true, HermesSessionID: c.HermesSessionID, PersonaDigest: profile.PersonaDigest, ProfileDigest: c.RuntimeProfileDigest, HostEpoch: s.Epoch, LastProjectedSequence: conversation.NextSequence - 1}

@@ -267,8 +267,8 @@ func TestRestartDoesNotSendConversationRunThroughGenericConsumer(t *testing.T) {
 	}
 	apply(space.Command{Type: space.CommandRegisterSurface, ActorID: state.OwnerID, RequestID: "surface", SurfaceID: "web"})
 	apply(space.Command{Type: space.CommandCreateConversation, ActorID: state.OwnerID, RequestID: "create-chat", ConversationID: "chat", SurfaceID: "web", CreatedAt: 99})
-	apply(space.Command{Type: space.CommandSendConversation, ActorID: state.OwnerID, RequestID: "send-chat", ConversationID: "chat", SurfaceID: "web", TaskID: "chat-task", Content: "hello", RuntimeIdempotencyKey: "send-chat", CreatedAt: 100, ReconcileBy: 200})
-	apply(space.Command{Type: space.CommandDispatchHostRun, ActorID: state.HostID, RequestID: "dispatch-chat", TaskID: "chat-task", RuntimeRunID: "run-chat", RuntimeIdempotencyKey: "send-chat", RuntimeProfileDigest: space.DefaultRuntimeProfile().Digest, CertificationID: "cert-1", EndpointIdentity: "endpoint:test", DispatchedAt: 100, ReconcileBy: 200})
+	apply(space.Command{Type: space.CommandSendConversation, ActorID: state.OwnerID, RequestID: "send-chat", ConversationID: "chat", SurfaceID: "web", TaskID: "chat-task", Content: "hello", RuntimeIdempotencyKey: "send-chat", CreatedAt: 100, ReconcileBy: 102})
+	apply(space.Command{Type: space.CommandDispatchHostRun, ActorID: state.HostID, RequestID: "dispatch-chat", TaskID: "chat-task", RuntimeRunID: "run-chat", RuntimeIdempotencyKey: "send-chat", RuntimeProfileDigest: space.DefaultRuntimeProfile().Digest, CertificationID: "cert-1", EndpointIdentity: "endpoint:test", DispatchedAt: 100, ReconcileBy: 102})
 	cfg := s.cfg
 	s.Shutdown()
 	runtime := &fakeRuntime{statusDefault: hermes.Run{RunID: "run-chat", Status: "running"}, eventsBlock: make(chan struct{})}
@@ -277,6 +277,10 @@ func TestRestartDoesNotSendConversationRunThroughGenericConsumer(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer restarted.Shutdown()
+	<-restarted.recoveryDone
+	if restarted.recoveryErr != nil {
+		t.Fatalf("recovery failed: %v", restarted.recoveryErr)
+	}
 	restarted.executor.consumerMu.Lock()
 	_, genericConsumerStarted := restarted.executor.consumers["chat-task"]
 	restarted.executor.consumerMu.Unlock()
@@ -317,6 +321,10 @@ func TestRestartCompletesVerifiedConversationRunWithoutRedispatch(t *testing.T) 
 		t.Fatal(err)
 	}
 	defer restarted.Shutdown()
+	<-restarted.recoveryDone
+	if restarted.recoveryErr != nil {
+		t.Fatalf("recovery failed: %v", restarted.recoveryErr)
+	}
 	state, err = restarted.state.Read()
 	if err != nil || state.Tasks["chat-task"].Status != space.OutcomeCompleted || len(state.Messages["chat"]) != 2 || state.Messages["chat"][1].Content != "verified" || runtime.created != 0 {
 		t.Fatalf("verified chat did not recover: task=%#v messages=%#v creates=%d err=%v", state.Tasks["chat-task"], state.Messages["chat"], runtime.created, err)

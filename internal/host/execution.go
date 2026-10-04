@@ -448,13 +448,13 @@ func NewWithRuntime(c Config, runtime hermes.Adapter, options ...ExecutionOption
 			option(&opts)
 		}
 	}
-	s := &Service{cfg: c, state: state, ready: make(chan struct{}), stop: make(chan struct{})}
+	s := &Service{cfg: c, state: state, ready: make(chan struct{}), stop: make(chan struct{}), recoveryDone: make(chan struct{})}
 	s.executor = newExecutor(s, runtime, opts)
 	s.recoverInFlight()
-	if err := conversation.NewService(state, opts.conversationRuntime, opts.certifier, conversation.WithClock(opts.now)).ReconcilePending(context.Background()); err != nil {
-		s.Shutdown()
-		return nil, fmt.Errorf("conversation recovery: %w", err)
-	}
+	go func() {
+		s.recoveryErr = conversation.NewService(state, opts.conversationRuntime, opts.certifier, conversation.WithClock(opts.now)).ReconcilePending(context.Background())
+		close(s.recoveryDone)
+	}()
 	return s, nil
 }
 

@@ -486,6 +486,8 @@ type Service struct {
 	executor       *executor
 	conversationMu sync.Mutex
 	conversation   *conversation.Service
+	recoveryDone   chan struct{}
+	recoveryErr    error
 	ready          chan struct{}
 	stop           chan struct{}
 	once           sync.Once
