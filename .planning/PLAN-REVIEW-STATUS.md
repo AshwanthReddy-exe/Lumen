@@ -4,7 +4,7 @@
 
 ## Scope
 
-The 17-phase roadmap is preserved. Phases 03–17 have 58 GSD execute plans with 143 implementation/checkpoint tasks, shared contracts, file ownership, task-level behavior/checks and explicit physical/provider/owner gates. All 58 pass GSD frontmatter and plan-structure validators on 2026-10-03. This is **planning coverage**, not product completion, unconditional routine-executor readiness or independent plan convergence. See [the completeness audit](PLANNING-COMPLETENESS-AUDIT.md) for remaining handoff work.
+The 17-phase roadmap is preserved. Phases 03–17 have 58 GSD execute plans with 134 executable tasks and 11 blocking human checkpoints, shared contracts, file ownership, task-level behavior/checks and explicit physical/provider/owner gates. All 73 GSD plans across Phases 01–17 pass the installed plan-structure validator. The repeatable task-contract audit passes 165 executable tasks across all phases, including exact per-task file ownership and non-empty outcomes. This is **planning coverage**, not product completion, unconditional routine-executor readiness or independent plan convergence. See [the completeness audit](PLANNING-COMPLETENESS-AUDIT.md) for remaining handoff work.
 
 ## Review record
 
@@ -29,3 +29,7 @@ The external Claude CLI probe did not return a review in bounded attempts and wa
 | Public/shared | 17-01/03 | Public compatibility approval; shared role matrix, migration and independent security review before implementation. |
 
 Until these gates pass, the corresponding plan may be ready for implementation but its product claim remains `BLOCKED` or `UNSUPPORTED` on the untested configuration. The next executable workstream is Phase 03, beginning at `03-01-PLAN.md`, after its current-revision independent plan review.
+
+## 2026-10-04 task-level result contracts
+
+The current revision has task-specific failure predicates and result contracts on all 165 executable GSD tasks across Phases 01–17. The 134 executable tasks in Phases 03–17 are covered in the 58 plans; the remaining 11 plan tasks in that phase band are blocking human checkpoints. This improves executor handoff and does not replace the required current-revision source review, external convergence, owner decisions, or live acceptance. See [the coverage ledger](TASK-CONTRACT-COVERAGE-2026-10-04.md).
