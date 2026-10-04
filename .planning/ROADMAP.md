@@ -126,7 +126,7 @@ The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 65 fi
   3. Source and target nodes observe the same durable invocation state and final receipt; disconnect before/after an effect yields a recoverable result or explicit uncertainty without blind duplicate effect.
   4. Revocation, stale manifests, replayed commands, duplicate dispatch, node restart, and target substitution are denied or reconciled safely.
 
-**Plans**: 07-01 through 07-03 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/07-mac-node-and-useful-action/07-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
+**Plans**: 07-01 through 07-06 are sequential, file-owned GSD plans for the Mac local boundary, Host authority, source and Hermes ingress, target transport, receipt projection, and physical recovery proof. See [the first plan](phases/07-mac-node-and-useful-action/07-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
 **UI hint**: yes
 
 ### Phase 08: Voice companion node
