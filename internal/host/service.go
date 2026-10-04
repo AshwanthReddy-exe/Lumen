@@ -522,7 +522,11 @@ func (s *Service) handle(ctx context.Context, q control.Request) control.Respons
 		if err != nil {
 			return control.Response{Error: "state unavailable"}
 		}
-		return control.Response{OK: true, Data: map[string]any{"status": "ready", "space_id": state.SpaceID, "owner_id": state.OwnerID, "host_id": state.HostID, "active_host_id": state.HostID, "epoch": state.Epoch, "tasks": state.Tasks}}
+		status := "ready"
+		if s.state.CleanupWarning() != nil {
+			status = "degraded"
+		}
+		return control.Response{OK: true, Data: map[string]any{"status": status, "space_id": state.SpaceID, "owner_id": state.OwnerID, "host_id": state.HostID, "active_host_id": state.HostID, "epoch": state.Epoch, "tasks": state.Tasks}}
 	case "shutdown":
 		return control.Response{OK: true, Data: map[string]string{"status": "shutting_down"}}
 	case "task submit":

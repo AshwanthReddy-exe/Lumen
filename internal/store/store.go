@@ -5,12 +5,14 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -21,27 +23,35 @@ type Hooks struct {
 	Write   func(*os.File, []byte) error
 	Sync    func(*os.File) error
 	Rename  func(string, string) error
+	Link    func(string, string) error
 	DirSync func(*os.File) error
 	Remove  func(string) error
 }
 
 type Store struct {
-	path      string
-	key       string
-	stateName string
-	keyName   string
-	root      *os.Root
-	keyRoot   *os.Root
-	lock      *os.File
-	hooks     Hooks
-	mu        sync.Mutex
-	close     sync.Once
-	closed    bool
+	path            string
+	key             string
+	stateName       string
+	keyName         string
+	root            *os.Root
+	keyRoot         *os.Root
+	lock            *os.File
+	hooks           Hooks
+	mu              sync.Mutex
+	close           sync.Once
+	closed          bool
+	cleanupDeferred bool
 }
+
+var ErrCleanupDeferred = errors.New("encrypted store artifact cleanup deferred")
 
 // New opens the store lock. With one argument it treats the argument as a
 // private data directory; with two it accepts explicit state and key paths.
 func New(path string, keyPath ...string) (*Store, error) {
+	return newStore(path, Hooks{}, keyPath...)
+}
+
+func newStore(path string, hooks Hooks, keyPath ...string) (*Store, error) {
 	if len(keyPath) == 0 {
 		keyPath = []string{filepath.Join(path, "state.key")}
 		path = filepath.Join(path, "state.json")
@@ -101,17 +111,29 @@ func New(path string, keyPath ...string) (*Store, error) {
 			return nil, errors.New("key parent changed during open")
 		}
 	}
-	return &Store{path: path, key: keyPath[0], stateName: filepath.Base(path), keyName: filepath.Base(keyPath[0]), root: parent, keyRoot: keyParent, lock: lock}, nil
+	s := &Store{path: path, key: keyPath[0], stateName: filepath.Base(path), keyName: filepath.Base(keyPath[0]), root: parent, keyRoot: keyParent, lock: lock, hooks: hooks}
+	if err := s.cleanupInterruptedCommitArtifacts(); err != nil {
+		// Cleanup is maintenance after the active encrypted snapshot has been
+		// checked. A failed cleanup must not hide the last readable state.
+		s.cleanupDeferred = true
+	}
+	return s, nil
 }
 
 func Open(path string, keyPath ...string) (*Store, error) { return New(path, keyPath...) }
 
 func NewWithHooks(path string, hooks Hooks, keyPath ...string) (*Store, error) {
-	s, err := New(path, keyPath...)
-	if err == nil {
-		s.hooks = hooks
+	return newStore(path, hooks, keyPath...)
+}
+
+// CleanupWarning reports a deferred stale-artifact cleanup without denying
+// access to the verified active snapshot. Operators must inspect the artifacts
+// before removing any distinct-inode recovery copy.
+func (s *Store) CleanupWarning() error {
+	if s.cleanupDeferred {
+		return ErrCleanupDeferred
 	}
-	return s, err
+	return nil
 }
 
 func (s *Store) Close() error {
@@ -273,6 +295,7 @@ func (s *Store) commit(key []byte, state space.State, preserve bool) error {
 	backupName := tmpName + ".old"
 	recoveryName := backupName + ".recovery"
 	backupMade := false
+	preSyncFailed := false
 	syncDir := s.syncParent
 	err = func() error {
 		tmp, e := s.root.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0600)
@@ -312,11 +335,25 @@ func (s *Store) commit(key []byte, state space.State, preserve bool) error {
 					_ = s.root.Remove(tmpName)
 					return errors.New("state file has invalid type or mode")
 				}
-				if e = s.root.Rename(s.stateName, backupName); e != nil {
+				// Keep the active name present until the atomic replacement. If
+				// the process exits here, the old snapshot remains readable.
+				if s.hooks.Link != nil {
+					e = s.hooks.Link(s.stateName, backupName)
+				} else {
+					e = s.root.Link(s.stateName, backupName)
+				}
+				if e != nil {
 					_ = s.root.Remove(tmpName)
 					return e
 				}
 				backupMade = true
+				// Sync the old snapshot's backup name before replacing the
+				// active name; power-loss behavior still needs physical proof.
+				if e = syncDir(); e != nil {
+					preSyncFailed = true
+					_ = s.root.Remove(tmpName)
+					return e
+				}
 			} else if !errors.Is(statErr, os.ErrNotExist) {
 				_ = s.root.Remove(tmpName)
 				return statErr
@@ -341,6 +378,11 @@ func (s *Store) commit(key []byte, state space.State, preserve bool) error {
 		return nil
 	}()
 	if err != nil {
+		if preSyncFailed {
+			// The active name still points to the old snapshot. Retain its
+			// backup if its directory entry may have reached storage.
+			return err
+		}
 		if backupMade {
 			if rollbackErr := s.rollback(backupName, recoveryName, syncDir); rollbackErr != nil {
 				return fmt.Errorf("commit failed: %w; rollback failed: %v", err, rollbackErr)
@@ -370,8 +412,25 @@ func (s *Store) commit(key []byte, state space.State, preserve bool) error {
 func (s *Store) rollback(backupName, recoveryName string, syncDir func() error) error {
 	err := func() error {
 		if backupName != "" {
-			if _, statErr := s.root.Lstat(backupName); statErr == nil {
-				if err := s.root.Link(backupName, recoveryName); err != nil {
+			backupInfo, statErr := s.root.Lstat(backupName)
+			if statErr == nil {
+				if stateInfo, stateErr := s.root.Lstat(s.stateName); stateErr == nil && os.SameFile(backupInfo, stateInfo) {
+					// A failed pre-replacement rename leaves both names on the old
+					// inode. Renaming one hard link over the other is a no-op.
+					if err := syncDir(); err != nil {
+						return err
+					}
+					_ = s.root.Remove(backupName)
+					return nil
+				} else if stateErr != nil && !errors.Is(stateErr, os.ErrNotExist) {
+					return stateErr
+				}
+				if s.hooks.Link != nil {
+					err := s.hooks.Link(backupName, recoveryName)
+					if err != nil {
+						return err
+					}
+				} else if err := s.root.Link(backupName, recoveryName); err != nil {
 					return err
 				}
 				return s.root.Rename(backupName, s.stateName)
@@ -401,6 +460,83 @@ func (s *Store) syncParent() error {
 		return s.hooks.DirSync(f)
 	}
 	return f.Sync()
+}
+
+func (s *Store) cleanupInterruptedCommitArtifacts() error {
+	// Only discard stale transaction files when the active encrypted snapshot
+	// can be read and its directory entry has been synced.
+	if _, err := s.read(); err != nil {
+		return nil
+	}
+	dir, err := s.root.Open(".")
+	if err != nil {
+		return err
+	}
+	entries, err := dir.ReadDir(-1)
+	closeErr := dir.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	var stale []string
+	activeInfo, err := s.root.Lstat(s.stateName)
+	if err != nil {
+		return nil
+	}
+	for _, entry := range entries {
+		kind, ok := commitArtifactKind(entry.Name())
+		if !ok {
+			continue
+		}
+		info, err := s.root.Lstat(entry.Name())
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return err
+		}
+		if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+			continue
+		}
+		if kind != "temp" && !os.SameFile(activeInfo, info) {
+			// A different inode may be the only copy of the last confirmed
+			// snapshot after a failed rollback. Preserve it for recovery.
+			continue
+		}
+		stale = append(stale, entry.Name())
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+	if err := s.syncParent(); err != nil {
+		return err
+	}
+	for _, name := range stale {
+		if err := s.root.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return s.syncParent()
+}
+
+func commitArtifactKind(name string) (string, bool) {
+	const prefix = ".state.tmp-"
+	if !strings.HasPrefix(name, prefix) {
+		return "", false
+	}
+	rest := strings.TrimPrefix(name, prefix)
+	kind := "temp"
+	if strings.HasSuffix(rest, ".old.recovery") {
+		rest = strings.TrimSuffix(rest, ".old.recovery")
+		kind = "recovery"
+	} else if strings.HasSuffix(rest, ".old") {
+		rest = strings.TrimSuffix(rest, ".old")
+		kind = "backup"
+	}
+	decoded, err := hex.DecodeString(rest)
+	return kind, err == nil && len(decoded) == 12 && hex.EncodeToString(decoded) == rest
 }
 
 func strictJSON(data []byte, target any) error {
