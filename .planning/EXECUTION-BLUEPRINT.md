@@ -1,6 +1,6 @@
 # Lumen execution blueprint
 
-Status: planning artifact, 2026-10-03. This refines [the canonical 17-phase plan](../docs/PLAN.md) and [GSD roadmap](ROADMAP.md); it does not mark unimplemented features complete. The owner chose all 17 phases, core functionality first, and one installation command followed by interactive setup. Platform coverage is earned separately for each tested configuration.
+Status: planning artifact, 2026-10-05. This refines [the canonical 17-phase plan](../docs/PLAN.md) and [GSD roadmap](ROADMAP.md); it does not mark unimplemented features complete. The owner chose all 17 phases, core functionality first, and one installation command followed by interactive setup. Platform coverage is earned separately for each tested configuration.
 
 ## How to execute this blueprint
 
@@ -11,7 +11,7 @@ For every mutation, record actor, authority, validation, durable intent/receipt,
 ## Current evidence and corrections
 
 - Phase 01 is merged. Phase 02 is marked complete in GSD with one real Host-mediated NIM answer, pinned synthetic lifecycle tests, and limited chat-only containment evidence. It does not prove a product conversation, a live cross-node action, or VPS release. See [state](STATE.md) and [Phase 02 evidence](phases/02-close-the-existing-host-hermes-foundation/02-12-EVIDENCE.md).
-- Phases 03–17 now have 58 executable GSD plans. They are split into 143 bounded implementation/checkpoint tasks, but source review still finds decision, test, and live-evidence gaps; use `.planning/PLANNING-COMPLETENESS-AUDIT.md` and the dated current-state delta rather than assuming file-level plans equal routine-agent readiness.
+- Phases 03–17 now have 78 executable GSD plans. They are split into 143 bounded implementation/checkpoint tasks, but source review still finds decision, test, and live-evidence gaps; use `.planning/PLANNING-COMPLETENESS-AUDIT.md` and the dated current-state delta rather than assuming file-level plans equal routine-agent readiness.
 - The 11–17 plans exist and gate later implementation on platform/provider/business decisions. Do not invent implementation detail behind an unmade decision.
 - The checked-in Future OS reference remains pinned at `98f7f3a3385e12d38ee7fc75bdca2cc3856cf987`; the older broad source analysis cites `907f38b...`; focused current-upstream comparison is pinned at `52328e8009817c5eca66e4461ee4cf55e23fd6c9`. Read `.planning/research/FUTURE-OS-UPSTREAM-DELTA-2026-10-04.md` before changing a Lumen sync/queue plan. Port invariants and failure tests, not Future OS authority, crypto, or permission defaults.
 
@@ -102,7 +102,7 @@ Requirements FR-03, FR-08, FR-09, FR-34, FR-62. One verified command installs a 
 
 ## Phase 11–17 execution index
 
-The executable plans live under `.planning/phases/11-*` through `17-*`; plan counts vary by phase. `.planning/PHASE-11-17-CONTRACTS.md` fixes their authority, state, file and live-evidence requirements. Decision-dependent downstream plans stay blocked until the binding decision is recorded. The GSD `NN-XX-PLAN.md` files and contract catalog control execution.
+The executable plans live under `.planning/phases/11-*` through `17-*`: Phase 11: 11-01..11-05; Phase 12: 12-01..12-04; Phase 13: 13-01..13-06; Phase 14: 14-01..14-05; Phase 15: 15-01..15-06; Phase 16: 16-01..16-06; Phase 17: 17-01..17-09. `.planning/PHASE-11-17-CONTRACTS.md` fixes their authority, state, file and live-evidence requirements. Owner/provider/platform/commercial decisions remain explicit blocking gates; downstream plans stay blocked until their prerequisites are recorded. The GSD plan files and contract catalog control execution.
 
 ## GSD coordination and handoff contract
 

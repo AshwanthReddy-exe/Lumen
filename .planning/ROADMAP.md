@@ -4,7 +4,7 @@
 
 The personal alpha builds and verifies useful local product behavior before any VPS or installer gate: Host/Hermes foundation, continuous Space conversation, accepted memory, node continuity, approvals/questions, cross-node execution, voice companion, integrated local use, then always-on deployment and alpha acceptance. Phases 11–17 retain their prior order and roadmap-level goals. This is the exact order and objective set in [docs/PLAN.md](../docs/PLAN.md).
 
-The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 65 file-owned GSD plans for Phases 03–17 hold the current tasks. The [file inventory](FILE-INVENTORY.md) indexes their proposed tree. The [contract catalog](CONTRACT-CATALOG.md), [client branch gate](CLIENT-BRANCHES.md), [Phase 07–10 handoff](PHASE-07-10-HANDOFF.md), [later-phase contracts](PHASE-11-17-CONTRACTS.md), [platform coverage](PLATFORM-COVERAGE.md), and [completeness audit](PLANNING-COMPLETENESS-AUDIT.md) bind shared details and remaining gates. The [2026-10-04 current-state delta](PLANNING-CURRENT-STATE-2026-10-04.md) reconciles merged PR #29, the preserved branches, and the updated Future OS reference. Decision-dependent paths are rewritten in the affected plan before execution.
+The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 78 file-owned GSD plans for Phases 03–17 hold the current tasks. The [file inventory](FILE-INVENTORY.md) indexes their proposed tree. The [contract catalog](CONTRACT-CATALOG.md), [client branch gate](CLIENT-BRANCHES.md), [Phase 07–10 handoff](PHASE-07-10-HANDOFF.md), [later-phase contracts](PHASE-11-17-CONTRACTS.md), [platform coverage](PLATFORM-COVERAGE.md), and [completeness audit](PLANNING-COMPLETENESS-AUDIT.md) bind shared details and remaining gates. The [2026-10-04 current-state delta](PLANNING-CURRENT-STATE-2026-10-04.md) reconciles merged PR #29, the preserved branches, and the updated Future OS reference. Decision-dependent paths are rewritten in the affected plan before execution.
 
 ## Phases
 
@@ -223,7 +223,7 @@ The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 65 fi
   3. Cross-node child work gets only an explicitly delegated, bounded grant and records its target node, approval, evidence and receipt.
   4. A duplicate trigger, restart, cancellation, revocation or child failure does not broaden grants, duplicate effects or disappear from the parent run.
 
-**Plans**: 14-01 through 14-04 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/14-automation-and-delegation/14-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
+**Plans**: 14-01 through 14-05 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/14-automation-and-delegation/14-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
 
 ### Phase 15: Paid self-hosted readiness
 
@@ -235,7 +235,7 @@ The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 65 fi
   1. A new owner can complete installation, update or rollback and recover from an encrypted export.
   2. Entitlement expiry leaves export usable; support diagnostics disclose no secrets.
 
-**Plans**: 15-01 through 15-04 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/15-paid-self-hosted/15-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
+**Plans**: 15-01 through 15-06 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/15-paid-self-hosted/15-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
 **UI hint**: yes
 
 ### Phase 16: Managed service
@@ -248,7 +248,7 @@ The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 65 fi
   1. A managed customer can use a dedicated data plane and request deletion or restore.
   2. Cross-customer isolation and recovery are demonstrated, with provider trust disclosed.
 
-**Plans**: 16-01 through 16-04 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/16-managed-service/16-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
+**Plans**: 16-01 through 16-06 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/16-managed-service/16-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
 
 ### Phase 17: Public integration ecosystem and shared Spaces
 
@@ -260,7 +260,7 @@ The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 65 fi
   1. An independent node passes public conformance fixtures without proprietary source.
   2. An extension cannot gain undeclared authority, and shared members see only their permitted Space data.
 
-**Plans**: 17-01 through 17-04 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/17-public-integrations-and-shared-spaces/17-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
+**Plans**: 17-01 through 17-09 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/17-public-integrations-and-shared-spaces/17-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
 
 ## Progress
 
