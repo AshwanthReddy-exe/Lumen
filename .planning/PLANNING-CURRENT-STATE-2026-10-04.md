@@ -2,6 +2,14 @@
 
 This is an additive status snapshot. It does not replace `docs/PLAN.md`, the 17-phase roadmap, or the 58 phase plans. When this snapshot conflicts with older planning audit text, use this snapshot for repository/PR state and use the owning phase plan plus current code for execution.
 
+## Current status — 2026-10-05
+
+- The complete 17-phase plan set is merged to `main` at `44cc3512` (PRs #36, #37, #40, and #39; stale PR #38 was closed and replaced by #40). `gh pr list --state open` returned no open PRs. The primary checkout is clean and matches `origin/main`.
+- All 93 GSD plan files pass the installed `verify plan-structure` validator. `scripts/check-plan-task-contracts.py` passes 191 executable tasks; `scripts/check-plan-coverage.py` passes 58 requirements, 58 owners, 78 Phase 03–17 plans, 688 task source pointers, and 587 GSD context pointers. `roadmap.validate`, `validate consistency`, and `git diff --check` pass with no warnings or errors.
+- These results validate plan structure, ownership, and document consistency. They do not establish implementation completion or live device/provider acceptance. `mise run phase0-check` is BLOCKED on this Mac because Gradle cannot load `libnative-platform.dylib`; rerun it in a healthy supported environment.
+- No phase is cross-AI converged: no external `gsd-review` result exists. The previously attempted private-plan egress to an external reviewer was rejected by automatic approval review; do not route around that decision. Resume `$gsd-plan-review-convergence` only after the owner approves an allowed review path or an approved local reviewer is configured.
+- `docs/PLAN.md` was not changed by these planning PRs. The separate `feat/phase03-foundations` worktree still contains uncommitted implementation/planning changes and remains preserved for explicit audit; “clean main” refers to the primary checkout, not that retained worktree.
+
 ## Current authority
 
 - PR #31 merged at `a6d2c658478ed8ea5437e778d9f9633506666fce`; its follow-up ledger/checkpoint correction PR #32 then merged at `5e05eea061527d4665bb3c398b4f09751a52e4a4`. PRs #30–#32 all landed on `main` on 2026-10-04. The local root checkout is clean and tracks `origin/main`; preserved side worktrees are listed separately below.
