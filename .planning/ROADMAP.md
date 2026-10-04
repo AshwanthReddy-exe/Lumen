@@ -4,7 +4,7 @@
 
 The personal alpha builds and verifies useful local product behavior before any VPS or installer gate: Host/Hermes foundation, continuous Space conversation, accepted memory, node continuity, approvals/questions, cross-node execution, voice companion, integrated local use, then always-on deployment and alpha acceptance. Phases 11–17 retain their prior order and roadmap-level goals. This is the exact order and objective set in [docs/PLAN.md](../docs/PLAN.md).
 
-The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 60 file-owned GSD plans for Phases 03–17 hold the current tasks. The [file inventory](FILE-INVENTORY.md) indexes their proposed tree. The [contract catalog](CONTRACT-CATALOG.md), [client branch gate](CLIENT-BRANCHES.md), [Phase 07–10 handoff](PHASE-07-10-HANDOFF.md), [later-phase contracts](PHASE-11-17-CONTRACTS.md), [platform coverage](PLATFORM-COVERAGE.md), and [completeness audit](PLANNING-COMPLETENESS-AUDIT.md) bind shared details and remaining gates. The [2026-10-04 current-state delta](PLANNING-CURRENT-STATE-2026-10-04.md) reconciles merged PR #29, the preserved branches, and the updated Future OS reference. Decision-dependent paths are rewritten in the affected plan before execution.
+The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 65 file-owned GSD plans for Phases 03–17 hold the current tasks. The [file inventory](FILE-INVENTORY.md) indexes their proposed tree. The [contract catalog](CONTRACT-CATALOG.md), [client branch gate](CLIENT-BRANCHES.md), [Phase 07–10 handoff](PHASE-07-10-HANDOFF.md), [later-phase contracts](PHASE-11-17-CONTRACTS.md), [platform coverage](PLATFORM-COVERAGE.md), and [completeness audit](PLANNING-COMPLETENESS-AUDIT.md) bind shared details and remaining gates. The [2026-10-04 current-state delta](PLANNING-CURRENT-STATE-2026-10-04.md) reconciles merged PR #29, the preserved branches, and the updated Future OS reference. Decision-dependent paths are rewritten in the affected plan before execution.
 
 ## Phases
 
@@ -170,7 +170,7 @@ The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 60 fi
   4. Encrypted export/restore and old-Host retirement pass; one enrolled node continues the same conversation/action journey while the source node is offline.
   5. Measured latency and seven-day soak meet declared limits and owner sign-off records the exact supported configuration.
 
-**Plans**: 10-01 through 10-07 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/10-always-on-deployment-and-alpha-release/10-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
+**Plans**: 10-01 through 10-09 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/10-always-on-deployment-and-alpha-release/10-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
 
 ### Phase 11: One messaging integration
 
@@ -182,7 +182,7 @@ The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 60 fi
   1. Owner can continue one selected conversation through the app and messaging provider.
   2. Duplicate or failed provider delivery yields an honest receipt without merging unrelated chats.
 
-**Plans**: 11-01 through 11-04 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/11-messaging-integration/11-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
+**Plans**: 11-01 through 11-05 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/11-messaging-integration/11-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
 **UI hint**: yes
 
 ### Phase 12: Apple abilities and controlled browsing
@@ -202,20 +202,20 @@ The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 60 fi
 
 **Goal**: Remote coding produces reviewable work without changing the canonical project silently.
 **Depends on**: Phases 08 and 10; tool qualification where used
-**Requirements**: FR-39
+**Requirements**: Cross-phase runtime-integration contribution; final umbrella owner is Phase 14.
 **Success Criteria** (what must be TRUE):
 
   1. A bounded coding run can continue across client disconnect, checkpoint its work, and target only an explicitly selected node/workspace.
   2. Owner can inspect a patch, test evidence and proposed application before accepting changes.
   3. Failed, cancelled, expired or uncertain coding leaves the canonical project unmodified and reports its outcome.
 
-**Plans**: 13-01 through 13-04 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/13-coding-and-device-execution/13-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
+**Plans**: 13-01 through 13-06 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/13-coding-and-device-execution/13-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
 
 ### Phase 14: Continuous agents, automation and delegation
 
 **Goal**: Approved repeated work and delegated children stay within inspectable authority.
-**Depends on**: Phase 10 and a stable effectful capability
-**Requirements**: FR-32, FR-67, FR-68
+**Depends on**: Phase 10, Phase 13-05's typed runtime seam and 13-06 owner review journey for FR-39 closure, and a stable effectful capability
+**Requirements**: FR-32, FR-39, FR-67, FR-68
 **Success Criteria** (what must be TRUE):
 
   1. Owner can preview, approve, pause and revoke a narrow recurring workflow or continuous agent goal.
