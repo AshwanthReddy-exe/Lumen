@@ -439,13 +439,14 @@ func TestCertificationRequiresCompleteBindingAndUntamperedProfile(t *testing.T) 
 		t.Fatal("complete certification rejected")
 	}
 	for name, change := range map[string]func(*space.RuntimeCertification){
-		"artifact": func(c *space.RuntimeCertification) { c.ArtifactDigest = "" },
-		"process":  func(c *space.RuntimeCertification) { c.ProcessIdentity = "" },
-		"version":  func(c *space.RuntimeCertification) { c.HermesVersion = "" },
-		"plugin":   func(c *space.RuntimeCertification) { c.PluginIdentity = "" },
-		"commit":   func(c *space.RuntimeCertification) { c.PluginCommit = "" },
-		"config":   func(c *space.RuntimeCertification) { c.ConfigDigest = "" },
-		"evidence": func(c *space.RuntimeCertification) { c.Evidence = "" },
+		"artifact":          func(c *space.RuntimeCertification) { c.ArtifactDigest = "" },
+		"process":           func(c *space.RuntimeCertification) { c.ProcessIdentity = "" },
+		"version":           func(c *space.RuntimeCertification) { c.HermesVersion = "" },
+		"plugin":            func(c *space.RuntimeCertification) { c.PluginIdentity = "" },
+		"commit":            func(c *space.RuntimeCertification) { c.PluginCommit = "" },
+		"config":            func(c *space.RuntimeCertification) { c.ConfigDigest = "" },
+		"evidence":          func(c *space.RuntimeCertification) { c.Evidence = "" },
+		"total-token-limit": func(c *space.RuntimeCertification) { c.Limits.MaxTotalTokens++ },
 	} {
 		cert := valid
 		change(&cert)
