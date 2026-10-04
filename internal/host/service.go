@@ -553,11 +553,19 @@ func (s *Service) handleRuntimeInspect(ctx context.Context) control.Response {
 		return control.Response{Error: "Hermes health unavailable"}
 	}
 	capabilities, err := s.executor.runtime.Capabilities(ctx)
-	if err != nil {
+	if err != nil && (!errors.Is(err, hermes.ErrCapabilityMismatch) || capabilities.Features == nil) {
 		return control.Response{Error: "Hermes capability inventory unavailable"}
 	}
+	status := health.Status
+	contract := "compatible"
+	if err != nil {
+		status = "degraded"
+		contract = "incompatible"
+	}
 	return control.Response{OK: true, Data: map[string]any{
-		"status":                 health.Status,
+		"status":                 status,
+		"runtime_health":         health.Status,
+		"capability_contract":    contract,
 		"platform":               capabilities.Platform,
 		"model":                  capabilities.Model,
 		"version":                health.Version,

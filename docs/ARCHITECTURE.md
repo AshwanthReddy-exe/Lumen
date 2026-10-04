@@ -155,7 +155,7 @@ Hermes is Lumen's deeply integrated native intelligence and capability platform.
 
 The Host keeps two Hermes seams separate. `HermesRuntimeAdapter v1` is the inbound runtime seam: it authenticates one active endpoint, negotiates `/v1/capabilities`, submits Host-authorized Runs, consumes one bounded event stream, reconciles status, and treats runtime output as evidence. A separate narrow outbound Lumen Hermes plugin/broker exposes only a redacted feature inventory and typed capability intents. It cannot read or mutate canonical Space state, issue grants, select a node, approve itself, or use the owner control socket. The full surface remains unavailable until its feature-registry entry, profile, and task capability are certified. See the [integration research](./research/HERMES-LUMEN-INTEGRATION.md) for the matrix and qualification rules.
 
-The authenticated owner control socket exposes `lumen-host runtime inspect` for the configured endpoint's health, version, and advertised feature flags. This diagnostic inventory does not certify a feature for task use or create a Lumen grant.
+The authenticated owner control socket exposes `lumen-host runtime inspect` for the configured endpoint's health, version, and advertised feature flags. A capability-contract mismatch yields degraded diagnostic inventory, even while the endpoint itself is healthy. This inventory does not certify a feature for task use or create a Lumen grant.
 
 Capability work follows one mandatory order:
 

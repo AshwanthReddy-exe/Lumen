@@ -240,7 +240,7 @@ initial_operator_credential=$(shasum -a 256 "$data_dir/operator.credential" | cu
 
 printf '%s\n' '=> Lumen runtime inventory'
 "$host_artifact" runtime inspect >"$work_dir/runtime-inventory.json" || fail 'Lumen runtime inspection failed'
-jq -e '.status == "ok" and .feature_inventory_only == true and .lumen_grants_created == false and (.features | type == "object")' \
+jq -e '.status == "ok" and .runtime_health == "ok" and .capability_contract == "compatible" and .feature_inventory_only == true and .lumen_grants_created == false and (.features | type == "object")' \
 	"$work_dir/runtime-inventory.json" >/dev/null || fail 'runtime inventory was incomplete or implied authority'
 redact <"$work_dir/runtime-inventory.json"
 

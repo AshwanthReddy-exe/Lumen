@@ -125,6 +125,19 @@ func TestRuntimeInspectReturnsUntrustedInventoryWithoutGrantingCapabilities(t *t
 	}
 }
 
+func TestRuntimeInspectShowsAdvertisedFlagsOnCapabilityMismatch(t *testing.T) {
+	s := executionService(t, &fakeRuntime{capErr: hermes.ErrCapabilityMismatch})
+	response := s.handle(context.Background(), control.Request{Command: "runtime inspect"})
+	data, ok := response.Data.(map[string]any)
+	if !response.OK || !ok || data["status"] != "degraded" || data["runtime_health"] != "ok" || data["capability_contract"] != "incompatible" {
+		t.Fatalf("runtime mismatch not diagnosed: %#v", response)
+	}
+	features, ok := data["features"].(map[string]bool)
+	if !ok || !features[hermes.CapabilityRunSubmission] || data["lumen_grants_created"] != false {
+		t.Fatalf("advertised flags or authority label missing: %#v", response.Data)
+	}
+}
+
 func TestProductionNewFailsReadinessForInvalidHermesConfiguration(t *testing.T) {
 	d := t.TempDir()
 	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator"), HermesProfile: hermes.ProfileHardened}
