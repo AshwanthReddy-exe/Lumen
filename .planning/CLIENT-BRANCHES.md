@@ -1,6 +1,8 @@
 # D-056 client branch contract
 
-Phase 05-01 must record the physical shared-client result before 05-04 or 06-03 starts. The decision is one of **shared client passes**, **Kotlin Android plus responsive phone web**, or **blocked**. Record device models, OS/builds, app revisions, pairing, secure storage, replay, approval and audio observations in `05-EVIDENCE.md`; a simulator or build alone cannot pass D-056. Rewrite the chosen plan's `files_modified`, task `<files>`, and automated command to the selected branch before execution. Keep the other branch unimplemented.
+Phase 05-01 records physical client-stack feasibility before 05-04 or 06-03 starts. The decision is **shared client stack feasible**, **Kotlin Android plus responsive phone web fallback**, or **blocked**. Record device models, OS/builds, app revisions, secure-key persistence, local outbox process-death recovery, fixture-backed pairing/approval accessibility, and local-audio/permission observations in `05-01-EVIDENCE.md`; a simulator or build alone cannot pass D-056. The feasibility fixture does not call a live Host and cannot prove pairing, signature, replay protection, approval authorization, or end-to-end product behavior. Phase 05-05 must prove live pairing/send/receipt/replay/revocation after 05-02/03; Phase 06 owns live approval integration. Rewrite the chosen plan's `files_modified`, task `<files>`, and automated command to the selected branch before execution. Keep the other branch unimplemented.
+
+`PASS_SHARED` means only that this client stack is feasible on both sampled devices: the device-generated key remains usable after force-stop/restart and cannot be exported through the platform API; the queued fixture operation retains the same ID across process death and resolves to one fixture receipt; pairing/approval fixture screens expose labeled controls and an understandable action summary to platform accessibility; permission denial prevents microphone access; and explicit stop/mute closes capture before the UI reports stopped. `FAIL_SHARED_SELECT_FALLBACK` requires a repeatable failure of one of those criteria on either device with exact OS/build/module details. These probes do not test Lumen's real cryptography, network, backend, authorization, or receipts.
 
 | Contract | Shared client passes | Kotlin Android plus phone web fallback |
 |---|---|---|
@@ -12,7 +14,7 @@ Phase 05-01 must record the physical shared-client result before 05-04 or 06-03 
 
 ## Mechanical plan binding after 05-01
 
-`05-04-PLAN.md`, `06-03-PLAN.md` and the phone-client portion of `10-04-PLAN.md` are branch templates, not executable client handoffs until `05-01-EVIDENCE.md` records a physically measured `PASS_SHARED` or `FAIL_SHARED_SELECT_FALLBACK` and owner sign-off. `BLOCKED` leaves all dependent client work blocked. Phase 05-01 Task 2 edits all three plans before their execution wave; the downstream executor must reject a plan whose declared files or checks still name the other branch.
+`05-04-PLAN.md`, `06-03-PLAN.md` and the phone-client portion of `10-04-PLAN.md` are branch templates, not executable client handoffs until `05-01-EVIDENCE.md` records a physically measured `PASS_SHARED` or `FAIL_SHARED_SELECT_FALLBACK` stack-feasibility result and owner sign-off. `BLOCKED` leaves all dependent client work blocked. Phase 05-01 Task 2 edits all three plans before their execution wave; the downstream executor must reject a plan whose declared files or checks still name the other branch. A bound client stack is not a product support claim; live protocol and action acceptance remains assigned to Phase 05-05 and later Phase 06/07 journeys.
 
 | Plan/task | `PASS_SHARED` exact file manifest | `FAIL_SHARED_SELECT_FALLBACK` exact file manifest |
 |---|---|---|
