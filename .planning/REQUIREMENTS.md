@@ -37,7 +37,7 @@ These are the 58 published FR requirements in [docs/PRD.md](../docs/PRD.md), ret
 | FR-36 | Let a runtime propose typed memory while only the Host validates and persists canonical context. | Host | Phase 04 | Pending |
 | FR-37 | Keep browser profiles and credentials outside shared context and gate browser actions by capability policy. | Browser adapter | Phase 12 | Pending |
 | FR-38 | Integrate Hermes through a versioned adapter with discovery, runs, events, approvals, cancellation, and untrusted-result handling. | Host/Hermes | Phase 02 | Complete |
-| FR-39 | Reuse approved Hermes model routing, tools, skills, MCP, browser, voice, delegation, and remote execution through immutable scoped profiles. | Runtime integration | Phase 13 | Pending |
+| FR-39 | Reuse approved Hermes model routing, tools, skills, MCP, browser, voice, delegation, and remote execution through immutable scoped profiles. | Runtime integration | Phase 14 | Pending |
 | FR-40 | Perform no background model or tool work by default; keep pre-activation wake-word and VAD local with zero outbound audio, while schedules and triggers require explicit inspectable grants. | Android companion | Phase 08 | Pending |
 | FR-41 | Expose Host-local Hermes reasoning first as `agent.run/execute` without granting transitive authority. | Host/Hermes | Phase 02 | Complete |
 | FR-42 | Expose Hermes-backed integrations only through Lumen lifecycle, policy, credential, audit, cancellation, receipt, and uncertainty contracts. | Runtime integration | Phase 12 | Pending |
