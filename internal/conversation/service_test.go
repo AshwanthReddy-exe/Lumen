@@ -276,13 +276,13 @@ func TestProjectionKeepsRecentHistoryWithinContextBudget(t *testing.T) {
 		s.Messages["c1"] = append(s.Messages["c1"], space.Message{ID: id, ConversationID: "c1", Sequence: seq, Role: role, AuthorID: "owner", SurfaceID: "web", Content: content, ContentDigest: space.DigestText(content), CreatedAt: int64(seq), TaskID: task})
 	}
 	appendMessage("m1", 1, space.MessageUser, "older useful turn", "old")
-	appendMessage("m2", 2, space.MessageAssistant, strings.Repeat("n", 80), "new")
+	appendMessage("m2", 2, space.MessageAssistant, strings.Repeat("n", 600), "new")
 	appendMessage("user:task-1", 3, space.MessageUser, "current", "task-1")
 	profile := space.DefaultRuntimeProfile()
-	profile.MaxContextBytes = 64
+	profile.MaxContextBytes = 512
 	projection, err := ProjectForTask(s, "c1", "task-1", space.DefaultPersona(), profile, 100)
 	encoded, _ := json.Marshal(projection.Messages)
-	if err != nil || len(encoded) > profile.MaxContextBytes || len(projection.Messages) != 1 || projection.Messages[0].Content != "older useful turn" {
+	if err != nil || len(encoded)+len(projection.Instructions) > profile.MaxContextBytes || len(projection.Messages) != 1 || projection.Messages[0].Content != "older useful turn" {
 		t.Fatalf("history exceeded budget or lost recent context: messages=%#v bytes=%d err=%v", projection.Messages, len(encoded), err)
 	}
 }
@@ -322,7 +322,7 @@ func TestProjectionPicksNewestMemoryWithinBudget(t *testing.T) {
 		s = tr.State
 	}
 	profile := space.DefaultRuntimeProfile()
-	profile.MaxContextBytes = 50
+	profile.MaxContextBytes = 450
 	projection, err := Project(s, "c1", space.DefaultPersona(), profile, 3)
 	if err != nil || !strings.Contains(projection.Context, "newer") || strings.Contains(projection.Context, "older") {
 		t.Fatalf("context=%q err=%v", projection.Context, err)
