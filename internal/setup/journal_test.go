@@ -97,12 +97,100 @@ func TestJournalFullProgressionAndReopen(t *testing.T) {
 	if j.Next() != Validated {
 		t.Fatal(j.Next())
 	}
+	if !j.IsValidated() {
+		t.Fatal("terminal validation record was not recognized")
+	}
 	reopened, err := NewJournal(d)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if reopened.Next() != Validated {
 		t.Fatal(reopened.Next())
+	}
+	if !reopened.IsValidated() {
+		t.Fatal("reopened terminal validation record was not recognized")
+	}
+}
+
+func TestValidatedEvidenceMustMatchBindingToAuthorizeLaunch(t *testing.T) {
+	dir := t.TempDir()
+	journal, err := NewJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planDigest := "sha256:" + strings.Repeat("b", 64)
+	endpointDigest := digest("endpoint-a")
+	binding := JournalBinding{Profile: Development, Topology: TopologyExternal, Supervisor: SupervisorLaunchd, PlanDigest: planDigest, EndpointOriginDigest: endpointDigest}
+	if err := journal.Bind(binding); err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range stageOrder {
+		if err := journal.Record(StageEvidence{Stage: stage, InputDigest: "sha256:" + strings.Repeat("a", 64), Profile: Development, PlanDigest: planDigest}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !journal.IsValidatedForBinding() {
+		t.Fatal("matching terminal evidence did not authorize launch")
+	}
+	evidencePath := filepath.Join(dir, "setup-journal.json")
+	evidenceBytes, err := os.ReadFile(evidencePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyBytes := bytes.Replace(evidenceBytes, []byte(`,"bindingDigest":"`+bindingDigest(binding)+`"`), nil, 1)
+	if bytes.Equal(legacyBytes, evidenceBytes) {
+		t.Fatal("test did not remove the terminal binding digest")
+	}
+	if err := os.WriteFile(evidencePath, legacyBytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := NewJournal(dir)
+	if err != nil || legacy.IsValidatedForBinding() {
+		t.Fatalf("legacy validation unexpectedly authorized: journal=%v err=%v", legacy != nil, err)
+	}
+	if err := legacy.BindValidatedEvidence(); err != nil || !legacy.IsValidatedForBinding() {
+		t.Fatalf("verified legacy validation could not bind: authorized=%v err=%v", legacy.IsValidatedForBinding(), err)
+	}
+
+	bindingBytes, err := os.ReadFile(filepath.Join(dir, "setup-binding.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered := bytes.Replace(bindingBytes, []byte(`"profile":"development"`), []byte(`"profile":"personal-alpha"`), 1)
+	if bytes.Equal(tampered, bindingBytes) {
+		t.Fatal("test did not alter the binding profile")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "setup-binding.json"), tampered, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewJournal(dir); !errors.Is(err, ErrInvalidJournal) {
+		t.Fatalf("mixed binding/evidence was accepted: %v", err)
+	}
+	tampered = bytes.Replace(bindingBytes, []byte(endpointDigest), []byte(digest("endpoint-b")), 1)
+	if bytes.Equal(tampered, bindingBytes) {
+		t.Fatal("test did not alter the endpoint binding")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "setup-binding.json"), tampered, 0600); err != nil {
+		t.Fatal(err)
+	}
+	changedEndpoint, err := NewJournal(dir)
+	if err != nil || changedEndpoint.IsValidatedForBinding() {
+		t.Fatalf("same-profile/plan endpoint substitution authorized launch: authorized=%v err=%v", changedEndpoint != nil && changedEndpoint.IsValidatedForBinding(), err)
+	}
+	if err := changedEndpoint.BindValidatedEvidence(); !errors.Is(err, ErrInvalidJournal) {
+		t.Fatalf("tampered nonempty binding digest was rebound: %v", err)
+	}
+}
+
+func TestUnboundValidatedJournalCannotAuthorizeLaunch(t *testing.T) {
+	journal := newTestJournal(t)
+	for _, stage := range stageOrder {
+		if err := journal.Record(StageEvidence{Stage: stage, InputDigest: "sha256:" + strings.Repeat("a", 64)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !journal.IsValidated() || journal.IsValidatedForBinding() {
+		t.Fatal("unbound journal was treated as launch authorization")
 	}
 }
 

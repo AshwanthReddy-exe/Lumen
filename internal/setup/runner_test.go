@@ -26,8 +26,67 @@ func TestRunnerResumesWithoutRepeatingCompletedStages(t *testing.T) {
 		t.Fatal("expected interruption")
 	}
 	report, err := r.Run(context.Background(), Request{Topology: TopologyCombined, Profile: Development})
-	if err != nil || report.Outcome != Ready || calls != len(stageOrder) {
+	if err != nil || report.Outcome != Ready || calls != len(stageOrder)+1 {
 		t.Fatalf("report=%#v err=%v calls=%d", report, err, calls)
+	}
+}
+
+func TestRunnerRecordsValidatedBeforeFinalizationAndResumesIt(t *testing.T) {
+	dir := t.TempDir()
+	j, err := NewJournal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finalize := true
+	r := Runner{
+		Journal: j,
+		RunStage: func(_ context.Context, stage Stage) error {
+			if stage == Validated && finalize {
+				finalize = false
+				return errors.New("publication interrupted")
+			}
+			return nil
+		},
+		Verify: func(context.Context, Stage) error { return nil },
+	}
+	if report, err := r.Run(context.Background(), Request{Topology: TopologyExternal, Profile: Development}); err == nil || report.Stage != Validated || !j.IsValidated() {
+		t.Fatalf("interrupted finalization report=%#v err=%v validated=%v", report, err, j.IsValidated())
+	}
+	reopened, err := NewJournal(dir)
+	if err != nil || !reopened.IsValidated() {
+		t.Fatalf("durable validated journal=%v err=%v", reopened != nil && reopened.IsValidated(), err)
+	}
+	r.Journal = reopened
+	if report, err := r.Run(context.Background(), Request{Topology: TopologyExternal, Profile: Development}); err != nil || report.Outcome != Ready || !reopened.IsValidated() {
+		t.Fatalf("recovered finalization report=%#v err=%v", report, err)
+	}
+}
+
+func TestRunnerRechecksValidatedDeploymentBeforeReadyOnRerun(t *testing.T) {
+	j, err := NewJournal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	validatedChecks := 0
+	r := Runner{
+		Journal:  j,
+		RunStage: func(context.Context, Stage) error { return nil },
+		Verify: func(_ context.Context, stage Stage) error {
+			if stage == Validated {
+				validatedChecks++
+				if validatedChecks == 2 {
+					return errors.New("Host stopped")
+				}
+			}
+			return nil
+		},
+	}
+	if _, err := r.Run(context.Background(), Request{Topology: TopologyExternal, Profile: Development}); err != nil {
+		t.Fatalf("initial setup: %v", err)
+	}
+	report, err := r.Run(context.Background(), Request{Topology: TopologyExternal, Profile: Development})
+	if err == nil || report.Outcome != ActionRequired || report.Stage != Validated || validatedChecks != 2 {
+		t.Fatalf("report=%#v err=%v validatedChecks=%d", report, err, validatedChecks)
 	}
 }
 
@@ -102,6 +161,53 @@ func TestRunnerReturnsRedactedStageError(t *testing.T) {
 	r := Runner{Journal: j, RunStage: func(context.Context, Stage) error { return errors.New("open /Users/owner/private/token: secret") }, Verify: func(context.Context, Stage) error { return nil }}
 	report, err := r.Run(context.Background(), Request{Topology: TopologyCombined, Profile: Development})
 	if err == nil || report.Outcome != ActionRequired || strings.Contains(err.Error(), "/Users/") || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("report=%#v err=%v", report, err)
+	}
+}
+
+func TestRunnerReportsAndReplaysPendingLaunchAgentActivation(t *testing.T) {
+	j, err := NewJournal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := true
+	finalizations := 0
+	plan := PlanResult{Profile: Development, Topology: TopologyExternal, Supervisor: SupervisorLaunchd, NextStage: Detected}
+	r := Runner{Journal: j, Plan: &plan, RunStage: func(_ context.Context, stage Stage) error {
+		if stage != Validated {
+			return nil
+		}
+		finalizations++
+		if pending {
+			pending = false
+			return ErrLaunchAgentActivationPending
+		}
+		return nil
+	}, Verify: func(context.Context, Stage) error { return nil }}
+	request := Request{Topology: TopologyExternal, Profile: Development, Supervisor: SupervisorLaunchd, EndpointOriginDigest: digest("hermes-endpoint")}
+	first, err := r.Run(context.Background(), request)
+	if err == nil || first.Outcome != ActionRequired || first.Actions[0].Code != "launchagent_activation_pending" || !j.IsValidatedForBinding() {
+		t.Fatalf("first report=%#v validatedForBinding=%v err=%v", first, j.IsValidatedForBinding(), err)
+	}
+	second, err := r.Run(context.Background(), request)
+	if err != nil || second.Outcome != Ready || finalizations != 2 || !j.IsValidatedForBinding() {
+		t.Fatalf("retry report=%#v finalizations=%d validatedForBinding=%v err=%v", second, finalizations, j.IsValidatedForBinding(), err)
+	}
+}
+
+func TestRunnerDoesNotMisclassifyEarlierStageAsLaunchAgentActivationPending(t *testing.T) {
+	j, err := NewJournal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := Runner{Journal: j, RunStage: func(_ context.Context, stage Stage) error {
+		if stage == Detected {
+			return ErrLaunchAgentActivationPending
+		}
+		return nil
+	}, Verify: func(context.Context, Stage) error { return nil }}
+	report, err := r.Run(context.Background(), Request{Topology: TopologyExternal, Profile: Development})
+	if err == nil || report.Actions[0].Code != "stage_failed" {
 		t.Fatalf("report=%#v err=%v", report, err)
 	}
 }
@@ -246,21 +352,31 @@ func TestRunnerMigratesLegacyBindingSupervisorWithoutStages(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := PlanResult{Profile: Development, Topology: TopologyExternal, Supervisor: SupervisorSystemd, NextStage: Detected}
-	if err := j.Bind(JournalBinding{Profile: Development, Topology: TopologyExternal, PlanDigest: planDigest(&plan)}); err != nil {
-		t.Fatal(err)
-	}
+	// Recreate a legacy journal whose stage evidence predates an immutable binding.
 	for _, stage := range stageOrder {
 		if err := j.Record(StageEvidence{Stage: stage, InputDigest: "sha256:" + strings.Repeat("a", 64), Profile: Development, PlanDigest: planDigest(&plan)}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	calls := 0
-	r := Runner{Journal: j, Plan: &plan, RunStage: func(context.Context, Stage) error { calls++; return nil }, Verify: func(context.Context, Stage) error { calls++; return nil }}
+	if err := j.Bind(JournalBinding{Profile: Development, Topology: TopologyExternal, PlanDigest: planDigest(&plan)}); err != nil {
+		t.Fatal(err)
+	}
+	runCalls, validatedChecks := 0, 0
+	r := Runner{
+		Journal: j, Plan: &plan,
+		RunStage: func(context.Context, Stage) error { runCalls++; return nil },
+		Verify: func(_ context.Context, stage Stage) error {
+			if stage == Validated {
+				validatedChecks++
+			}
+			return nil
+		},
+	}
 	if _, err := r.Run(context.Background(), Request{Profile: Development, Topology: TopologyExternal, Supervisor: SupervisorSystemd}); err != nil {
 		t.Fatal(err)
 	}
 	binding, ok := j.Binding()
-	if !ok || binding.Supervisor != SupervisorSystemd || calls != 0 {
-		t.Fatalf("binding=%#v calls=%d", binding, calls)
+	if !ok || binding.Supervisor != SupervisorSystemd || runCalls != 1 || validatedChecks != 1 {
+		t.Fatalf("binding=%#v runCalls=%d validatedChecks=%d", binding, runCalls, validatedChecks)
 	}
 }

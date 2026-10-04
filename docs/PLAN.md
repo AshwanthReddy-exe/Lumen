@@ -39,7 +39,7 @@ Inspection found:
 
 | Area | Verified condition |
 |---|---|
-| Git | `main` at `ebe42cd`; Phase 01 is on `docs/gsd-phase01` from that base. Prior cleanup deletions and this plan edit remain uncommitted |
+| Git | Phase 01 and its cleanup merged to `main` at `81b60e3` in PR #21; Phase 02 work starts from that commit |
 | Go foundation | Space state transitions, grants, approvals, tasks, runtime mappings and recovery logic exist |
 | Persistence | AES-256-GCM encrypted whole-state storage with locking and atomic replacement; not a relational conversation database |
 | Operator interface | Owner-restricted local control boundary exists |
@@ -772,4 +772,4 @@ The proposed architecture retains the tested Go foundation, gives Hermes substan
 
 The highest-risk assumptions have explicit experiments before dependent implementation: runtime containment and interaction support, shared mobile native integration, storage evolution, wake reliability, remote connectivity and migration fencing.
 
-This is the approved master plan. Phase 01 GSD artifacts and owner review are complete locally; Phase 02 begins from updated `main` after the Phase 01 PR merges, unless the owner explicitly selects another base.
+This is the approved master plan. Phase 01 GSD artifacts merged in PR #21. Phase 02 execution is in progress on its reviewed branch; live evidence and open gates are tracked in [GSD state](../.planning/STATE.md) and the phase evidence files.

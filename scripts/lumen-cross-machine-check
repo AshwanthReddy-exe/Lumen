@@ -1,0 +1,231 @@
+#!/bin/sh
+set -eu
+
+fail() { printf 'lumen-cross-machine-check: %s\n' "$1" >&2; exit 1; }
+need() { eval "value=\${$1:-}"; [ -n "$value" ] || fail "$1 is required"; }
+validate_commit() {
+	case "$1" in *[!0-9a-f]*|'') fail 'expected Hermes commit must be a Git SHA' ;; esac
+	[ "${#1}" -eq 40 ] || [ "${#1}" -eq 64 ] || fail 'expected Hermes commit must be a Git SHA'
+}
+normalize_pin() {
+	expected_pin=$(printf '%s' "${1#sha256:}" | tr 'A-F' 'a-f' | tr -d ':')
+	case "$expected_pin" in *[!0-9a-f]*|'') fail 'Hermes certificate pin must be a SHA-256 digest' ;; esac
+	[ "${#expected_pin}" -eq 64 ] || fail 'Hermes certificate pin must be a SHA-256 digest'
+}
+
+snapshot_b() {
+	need LUMEN_HERMES_HOME
+	need LUMEN_HERMES_CONFIG
+	need LUMEN_HERMES_B_UNIT
+	need LUMEN_HERMES_B_EXPECTED_COMMIT
+	need LUMEN_HERMES_BASE_URL
+	need LUMEN_HERMES_SERVER_CERT_PIN
+	validate_commit "$LUMEN_HERMES_B_EXPECTED_COMMIT"
+	normalize_pin "$LUMEN_HERMES_SERVER_CERT_PIN"
+	hermes_bin=${LUMEN_HERMES_BIN:-hermes}
+	command -v "$hermes_bin" >/dev/null 2>&1 || fail 'Hermes CLI is unavailable on B'
+	command -v systemctl >/dev/null 2>&1 || fail 'systemd user service is required on B'
+	command -v git >/dev/null 2>&1 || fail 'Git is required on B to verify the pinned source'
+	command -v openssl >/dev/null 2>&1 || fail 'OpenSSL is required on B'
+	command -v sha256sum >/dev/null 2>&1 || fail 'sha256sum is required on B'
+	command -v jq >/dev/null 2>&1 || fail 'jq is required on B'
+	[ -f /etc/machine-id ] || fail '/etc/machine-id is unavailable on B'
+	[ -f "$LUMEN_HERMES_CONFIG" ] || fail 'Hermes config file is unavailable on B'
+	commit=$(git -C "$LUMEN_HERMES_HOME" rev-parse HEAD 2>/dev/null) || fail 'Hermes source commit is unavailable'
+	[ "$commit" = "$LUMEN_HERMES_B_EXPECTED_COMMIT" ] || fail 'Hermes source commit does not match the expected pin'
+	[ -z "$(git -C "$LUMEN_HERMES_HOME" status --porcelain --untracked-files=no)" ] || fail 'Hermes tracked source has local changes'
+	unit_state=$(systemctl --user show "$LUMEN_HERMES_B_UNIT" -p ActiveState -p SubState -p MainPID -p InvocationID --value 2>/dev/null) || fail 'Hermes supervisor state is unavailable'
+	active=$(printf '%s\n' "$unit_state" | sed -n '1p')
+	substate=$(printf '%s\n' "$unit_state" | sed -n '2p')
+	pid=$(printf '%s\n' "$unit_state" | sed -n '3p')
+	invocation=$(printf '%s\n' "$unit_state" | sed -n '4p')
+	[ "$active" = active ] && [ "$pid" -gt 1 ] 2>/dev/null && [ -n "$invocation" ] || fail 'Hermes user service is not active with a stable supervisor identity'
+	version=$("$hermes_bin" --version 2>&1 | sed -n '1p' | tr -cd '[:print:]')
+	case "$LUMEN_HERMES_BASE_URL" in
+		https://*) authority=${LUMEN_HERMES_BASE_URL#https://} ;;
+		*) fail 'Hermes endpoint must use HTTPS' ;;
+	esac
+	case "$authority" in */*) authority=${authority%%/*} ;; esac
+	case "$authority" in
+		\[*\]*)
+			host=${authority#\[}; host=${host%%]*}
+			suffix=${authority#*]}
+			case "$suffix" in :*) port=${suffix#:} ;; '') port=443 ;; *) fail 'Hermes endpoint authority is invalid' ;; esac
+			connect_address="[$host]:$port"
+			;;
+		*)
+			case "$authority" in *:*) host=${authority%:*}; port=${authority##*:} ;; *) host=$authority; port=443 ;; esac
+			connect_address="$host:$port"
+			;;
+	esac
+	case "$host:$port" in *[!A-Za-z0-9._:-]*) fail 'Hermes endpoint host or port is invalid' ;; esac
+	case "$port" in ''|*[!0-9]*) fail 'Hermes endpoint port is invalid' ;; esac
+	[ "$port" -ge 1 ] && [ "$port" -le 65535 ] || fail 'Hermes endpoint port is out of range'
+	set -- -connect "$connect_address" -showcerts
+	case "$host" in *:*) ;; *) set -- "$@" -servername "$host" ;; esac
+	leaf=$(openssl s_client "$@" </dev/null 2>/dev/null |
+		awk '/BEGIN CERTIFICATE/ && !seen {seen=1; in_leaf=1} in_leaf {print} /END CERTIFICATE/ && in_leaf {exit}' |
+		openssl x509 -outform DER 2>/dev/null |
+		sha256sum | awk '{print $1}') || fail 'could not inspect Hermes endpoint certificate'
+	[ -n "$leaf" ] || fail 'Hermes endpoint did not present a certificate'
+	[ "$leaf" = "$expected_pin" ] || fail 'B endpoint certificate does not match the configured pin'
+	machine=$(sha256sum /etc/machine-id | awk '{print $1}')
+	config=$(sha256sum "$LUMEN_HERMES_CONFIG" | awk '{print $1}')
+	jq -cn --arg machine "$machine" --arg commit "$commit" --arg version "$version" \
+		--arg config "$config" --arg unit "$LUMEN_HERMES_B_UNIT" --arg invocation "$invocation" \
+		--arg pid "$pid" --arg state "$active/$substate" --arg cert "$leaf" \
+		'{machine_id_sha256:$machine,hermes_commit:$commit,hermes_version:$version,config_sha256:$config,supervisor_unit:$unit,supervisor_invocation_id:$invocation,supervisor_pid:$pid,service_state:$state,endpoint_certificate_sha256:$cert}'
+}
+
+run_a() {
+	need LUMEN_CROSS_MACHINE_B_BEFORE_FILE
+	need LUMEN_CROSS_MACHINE_B_AFTER_FILE
+	need LUMEN_HERMES_BASE_URL
+	need LUMEN_HERMES_SERVER_CERT_PIN
+	need LUMEN_HERMES_TOKEN_SOURCE
+	need LUMEN_HERMES_CA_SOURCE
+	need LUMEN_HERMES_CLIENT_CERT_SOURCE
+	need LUMEN_HERMES_CLIENT_KEY_SOURCE
+	need LUMEN_HERMES_B_EXPECTED_COMMIT
+	validate_commit "$LUMEN_HERMES_B_EXPECTED_COMMIT"
+	normalize_pin "$LUMEN_HERMES_SERVER_CERT_PIN"
+	[ -s "$LUMEN_CROSS_MACHINE_B_BEFORE_FILE" ] || fail 'B before-snapshot file is missing'
+	[ ! -e "$LUMEN_CROSS_MACHINE_B_AFTER_FILE" ] || fail 'B after-snapshot path must not exist before the Host-A run'
+	for f in "$LUMEN_HERMES_TOKEN_SOURCE" "$LUMEN_HERMES_CA_SOURCE" "$LUMEN_HERMES_CLIENT_CERT_SOURCE" "$LUMEN_HERMES_CLIENT_KEY_SOURCE"; do
+		[ -f "$f" ] && [ ! -L "$f" ] || fail 'a required Hermes credential/certificate file is missing or a symlink'
+	done
+	command -v jq >/dev/null 2>&1 || fail 'jq is required'
+	command -v docker >/dev/null 2>&1 || fail 'Docker is required on A'
+	docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable on A'
+	docker compose version >/dev/null 2>&1 || fail 'Docker Compose is required on A'
+	command -v go >/dev/null 2>&1 || fail 'Go is required on A'
+	command -v sha256sum >/dev/null 2>&1 || fail 'sha256sum is required on A'
+	[ "$(uname -s)" = Linux ] || fail 'Host A must be Linux for this probe'
+	[ -f /etc/machine-id ] || fail '/etc/machine-id is unavailable on A'
+
+	before=$LUMEN_CROSS_MACHINE_B_BEFORE_FILE
+	valid_snapshot() {
+		jq -e '(.machine_id_sha256|type=="string" and test("^[0-9a-f]{64}$")) and (.hermes_commit|type=="string" and test("^([0-9a-f]{40}|[0-9a-f]{64})$")) and (.hermes_version|type=="string" and length>0) and (.config_sha256|type=="string" and test("^[0-9a-f]{64}$")) and (.supervisor_unit|type=="string" and length>0) and (.supervisor_invocation_id|type=="string" and test("^[0-9a-f]{32}$")) and (.supervisor_pid|type=="string" and test("^[0-9]+$") and tonumber>1) and (.service_state=="active/running") and (.endpoint_certificate_sha256|type=="string" and test("^[0-9a-f]{64}$"))' "$1" >/dev/null
+	}
+	valid_snapshot "$before" || fail 'B before-snapshot is incomplete or not active'
+	a_machine=$(sha256sum /etc/machine-id | awk '{print $1}')
+	b_machine=$(jq -r '.machine_id_sha256' "$before")
+	[ "$a_machine" != "$b_machine" ] || fail 'A and B machine identities are the same'
+	[ "$(jq -r '.hermes_commit' "$before")" = "$LUMEN_HERMES_B_EXPECTED_COMMIT" ] || fail 'B snapshot does not prove the expected Hermes source pin'
+	[ "$(jq -r '.endpoint_certificate_sha256' "$before")" = "$expected_pin" ] || fail 'B snapshot certificate does not match the endpoint pin'
+
+	repo_root=${LUMEN_REPO_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
+	work_root=${LUMEN_CROSS_MACHINE_CHECK_ROOT:-${HOME:?HOME is required}/.cache/lumen-cross-machine-check}
+	mkdir -p -- "$work_root"
+	chmod 700 -- "$work_root"
+	work_dir=$(mktemp -d "$work_root/run.XXXXXX")
+	data_dir=$work_dir/data
+	manifest=$work_dir/manifest.json
+	cli=$work_dir/lumen
+	host_artifact=$work_dir/lumen-host
+	project=lumen-cross-machine-$$-$(openssl rand -hex 4)
+	compose_ready=0
+	cleanup() {
+		status=$?
+		if [ "$compose_ready" -eq 1 ]; then
+			if ! docker compose -p "$project" -f "$repo_root/deploy/docker/compose.external.yaml" down --volumes --remove-orphans >/dev/null 2>&1; then
+				printf 'lumen-cross-machine-check: cleanup failed for project %s; private recovery files retained at %s\n' "$project" "$work_dir" >&2
+				status=1
+			else
+				rm -rf -- "$work_dir"
+			fi
+		else
+			rm -rf -- "$work_dir"
+		fi
+		exit "$status"
+	}
+	trap cleanup EXIT
+	trap 'exit 129' HUP
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	mkdir -m 700 "$data_dir"
+	cd "$repo_root"
+	export LUMEN_DATA_DIR="$data_dir"
+	export LUMEN_HERMES_PROFILE=hardened
+	export LUMEN_SETUP_PROFILE=personal-alpha
+	export LUMEN_SETUP_TOPOLOGY=external
+	export LUMEN_SUPERVISOR=docker
+	export LUMEN_HOST_USER="$(id -u):$(id -g)"
+	export COMPOSE_PROJECT_NAME="$project"
+	export LUMEN_CROSS_MACHINE_PROJECT="$project"
+	# Setup uses the exact local build; its required URL metadata is never fetched.
+	go build -trimpath -ldflags='-s -w' -o "$cli" ./cmd/lumen
+	CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o "$host_artifact" ./cmd/lumen-host
+	chmod 700 "$cli" "$host_artifact"
+	artifact_sha=$(sha256sum "$host_artifact" | awk '{print $1}')
+	artifact_size=$(wc -c <"$host_artifact" | tr -d ' ')
+	arch=$(go env GOARCH)
+	jq -cn --arg arch "$arch" --arg hash "sha256:$artifact_sha" --argjson size "$artifact_size" \
+		'{schemaVersion:1,topology:"external",artifacts:[{name:"lumen",version:"0.1.0-cross-machine-check",os:"linux",architecture:$arch,profile:"personal-alpha",url:"https://127.0.0.1/lumen-local-artifact",size:$size,sha256:$hash,contractVersion:1,executableMode:448,ownership:"lumen"}]}' >"$manifest"
+	export LUMEN_MANIFEST="$manifest"
+	export LUMEN_LUMEN_ARTIFACT="$host_artifact"
+	export LUMEN_HERMES_CREDENTIAL_FILE="$LUMEN_HERMES_TOKEN_SOURCE"
+	compose() { docker compose -p "$project" -f deploy/docker/compose.external.yaml "$@"; }
+	compose_ready=1
+	compose build lumen-host >/dev/null
+	setup_report=$("$cli" setup) || fail 'external setup failed'
+	printf '%s' "$setup_report" | jq -e '.outcome=="ready"' >/dev/null || fail 'external setup did not report ready'
+	"$cli" doctor | jq -e '.outcome=="ready"' >/dev/null || fail 'external doctor did not report ready'
+	status=$(compose exec -T lumen-host lumen-host status)
+	host_id=$(printf '%s' "$status" | jq -er '.data.host_id')
+	space_id=$(printf '%s' "$status" | jq -er '.data.space_id')
+	owner_id=$(printf '%s' "$status" | jq -er '.data.owner_id')
+	nonce=$(openssl rand -hex 8)
+	task_id="cross-machine-$nonce"
+	request_id="cross-machine-submit-$nonce"
+	fingerprint="cross-machine:$nonce"
+	profile_digest="sha256:cross-machine-$nonce"
+	now=$(date +%s)
+	reconcile_by=$((now + 300))
+	submit=$(compose exec -T lumen-host lumen-host task submit --request_id "$request_id" --task_id "$task_id" \
+		--capability_id agent.run/execute --action run --action_fingerprint "$fingerprint" \
+		--runtime_profile_digest "$profile_digest" --reconcile_by "$reconcile_by" \
+		--input "Return exactly this harmless verification marker: LUMEN-$nonce") || fail 'real task submission failed'
+	printf '%s' "$submit" | jq -e '.ok==true' >/dev/null || fail 'Host rejected the real task'
+	approval=$(compose exec -T lumen-host lumen-host approval resolve --request_id "cross-machine-approval-$nonce" \
+		--task_id "$task_id" --target_node_id "$host_id" --action_fingerprint "$fingerprint" \
+		--approval_id "cross-machine-approval-$nonce" --approved_at "$now" --expires_at "$reconcile_by" \
+		--reconcile_by "$reconcile_by" --runtime_profile_digest "$profile_digest" --input "Return exactly this harmless verification marker: LUMEN-$nonce" --decision once) || fail 'one-time task approval failed'
+	printf '%s' "$approval" | jq -e '.ok==true' >/dev/null || fail 'Host rejected the one-time approval'
+	i=0
+	while [ "$i" -lt 300 ]; do
+		shown=$(compose exec -T lumen-host lumen-host task show --task_id "$task_id") || fail 'durable task result is unavailable'
+		state=$(printf '%s' "$shown" | jq -r '.data.task.status // empty')
+		[ "$state" = completed ] && break
+		case "$state" in failed|cancelled|unknown_outcome) fail "real task ended as $state" ;; esac
+		i=$((i + 1)); sleep 1
+	done
+	[ "$i" -lt 300 ] || fail 'real task did not complete within five minutes'
+	run_id=$(printf '%s' "$shown" | jq -er '.data.run.runtimeRunId')
+	output=$(printf '%s' "$shown" | jq -er '.data.task.output')
+	[ -n "$output" ] || fail 'Host did not persist a task output'
+	state_before=$(sha256sum "$data_dir/state.json" | awk '{print $1}')
+	"$cli" service restart | jq -e '.outcome=="ready"' >/dev/null || fail 'Host-A-only restart failed'
+	"$cli" doctor | jq -e '.outcome=="ready"' >/dev/null || fail 'Host A was not healthy after restart'
+	state_after=$(sha256sum "$data_dir/state.json" | awk '{print $1}')
+	[ "$state_before" = "$state_after" ] || fail 'Host state changed during Host-A-only restart'
+	printf '%s\n' "Host A restart complete. Run ID: $run_id"
+	printf '%s\n' "Now run this script's snapshot-b mode on Hermes B and save its JSON to: $LUMEN_CROSS_MACHINE_B_AFTER_FILE"
+	printf '%s' 'Press Enter after copying the B after-snapshot there: '
+	read -r _
+	[ -s "$LUMEN_CROSS_MACHINE_B_AFTER_FILE" ] || fail 'B after-snapshot was not provided'
+	valid_snapshot "$LUMEN_CROSS_MACHINE_B_AFTER_FILE" || fail 'B after-snapshot is incomplete or not active'
+	for key in machine_id_sha256 hermes_commit hermes_version config_sha256 supervisor_unit supervisor_invocation_id supervisor_pid service_state endpoint_certificate_sha256; do
+		[ "$(jq -r ".$key" "$before")" = "$(jq -r ".$key" "$LUMEN_CROSS_MACHINE_B_AFTER_FILE")" ] || fail "Hermes B snapshot changed at $key"
+	done
+	jq -cn --arg space "$space_id" --arg owner "$owner_id" --arg host "$host_id" --arg task "$task_id" \
+		--arg run "$run_id" --arg state "$state_after" --arg machine "$b_machine" \
+		--slurpfile b "$before" \
+		'{result:"host_run_passed_operator_snapshots_match",snapshot_evidence:"operator_asserted_not_remote_attestation",space_id:$space,owner_id:$owner,host_id:$host,task_id:$task,hermes_run_id:$run,state_sha256:$state,b_machine_id_sha256:$machine,b_commit:$b[0].hermes_commit,b_version:$b[0].hermes_version,b_config_sha256:$b[0].config_sha256,b_supervisor_unit:$b[0].supervisor_unit,b_supervisor_invocation_id:$b[0].supervisor_invocation_id,b_supervisor_pid:$b[0].supervisor_pid,b_endpoint_certificate_sha256:$b[0].endpoint_certificate_sha256,negative_live_swaps:"not tested by this script"}'
+}
+
+case ${1:-} in
+	snapshot-b) snapshot_b ;;
+	run-a) run_a ;;
+	*) printf '%s\n' 'Usage: LUMEN_HERMES_*_B_* settings scripts/lumen-cross-machine-check snapshot-b' '   or: scripts/lumen-cross-machine-check run-a' >&2; exit 2 ;;
+esac

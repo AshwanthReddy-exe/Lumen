@@ -9,6 +9,8 @@ import (
 	"sort"
 )
 
+var ErrLaunchAgentActivationPending = errors.New("LaunchAgent activation pending")
+
 // Runner executes the durable setup stages in order. Callers provide the
 // platform-specific mutation and verification; the journal is the authority.
 type SetupRunner struct {
@@ -95,6 +97,22 @@ func (r SetupRunner) Run(ctx context.Context, req Request) (Report, error) {
 	for {
 		stage := r.Journal.Next()
 		if stage == Validated {
+			alreadyValidated := r.Journal.IsValidated()
+			if err := r.Verify(ctx, Validated); err != nil {
+				return stageFailure(Validated, err)
+			}
+			if alreadyValidated {
+				if err := r.Journal.BindValidatedEvidence(); err != nil {
+					return stageFailure(Validated, err)
+				}
+			} else {
+				if err := r.recordStage(req, Validated); err != nil {
+					return stageFailure(Validated, err)
+				}
+			}
+			if err := r.RunStage(ctx, Validated); err != nil {
+				return stageFailure(Validated, err)
+			}
 			return r.readyReport(req), nil
 		}
 		found := false
@@ -126,20 +144,24 @@ func (r SetupRunner) Run(ctx context.Context, req Request) (Report, error) {
 		if err := r.Verify(ctx, stage); err != nil {
 			return stageFailure(stage, err)
 		}
-		digest := requestDigest(req, stage, r.Plan)
-		if r.InputHash != nil {
-			digest = r.InputHash(stage)
-		}
-		if stage == ArtifactsReady && r.Plan != nil && r.Plan.Platform == PlatformTermux && !manifestBoundTermuxDigests(req.ArtifactDigests) {
-			return stageFailure(stage, ErrInvalidDigest)
-		}
-		if !validDigest(digest) || digest == "sha256:"+fmt.Sprintf("%064x", 0) {
-			return stageFailure(stage, ErrInvalidDigest)
-		}
-		if err := r.Journal.Record(StageEvidence{Stage: stage, InputDigest: digest, Profile: req.Profile, PlanDigest: planDigest(r.Plan)}); err != nil {
+		if err := r.recordStage(req, stage); err != nil {
 			return stageFailure(stage, err)
 		}
 	}
+}
+
+func (r SetupRunner) recordStage(req Request, stage Stage) error {
+	digest := requestDigest(req, stage, r.Plan)
+	if r.InputHash != nil {
+		digest = r.InputHash(stage)
+	}
+	if stage == ArtifactsReady && r.Plan != nil && r.Plan.Platform == PlatformTermux && !manifestBoundTermuxDigests(req.ArtifactDigests) {
+		return ErrInvalidDigest
+	}
+	if !validDigest(digest) || digest == "sha256:"+fmt.Sprintf("%064x", 0) {
+		return ErrInvalidDigest
+	}
+	return r.Journal.Record(StageEvidence{Stage: stage, InputDigest: digest, Profile: req.Profile, PlanDigest: planDigest(r.Plan)})
 }
 
 func (r SetupRunner) validateJournalBinding(req Request) error {
@@ -298,7 +320,11 @@ func (r SetupRunner) readyReport(req Request) Report {
 	return out
 }
 func stageFailure(stage Stage, err error) (Report, error) {
-	return Report{Outcome: ActionRequired, Stage: stage, Actions: []Action{{Code: "stage_failed", Detail: string(stage)}}}, stageError{stage: stage, cause: err}
+	code := "stage_failed"
+	if stage == Validated && errors.Is(err, ErrLaunchAgentActivationPending) {
+		code = "launchagent_activation_pending"
+	}
+	return Report{Outcome: ActionRequired, Stage: stage, Actions: []Action{{Code: code, Detail: string(stage)}}}, stageError{stage: stage, cause: err}
 }
 
 type stageError struct {

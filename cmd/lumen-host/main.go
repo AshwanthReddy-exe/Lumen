@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +17,7 @@ import (
 	"github.com/AshwanthReddy-exe/Lumen/internal/control"
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
 	"github.com/AshwanthReddy-exe/Lumen/internal/host"
+	"github.com/AshwanthReddy-exe/Lumen/internal/setup"
 )
 
 func main() { os.Exit(run(os.Args[1:])) }
@@ -23,8 +26,12 @@ func run(args []string) int {
 		return usage()
 	}
 	switch args[0] {
-	case "doctor", "init", "serve", "status", "shutdown":
+	case "doctor", "init", "status", "shutdown":
 		if len(args) != 1 {
+			return usage()
+		}
+	case "serve":
+		if len(args) != 1 && (len(args) != 2 || (args[1] != "--manual" && args[1] != "--setup-staging")) {
 			return usage()
 		}
 	case "task":
@@ -53,7 +60,7 @@ func run(args []string) int {
 		}
 		return 0
 	case "serve":
-		return serve(c)
+		return serve(c, len(args) == 2 && args[1] == "--manual", len(args) == 2 && args[1] == "--setup-staging")
 	case "status", "shutdown":
 		return call(c, args[0])
 	default:
@@ -65,7 +72,7 @@ func run(args []string) int {
 	}
 }
 func usage() int {
-	fmt.Fprintln(os.Stderr, "usage: lumen-host doctor|init|serve|status|task submit|task show|task cancel|approval resolve|shutdown")
+	fmt.Fprintln(os.Stderr, "usage: lumen-host doctor|init|serve [--manual|--setup-staging]|status|task submit|task show|task cancel|approval resolve|shutdown")
 	return 2
 }
 
@@ -91,7 +98,11 @@ func doctor(c host.Config) int {
 	return 0
 }
 
-func serve(c host.Config) int {
+func serve(c host.Config, manual, staging bool) int {
+	if !launchActivationAllowedFor(c, os.Getenv("LUMEN_REQUIRE_VALIDATED_SETUP"), manual, staging, runtime.GOOS) {
+		fmt.Fprintln(os.Stderr, "service activation denied: validated setup required on this platform; use serve --manual only for an intentional foreground run")
+		return 78
+	}
 	s, err := host.New(c)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "startup unavailable: %v\n", err)
@@ -110,6 +121,76 @@ func serve(c host.Config) int {
 		return 4
 	}
 	return 0
+}
+
+func launchActivationAllowedFor(c host.Config, mode string, manual, staging bool, goos string) bool {
+	if mode == "" {
+		if goos != "darwin" || manual {
+			return true
+		}
+		if !staging {
+			return false
+		}
+	} else if mode != "1" {
+		return false
+	}
+	if c.DataDir == "" || !filepath.IsAbs(c.DataDir) || filepath.Clean(c.DataDir) != c.DataDir || c.SocketPath != filepath.Join(c.DataDir, "host.sock") || c.CredentialPath != filepath.Join(c.DataDir, "operator.credential") {
+		return false
+	}
+	journal, err := setup.NewJournal(filepath.Join(c.DataDir, "setup"))
+	if err != nil {
+		return false
+	}
+	next := journal.Next()
+	if mode == "1" || journal.IsValidated() {
+		if !journal.IsValidatedForBinding() {
+			return false
+		}
+	} else if next != setup.ServicesInstalled && next != setup.ServicesStarted && next != setup.Validated {
+		return false
+	}
+	binding, ok := journal.Binding()
+	if !ok || binding.Topology != setup.TopologyExternal || binding.Supervisor != setup.SupervisorLaunchd {
+		return false
+	}
+	wantProfile := hermes.ProfileHardened
+	if binding.Profile == setup.Development {
+		wantProfile = hermes.ProfileDevelopment
+	}
+	if c.HermesProfile != wantProfile {
+		return false
+	}
+	endpointDigest, err := setup.EndpointOriginDigest(c.HermesBaseURL)
+	if err != nil || endpointDigest != binding.EndpointOriginDigest {
+		return false
+	}
+	if !setup.ReferenceDigestsMatch(binding.ReferenceDigests, setup.DigestReferences(map[string]string{
+		"credential":  c.HermesBearerPath,
+		"ca":          c.HermesCAPath,
+		"client_cert": c.HermesClientCertPath,
+		"client_key":  c.HermesClientKeyPath,
+		"server_pin":  c.HermesServerPin,
+	})) {
+		return false
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	executable, err = filepath.EvalSymlinks(executable)
+	if err != nil || filepath.Clean(binding.ArtifactPaths["lumen"]) != executable {
+		return false
+	}
+	contents, err := os.ReadFile(executable)
+	if err != nil {
+		return false
+	}
+	digests, err := setup.EffectiveReleaseDigests(binding, c.DataDir)
+	if err != nil {
+		return false
+	}
+	digest := sha256.Sum256(contents)
+	return digests["lumen"] == "sha256:"+hex.EncodeToString(digest[:])
 }
 
 func isTermux() bool {

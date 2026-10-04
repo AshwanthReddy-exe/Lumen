@@ -181,6 +181,33 @@ func ReleaseMatchesBinding(r ReleaseRecord, b JournalBinding) error {
 	return nil
 }
 
+// EffectiveReleaseDigests returns the artifact digests currently authorized
+// by the immutable setup binding and its optional explicit release record.
+func EffectiveReleaseDigests(binding JournalBinding, dataDir string) (map[string]string, error) {
+	if dataDir == "" || !filepath.IsAbs(dataDir) || filepath.Clean(dataDir) != dataDir {
+		return nil, ErrReleaseRecordInvalid
+	}
+	path := filepath.Join(dataDir, "setup", "release-record.json")
+	if _, err := os.Lstat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return binding.ArtifactDigests, nil
+		}
+		return nil, err
+	}
+	record, err := LoadReleaseRecord(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := ReleaseMatchesBinding(record, binding); err != nil {
+		return nil, err
+	}
+	digests := make(map[string]string, len(record.Current))
+	for name, artifact := range record.Current {
+		digests[name] = artifact.Digest
+	}
+	return digests, nil
+}
+
 func validReleaseRecord(r ReleaseRecord) error {
 	if r.Generation == 0 || !validProfile(r.Profile) || r.Topology.Validate() != nil {
 		return ErrReleaseRecordInvalid

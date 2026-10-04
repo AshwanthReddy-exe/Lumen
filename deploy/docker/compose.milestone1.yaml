@@ -1,5 +1,45 @@
-# Deterministic provider used only by scripts/lumen-linux-check.
+# Deterministic provider configuration used only by milestone check scripts.
 services:
+  lumen-hermes-init:
+    entrypoint: ["python"]
+    command:
+      - -c
+      - |
+        import json
+        import os
+        import stat
+        from pathlib import Path
+
+        home = Path("/var/lib/hermes")
+        config = home / "config.yaml"
+        settings = {
+            "model": {
+                "provider": "custom",
+                "default": "synthetic-model",
+                "base_url": "http://lumen-provider:8080/v1",
+                "api_key": "lumen-test-key",
+            },
+            "platform_toolsets": {"api_server": []},
+            "auxiliary": {"title_generation": {"enabled": False}},
+        }
+        if config.is_symlink():
+            raise SystemExit("synthetic Hermes config must not be a symlink")
+        if config.exists():
+            info = config.stat(follow_symlinks=False)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != 65532 or stat.S_IMODE(info.st_mode) & 0o077:
+                raise SystemExit("synthetic Hermes config must be a private Hermes-owned regular file")
+            if json.loads(config.read_text(encoding="utf-8")) != settings:
+                raise SystemExit("synthetic Hermes config does not match the expected test profile")
+        else:
+            fd = os.open(config, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(settings, stream)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.chown(config, 65532, 65532)
+        os.chown(home, 65532, 65532)
+        config.chmod(0o400)
   lumen-registry:
     image: registry@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
     read_only: true
@@ -20,14 +60,42 @@ services:
         import json
         import os
         import time
+        from threading import Event
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
         delay = float(os.environ.get("LUMEN_PROVIDER_DELAY_MS", "0")) / 1000.0
+        hold_markers = tuple(filter(None, os.environ.get("LUMEN_PROVIDER_HOLD_MARKER", "").split("|")))
+        tool_probe_marker = os.environ.get("LUMEN_PROVIDER_TOOL_CALL_MARKER", "")
+        context_seed_marker = os.environ.get("LUMEN_PROVIDER_CONTEXT_SEED_MARKER", "")
+        context_same_marker = os.environ.get("LUMEN_PROVIDER_CONTEXT_SAME_MARKER", "")
+        context_target_marker = os.environ.get("LUMEN_PROVIDER_CONTEXT_TARGET_MARKER", "")
+        tool_execution_marker = "LUMEN_E2_TOOL_EXECUTED_CANARY"
+        tool_probe = {"triggered": False, "tools_empty": False, "tool_result_seen": False,
+                      "execution_canary_seen": False, "denial_seen": False}
+        context_probe = {"seed_seen": False, "same_session_seen": False, "target_seen": False, "unrelated_seen": False}
+        release = Event()
+        hold_started = Event()
 
         class Provider(BaseHTTPRequestHandler):
             def log_message(self, *_):
                 pass
             def do_GET(self):
+                if self.path == "/__lumen_test/tool-call-status":
+                    encoded = json.dumps(tool_probe).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(encoded)))
+                    self.end_headers()
+                    self.wfile.write(encoded)
+                    return
+                if self.path == "/__lumen_test/context-status":
+                    encoded = json.dumps(context_probe).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(encoded)))
+                    self.end_headers()
+                    self.wfile.write(encoded)
+                    return
                 if self.path == "/v1/models":
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
@@ -36,6 +104,25 @@ services:
                     return
                 self.send_error(404)
             def do_POST(self):
+                if self.path == "/__lumen_test/status":
+                    if self.client_address[0] != "127.0.0.1":
+                        self.send_error(403)
+                        return
+                    encoded = json.dumps({"held": hold_started.is_set() and not release.is_set()}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(encoded)))
+                    self.end_headers()
+                    self.wfile.write(encoded)
+                    return
+                if self.path == "/__lumen_test/release":
+                    if self.client_address[0] != "127.0.0.1":
+                        self.send_error(403)
+                        return
+                    release.set()
+                    self.send_response(204)
+                    self.end_headers()
+                    return
                 if self.path != "/v1/chat/completions":
                     self.send_error(404)
                     return
@@ -45,17 +132,85 @@ services:
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 body = json.loads(self.rfile.read(length) or b"{}")
-                if delay > 0:
+                messages = body.get("messages", [])
+                serialized_messages = json.dumps(messages)
+                if context_seed_marker and context_seed_marker in serialized_messages:
+                    context_probe["seed_seen"] = True
+                if context_same_marker and context_same_marker in serialized_messages:
+                    context_probe["same_session_seen"] = context_seed_marker in serialized_messages
+                if context_target_marker and context_target_marker in serialized_messages:
+                    context_probe["target_seen"] = True
+                    context_probe["unrelated_seen"] = context_seed_marker in serialized_messages
+                if tool_probe_marker and tool_probe_marker in serialized_messages:
+                    tool_messages = [message for message in messages if message.get("role") in {"tool", "function"}]
+                    matching = [message for message in tool_messages
+                                if message.get("name") in {None, "terminal"}
+                                and message.get("tool_call_id") in {None, "call-lumen-e2-canary"}]
+                    tool_results = " ".join(str(message.get("content", "")) for message in matching)
+                    tool_probe["tool_result_seen"] = bool(matching)
+                    tool_probe["execution_canary_seen"] = tool_execution_marker in tool_results
+                    tool_probe["denial_seen"] = tool_results.startswith("Tool 'terminal' does not exist.")
+                inject_tool_call = bool(tool_probe_marker and tool_probe_marker in serialized_messages and not tool_probe["triggered"])
+                if inject_tool_call:
+                    tool_probe["triggered"] = True
+                    tool_probe["tools_empty"] = not bool(body.get("tools"))
+                should_hold = any(marker in json.dumps(body) for marker in hold_markers)
+                if should_hold:
+                    release.clear()
+                if delay > 0 and not should_hold:
                     time.sleep(delay)
                 response = {"id":"synthetic-chat","object":"chat.completion","created":0,"model":body.get("model","synthetic-model"),"choices":[{"index":0,"message":{"role":"assistant","content":"synthetic marker"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}
+                if inject_tool_call:
+                    response["choices"][0] = {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [{
+                                "id": "call-lumen-e2-canary",
+                                "type": "function",
+                                "function": {
+                                    "name": "terminal",
+                                    "arguments": json.dumps({"command": "printf LUMEN_E2_TOOL_EXECUTED_CANARY"}),
+                                },
+                            }],
+                        },
+                        "finish_reason": "tool_calls",
+                    }
                 if body.get("stream"):
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")
                     self.end_headers()
-                    for chunk in ({"id":"synthetic-chat","object":"chat.completion.chunk","created":0,"model":response["model"],"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":None}]}, {"id":"synthetic-chat","object":"chat.completion.chunk","created":0,"model":response["model"],"choices":[{"index":0,"delta":{"content":"synthetic marker"},"finish_reason":"stop"}]}):
+                    if inject_tool_call:
+                        tool_call = response["choices"][0]["message"]["tool_calls"][0]
+                        chunks = ({"id": "synthetic-chat", "object": "chat.completion.chunk", "created": 0,
+                                   "model": response["model"], "choices": [{
+                                            "index": 0,
+                                            "delta": {"role": "assistant", "tool_calls": [{**tool_call, "index": 0}]},
+                                            "finish_reason": "tool_calls",
+                                        }]},)
+                    else:
+                        chunks = (
+                            {"id":"synthetic-chat","object":"chat.completion.chunk","created":0,"model":response["model"],"choices":[{"index":0,"delta":{"role":"assistant","content":"synthetic "},"finish_reason":None}]},
+                            {"id":"synthetic-chat","object":"chat.completion.chunk","created":0,"model":response["model"],"choices":[{"index":0,"delta":{"content":"marker"},"finish_reason":"stop"}]},
+                        )
+                    for index, chunk in enumerate(chunks):
                         self.wfile.write(("data: " + json.dumps(chunk) + "\n\n").encode())
+                        self.wfile.flush()
+                        if should_hold and index == 0:
+                            hold_started.set()
+                            if not release.wait(timeout=120):
+                                self.send_error(503)
+                                return
+                            hold_started.clear()
                     self.wfile.write(b"data: [DONE]\n\n")
                     return
+                if should_hold:
+                    hold_started.set()
+                    if not release.wait(timeout=120):
+                        self.send_error(503)
+                        return
+                    hold_started.clear()
                 encoded = json.dumps(response).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -69,6 +224,11 @@ services:
     restart: unless-stopped
     environment:
       LUMEN_PROVIDER_DELAY_MS: ${LUMEN_PROVIDER_DELAY_MS:-0}
+      LUMEN_PROVIDER_HOLD_MARKER: ${LUMEN_PROVIDER_HOLD_MARKER:-}
+      LUMEN_PROVIDER_TOOL_CALL_MARKER: ${LUMEN_PROVIDER_TOOL_CALL_MARKER:-}
+      LUMEN_PROVIDER_CONTEXT_SEED_MARKER: ${LUMEN_PROVIDER_CONTEXT_SEED_MARKER:-}
+      LUMEN_PROVIDER_CONTEXT_SAME_MARKER: ${LUMEN_PROVIDER_CONTEXT_SAME_MARKER:-}
+      LUMEN_PROVIDER_CONTEXT_TARGET_MARKER: ${LUMEN_PROVIDER_CONTEXT_TARGET_MARKER:-}
     networks: [lumen-private]
   lumen-hermes:
     image: ${LUMEN_HERMES_BUILD_IMAGE:?set isolated Hermes build image}
@@ -77,12 +237,10 @@ services:
         condition: service_started
     environment:
       API_SERVER_MODEL_NAME: synthetic-model
-      HERMES_INFERENCE_PROVIDER: custom
-      HERMES_INFERENCE_MODEL: synthetic-model
-      OPENAI_API_KEY: lumen-test-key
-      OPENAI_BASE_URL: http://lumen-provider:8080/v1
-      OPENROUTER_API_KEY: lumen-test-key
-      OPENROUTER_BASE_URL: http://lumen-provider:8080/v1
+      LUMEN_PROVIDER_TOOL_CALL_MARKER: ${LUMEN_PROVIDER_TOOL_CALL_MARKER:-}
+      LUMEN_PROVIDER_CONTEXT_SEED_MARKER: ${LUMEN_PROVIDER_CONTEXT_SEED_MARKER:-}
+      LUMEN_PROVIDER_CONTEXT_SAME_MARKER: ${LUMEN_PROVIDER_CONTEXT_SAME_MARKER:-}
+      LUMEN_PROVIDER_CONTEXT_TARGET_MARKER: ${LUMEN_PROVIDER_CONTEXT_TARGET_MARKER:-}
   lumen-host:
     environment:
       LUMEN_HERMES_BASE_URL: ${LUMEN_HERMES_CONTAINER_BASE_URL:?set Hermes container API server URL}

@@ -6,8 +6,76 @@ services:
       args:
         HERMES_COMMIT: ${HERMES_COMMIT:?set pinned Hermes commit}
         HERMES_SOURCE_ARCHIVE_SHA256: ${HERMES_SOURCE_ARCHIVE_SHA256:?set verified Hermes archive SHA-256}
-    entrypoint: ["/bin/chown"]
-    command: ["65532:65532", "/var/lib/hermes"]
+    environment:
+      HERMES_HOME: /var/lib/hermes
+    entrypoint: ["/src/.venv/bin/python"]
+    command:
+      - -c
+      - |
+        import os
+        import stat
+        from pathlib import Path
+
+        import yaml
+        from hermes_cli.tools_config import _get_platform_tools
+        from model_tools import get_tool_definitions
+
+        home = Path("/var/lib/hermes")
+        config = home / "config.yaml"
+        if config.is_symlink():
+            raise SystemExit("managed Hermes config must not be a symlink")
+        if config.exists():
+            info = config.stat(follow_symlinks=False)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != 65532 or stat.S_IMODE(info.st_mode) & 0o077:
+                raise SystemExit("managed Hermes config must be a private Hermes-owned regular file")
+            settings = yaml.safe_load(config.read_text(encoding="utf-8")) or {}
+            if not isinstance(settings, dict):
+                raise SystemExit("managed Hermes config must be a mapping")
+            toolsets = (settings.get("platform_toolsets") or {}).get("api_server")
+            if toolsets != []:
+                raise SystemExit("managed Hermes API toolsets must be explicitly empty")
+            title_generation = (settings.get("auxiliary") or {}).get("title_generation")
+            if not isinstance(title_generation, dict) or title_generation.get("enabled") is not False:
+                raise SystemExit("managed Hermes title generation must be explicitly disabled")
+        else:
+            settings = {
+                "platform_toolsets": {"api_server": []},
+                "auxiliary": {"title_generation": {"enabled": False}},
+            }
+            fd = os.open(config, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                yaml.safe_dump(settings, stream, sort_keys=True)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.chown(config, 65532, 65532)
+
+        tools = _get_platform_tools(settings, "api_server")
+        if tools or get_tool_definitions(enabled_toolsets=tools, quiet_mode=True):
+            raise SystemExit("managed Hermes API runtime resolved unexpected model tools")
+        home_fd = os.open(home, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fchown(home_fd, 65532, 65532)
+            try:
+                os.mkdir("logs", 0o700, dir_fd=home_fd)
+            except FileExistsError:
+                pass
+            logs_fd = os.open("logs", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=home_fd)
+            try:
+                os.fchown(logs_fd, 65532, 65532)
+                os.fchmod(logs_fd, 0o700)
+                log_fd = os.open("agent.log", os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600, dir_fd=logs_fd)
+                try:
+                    log_info = os.fstat(log_fd)
+                    if not stat.S_ISREG(log_info.st_mode) or log_info.st_nlink != 1:
+                        raise SystemExit("managed Hermes agent log must be an unlinked regular file")
+                    os.fchown(log_fd, 65532, 65532)
+                    os.fchmod(log_fd, 0o600)
+                finally:
+                    os.close(log_fd)
+            finally:
+                os.close(logs_fd)
+        finally:
+            os.close(home_fd)
     user: "0:0"
     volumes:
       - lumen-hermes-state:/var/lib/hermes

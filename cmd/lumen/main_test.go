@@ -2,22 +2,30 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/AshwanthReddy-exe/Lumen/internal/control"
 	"github.com/AshwanthReddy-exe/Lumen/internal/hermes"
+	"github.com/AshwanthReddy-exe/Lumen/internal/host"
 	"github.com/AshwanthReddy-exe/Lumen/internal/setup"
+	"github.com/AshwanthReddy-exe/Lumen/internal/store"
 )
 
 func secureTestDir(t *testing.T) string {
@@ -63,6 +71,63 @@ func TestHardenedCombinedWriteConfigReceivesTLSEnvironment(t *testing.T) {
 	}
 }
 
+func TestWaitForHostReadyRequiresAuthenticatedReadyResponse(t *testing.T) {
+	root := secureTestDir(t)
+	credentialPath := filepath.Join(root, "operator.credential")
+	if err := control.WriteCredential(credentialPath, bytes.Repeat([]byte{7}, control.CredentialSize)); err != nil {
+		t.Fatal(err)
+	}
+	cfg := host.Config{DataDir: root, SocketPath: filepath.Join(root, "host.sock"), CredentialPath: credentialPath}
+	server, err := control.NewServer(cfg.SocketPath, cfg.CredentialPath, func(_ context.Context, req control.Request) control.Response {
+		if req.Command != "status" {
+			return control.Response{Error: "unsupported"}
+		}
+		return control.Response{OK: true, Data: map[string]any{"status": "ready"}}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	if err := waitForHostReady(context.Background(), cfg); err != nil {
+		t.Fatalf("ready Host rejected: %v", err)
+	}
+}
+
+func TestWaitForHostReadyFailsWhenHostIsUnavailable(t *testing.T) {
+	root := secureTestDir(t)
+	credentialPath := filepath.Join(root, "operator.credential")
+	if err := control.WriteCredential(credentialPath, bytes.Repeat([]byte{7}, control.CredentialSize)); err != nil {
+		t.Fatal(err)
+	}
+	cfg := host.Config{DataDir: root, SocketPath: filepath.Join(root, "missing.sock"), CredentialPath: credentialPath}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := waitForHostReady(ctx, cfg); err == nil {
+		t.Fatal("unavailable Host reported ready")
+	}
+}
+
+func TestWaitForServicesReadyRetriesUntilAllOwnedServicesRun(t *testing.T) {
+	services := []setup.ServiceName{setup.ServiceHermes, setup.ServiceHost}
+	checks := 0
+	err := waitForServicesReady(context.Background(), services, func(context.Context) ([]setup.ServiceState, error) {
+		checks++
+		if checks == 1 {
+			return []setup.ServiceState{{Name: setup.ServiceHermes, State: setup.StateRunning}, {Name: setup.ServiceHost, State: setup.StateStopped}}, nil
+		}
+		return []setup.ServiceState{{Name: setup.ServiceHermes, State: setup.StateRunning}, {Name: setup.ServiceHost, State: setup.StateRunning}}, nil
+	})
+	if err != nil {
+		t.Fatalf("services that became ready within the deadline were rejected: %v", err)
+	}
+	if checks < 2 {
+		t.Fatalf("status checked %d times; expected a retry", checks)
+	}
+}
+
 func TestServiceDefinitionsMatchSupervisorFormat(t *testing.T) {
 	root := filepath.Join(secureTestDir(t), "services")
 	for _, tc := range []struct {
@@ -71,16 +136,308 @@ func TestServiceDefinitionsMatchSupervisorFormat(t *testing.T) {
 		ext     string
 	}{
 		{setup.SupervisorSystemd, "deploy/systemd/lumen-host.service", ".service"},
-		{setup.SupervisorLaunchd, "deploy/launchd/dev.lumen.host.plist", ".plist"},
+		{setup.SupervisorLaunchd, "", ".plist"},
 		{setup.SupervisorRunit, "deploy/termux/run", "/run"},
 	} {
 		defs := serviceDefinitions(tc.manager, setup.TopologyExternal, root)
-		if len(defs) != 1 || defs[0].Source != tc.source || !strings.HasSuffix(defs[0].Destination, tc.ext) {
+		if len(defs) != 1 {
+			t.Fatalf("%s definitions = %#v", tc.manager, defs)
+		}
+		if tc.manager == setup.SupervisorLaunchd {
+			if defs[0].Source != "" || defs[0].Destination != "" || !strings.HasSuffix(defs[0].Path, tc.ext) {
+				t.Fatalf("LaunchAgent must be generated, got %#v", defs[0])
+			}
+		} else if defs[0].Source != tc.source || !strings.HasSuffix(defs[0].Destination, tc.ext) {
 			t.Fatalf("%s definitions = %#v", tc.manager, defs)
 		}
 	}
 	if defs := serviceDefinitions(setup.SupervisorDocker, setup.TopologyCombined, root); len(defs) != 2 || defs[0].Source != "" || defs[1].Source != "" {
 		t.Fatalf("Docker definitions should use compose directly: %#v", defs)
+	}
+	if defs := serviceDefinitions(setup.SupervisorLaunchd, setup.TopologyCombined, root); len(defs) != 0 {
+		t.Fatalf("combined Mac definitions must not launch the wrong Hermes service: %#v", defs)
+	}
+}
+
+func TestWriteLaunchAgentIsPrivateEscapedAndIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	cfg := host.Config{
+		DataDir: filepath.Join(dir, "space & state"), SocketPath: filepath.Join(dir, "space & state", "host.sock"),
+		CredentialPath: filepath.Join(dir, "space & state", "operator.credential"), HermesBaseURL: "https://hermes.example.test",
+		HermesProfile: hermes.ProfileHardened, HermesBearerPath: filepath.Join(dir, "hermes.token"),
+	}
+	path := filepath.Join(dir, "services", "dev.lumen.host.plist")
+	if err := writeLaunchAgent(path, "/opt/lumen-host", cfg); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeLaunchAgent(path, "/opt/lumen-host", cfg); err != nil {
+		t.Fatalf("identical rerun: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("mode=%v err=%v", info.Mode(), err)
+	}
+	if strings.Contains(string(first), "space & state") || !strings.Contains(string(first), "space &amp; state") || strings.Contains(string(first), "token-content") {
+		t.Fatalf("LaunchAgent XML escaping or secret handling failed: %s", first)
+	}
+	if bytes.Contains(first, []byte("LUMEN_REQUIRE_VALIDATED_SETUP")) {
+		t.Fatal("staged LaunchAgent unexpectedly requires completed setup")
+	}
+	validated, err := launchAgentContent("/opt/lumen-host", cfg, "validated")
+	if err != nil || !bytes.Contains(validated, []byte("LUMEN_REQUIRE_VALIDATED_SETUP")) {
+		t.Fatalf("published LaunchAgent is not activation-gated: err=%v", err)
+	}
+	if !strings.Contains(string(first), "<key>ProgramArguments</key><array><string>/opt/lumen-host</string><string>serve</string><string>--setup-staging</string></array>") {
+		t.Fatal("LaunchAgent ProgramArguments must be plist string elements")
+	}
+	if bytes.Contains(validated, []byte("--setup-staging")) {
+		t.Fatal("published LaunchAgent retained the setup-only staging invocation")
+	}
+	if err := writeLaunchAgent(path, "/different/lumen-host", cfg); err == nil {
+		t.Fatal("different LaunchAgent definition overwrote existing file")
+	}
+}
+
+func TestLaunchAgentPublicationErrorRequiresPublishedRegularFile(t *testing.T) {
+	dir := t.TempDir()
+	writeErr := fmt.Errorf("%w: sync", setup.ErrDurabilityUncertain)
+	path := filepath.Join(dir, "published.plist")
+
+	if err := os.WriteFile(path, []byte("gated"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, statErr := os.Lstat(path)
+	got := launchAgentPublicationError(writeErr, info, statErr)
+	if !errors.Is(got, setup.ErrLaunchAgentActivationPending) || !errors.Is(got, setup.ErrDurabilityUncertain) {
+		t.Fatalf("published regular file error = %v, want both pending and durability errors", got)
+	}
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "target"), path); err != nil {
+		t.Fatal(err)
+	}
+	info, statErr = os.Lstat(path)
+	got = launchAgentPublicationError(writeErr, info, statErr)
+	if !errors.Is(got, setup.ErrDurabilityUncertain) || errors.Is(got, setup.ErrLaunchAgentActivationPending) {
+		t.Fatalf("symlink publication error = %v, want only durability uncertainty", got)
+	}
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	info, statErr = os.Lstat(path)
+	got = launchAgentPublicationError(writeErr, info, statErr)
+	if !errors.Is(got, setup.ErrDurabilityUncertain) || errors.Is(got, setup.ErrLaunchAgentActivationPending) {
+		t.Fatalf("missing publication error = %v, want only durability uncertainty", got)
+	}
+	got = launchAgentPublicationError(writeErr, nil, errors.New("injected stat I/O error"))
+	if !errors.Is(got, setup.ErrDurabilityUncertain) || !errors.Is(got, setup.ErrLaunchAgentActivationPending) {
+		t.Fatalf("unknown publication state error = %v, want pending and durability uncertainty", got)
+	}
+	ordinary := errors.New("write failed")
+	if got := launchAgentPublicationError(ordinary, nil, nil); !errors.Is(got, ordinary) || errors.Is(got, setup.ErrLaunchAgentActivationPending) {
+		t.Fatalf("ordinary publication error = %v, want unchanged error", got)
+	}
+}
+
+func TestVerifyExistingLaunchAgentDoesNotPublishMissingDefinition(t *testing.T) {
+	dir := secureTestDir(t)
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "dev.lumen.host.plist")
+	content := []byte("expected plist")
+	if err := verifyExistingLaunchAgent(path, content); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("preflight created an auto-load definition: %v", err)
+	}
+	if err := writePrivateLaunchAgent(path, content); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyExistingLaunchAgent(path, content); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyExistingLaunchAgent(path, []byte("different plist")); err == nil {
+		t.Fatal("preflight accepted a conflicting auto-load definition")
+	}
+}
+
+func TestVerifyExistingLaunchAgentRejectsMacOSACLOnDefinition(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS ACLs are platform-specific")
+	}
+	dir := secureTestDir(t)
+	path := filepath.Join(dir, "dev.lumen.host.plist")
+	content := []byte("expected plist")
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("/bin/chmod", "+a", "everyone allow write", path).CombinedOutput(); err != nil {
+		t.Fatalf("could not create ACL fixture: %v (%s)", err, output)
+	}
+	if err := verifyExistingLaunchAgent(path, content); err == nil {
+		t.Fatal("ACL-writable LaunchAgent definition was accepted")
+	}
+}
+
+func TestLaunchAgentUsesStagedDefinitionBeforeAutoLoadPath(t *testing.T) {
+	dataDir := filepath.Join(secureTestDir(t), "space")
+	launchAgents := filepath.Join(secureTestDir(t), "Library", "LaunchAgents")
+	stage, published := launchAgentDefinitionPaths(dataDir, launchAgents)
+	if stage == published || !strings.HasPrefix(stage, filepath.Join(dataDir, "setup", "services")+string(os.PathSeparator)) {
+		t.Fatalf("staged and auto-load paths are not isolated: stage=%q published=%q", stage, published)
+	}
+	if published != filepath.Join(launchAgents, "dev.lumen.host.plist") {
+		t.Fatalf("published path=%q", published)
+	}
+}
+
+func TestLaunchAgentDirectoryIsAutoLoadedAndOwnerControlled(t *testing.T) {
+	home := t.TempDir()
+	if err := os.Chmod(home, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	dir, err := launchAgentDirectoryForHome(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(resolvedHome, "Library", "LaunchAgents")
+	if dir != want {
+		t.Fatalf("LaunchAgent directory = %q, want %q", dir, want)
+	}
+	if err := os.Chmod(dir, 0770); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := launchAgentDirectoryForHome(home); err == nil {
+		t.Fatal("group-writable LaunchAgents directory was accepted")
+	}
+}
+
+func TestCanonicalAccountHomeIgnoresHomeEnvironment(t *testing.T) {
+	if os.Getenv("LUMEN_CANONICAL_HOME_CHILD") == "1" {
+		got, err := canonicalAccountHome()
+		if !accountHomeLookupUsesSystemRecord {
+			if err == nil {
+				t.Fatal("unsafe osusergo lookup was accepted")
+			}
+			return
+		}
+		if err != nil {
+			t.Fatal("account-home lookup failed")
+		}
+		if got != os.Getenv("LUMEN_EXPECTED_ACCOUNT_HOME") {
+			t.Fatal("canonical account home ignored the system account record")
+		}
+		return
+	}
+	account, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	redirectedHome := t.TempDir()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestCanonicalAccountHomeIgnoresHomeEnvironment$")
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if key != "HOME" && key != "LUMEN_CANONICAL_HOME_CHILD" && key != "LUMEN_EXPECTED_ACCOUNT_HOME" {
+			cmd.Env = append(cmd.Env, entry)
+		}
+	}
+	cmd.Env = append(cmd.Env,
+		"HOME="+redirectedHome,
+		"LUMEN_CANONICAL_HOME_CHILD=1",
+		"LUMEN_EXPECTED_ACCOUNT_HOME="+filepath.Clean(account.HomeDir),
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("fresh-process home lookup failed with redirected HOME: %v\n%s", err, output)
+	}
+}
+
+func TestLaunchAgentArtifactMustBeUnreplaceableByOtherUsers(t *testing.T) {
+	body := []byte("verified lumen host artifact")
+	manifest := setup.Artifact{
+		Name: "lumen", Version: "1.0.0", OS: "darwin", Architecture: runtime.GOARCH,
+		Profile: setup.Development, URL: "https://downloads.example.test/lumen", Size: int64(len(body)),
+		SHA256: fixtureDigest(body), ContractVersion: 1, ExecutableMode: 0700, Ownership: "lumen",
+	}
+	secureDir := secureTestDir(t)
+	securePath := filepath.Join(secureDir, "lumen-host")
+	if err := os.WriteFile(securePath, body, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := verifiedLaunchAgentArtifactPath(securePath, manifest); err != nil || got == "" {
+		t.Fatalf("secure artifact rejected: path=%q err=%v", got, err)
+	}
+	sharedDir := filepath.Join(secureDir, "shared")
+	if err := os.Mkdir(sharedDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sharedDir, 0770); err != nil {
+		t.Fatal(err)
+	}
+	sharedPath := filepath.Join(sharedDir, "lumen-host")
+	if err := os.WriteFile(sharedPath, body, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifiedLaunchAgentArtifactPath(sharedPath, manifest); err == nil {
+		t.Fatal("replaceable artifact path was accepted")
+	}
+	linkPath := filepath.Join(secureDir, "lumen-link")
+	if err := os.Symlink(securePath, linkPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifiedLaunchAgentArtifactPath(linkPath, manifest); err == nil {
+		t.Fatal("symlinked artifact path was accepted")
+	}
+}
+
+func TestLaunchAgentArtifactRejectsMacOSACLOnParent(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS ACLs are platform-specific")
+	}
+	root := secureTestDir(t)
+	dir := filepath.Join(root, "acl")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if output, err := exec.Command("/bin/chmod", "+a", "everyone allow add_file,delete_child", dir).CombinedOutput(); err != nil {
+		t.Fatalf("could not create ACL fixture: %v (%s)", err, output)
+	}
+	acl, err := exec.Command("/bin/ls", "-lde", dir).Output()
+	if err != nil || !strings.Contains(string(acl), "everyone allow add_file,delete_child") {
+		t.Fatalf("ACL fixture was not installed: %v", err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0022 != 0 {
+		t.Fatalf("ACL fixture unexpectedly has group/other write bits: mode=%v", info.Mode().Perm())
+	}
+	body := []byte("verified lumen host artifact")
+	path := filepath.Join(dir, "lumen-host")
+	if err := os.WriteFile(path, body, 0700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := setup.Artifact{
+		Name: "lumen", Version: "1.0.0", OS: "darwin", Architecture: runtime.GOARCH,
+		Profile: setup.Development, URL: "https://downloads.example.test/lumen", Size: int64(len(body)),
+		SHA256: fixtureDigest(body), ContractVersion: 1, ExecutableMode: 0700, Ownership: "lumen",
+	}
+	if _, err := verifiedLaunchAgentArtifactPath(path, manifest); err == nil {
+		t.Fatal("artifact beneath ACL-controlled parent was accepted")
 	}
 }
 
@@ -153,11 +510,21 @@ func TestConnectIsReservedWithoutPairing(t *testing.T) {
 }
 
 func TestSetupComposesPlannerAndJournal(t *testing.T) {
-	d := secureTestDir(t)
+	d := filepath.Join(secureTestDir(t), "state")
 	t.Setenv("LUMEN_DATA_DIR", d)
 	t.Setenv("LUMEN_SETUP_PROFILE", "development")
 	t.Setenv("LUMEN_SETUP_TOPOLOGY", "combined")
+	t.Setenv("LUMEN_SUPERVISOR", string(setup.SupervisorSystemd))
 	report := runForTest([]string{"setup"})
+	if runtime.GOOS == "darwin" {
+		if report.Outcome != setup.ActionRequired || len(report.Actions) != 1 || report.Actions[0].Code != "macos_combined_gateway_unsupported" {
+			t.Fatalf("combined Mac setup must fail before mutation: %#v", report)
+		}
+		if _, err := os.Stat(d); !os.IsNotExist(err) {
+			t.Fatalf("unsupported Mac setup mutated the data directory: %v", err)
+		}
+		return
+	}
 	if report.Actions == nil || report.Actions[0].Code == "setup_adapters_required" {
 		t.Fatalf("setup still uses placeholder composition: %#v", report)
 	}
@@ -549,6 +916,24 @@ func TestSetupRequiresExplicitTopologyWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestExternalSetupSelectsHostFromCombinedReleaseManifest(t *testing.T) {
+	newSetupJourneyFixture(t, setup.TopologyCombined)
+	state := &setupState{
+		topology: setup.TopologyExternal,
+		profile:  setup.Development,
+		plan: setup.PlanResult{
+			Topology: setup.TopologyExternal, Platform: setup.PlatformLinux, Architecture: runtime.GOARCH,
+		},
+	}
+	selected, err := state.selectedArtifacts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selected) != 1 || selected["lumen"].Name != "lumen" {
+		t.Fatalf("external topology selected artifacts = %#v, want Host only", selected)
+	}
+}
+
 func TestExternalPersonalAlphaUsesHardenedHermesTransport(t *testing.T) {
 	if got := externalHermesProfile(setup.PersonalAlpha); got != hermes.ProfileHardened {
 		t.Fatalf("personal-alpha external Hermes profile = %q", got)
@@ -561,6 +946,12 @@ type setupJourneyFixture struct {
 
 func newSetupJourneyFixture(t *testing.T, topology setup.Topology) setupJourneyFixture {
 	t.Helper()
+	previousPlatform, previousHostStatus := setupPlatformOverride, setupHostStatusOverride
+	setupPlatformOverride = "linux"
+	setupHostStatusOverride = func(context.Context, host.Config) (string, error) { return setup.StateRunning, nil }
+	t.Cleanup(func() {
+		setupPlatformOverride, setupHostStatusOverride = previousPlatform, previousHostStatus
+	})
 	root := secureTestDir(t)
 	dataDir := filepath.Join(root, "state")
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
@@ -585,10 +976,7 @@ func newSetupJourneyFixture(t *testing.T, topology setup.Topology) setupJourneyF
 	}
 	lumenDigest := fixtureDigest(lumenBody)
 	hermesDigest := fixtureDigest(hermesBody)
-	osName, arch := runtime.GOOS, runtime.GOARCH
-	if osName == "darwin" {
-		osName = "darwin"
-	}
+	osName, arch := "linux", runtime.GOARCH
 	manifest := fmt.Sprintf(`{"schemaVersion":1,"topology":%q,"artifacts":[{"name":"lumen","version":"1.0.0","os":%q,"architecture":%q,"profile":"development","url":"https://downloads.lumen.dev/lumen/1.0.0/%s-%s","size":%d,"sha256":%q,"contractVersion":1,"executableMode":448,"ownership":"lumen"}`,
 		topology, osName, arch, osName, arch, len(lumenBody), lumenDigest)
 	if topology == setup.TopologyCombined {
@@ -625,6 +1013,38 @@ func newSetupJourneyFixture(t *testing.T, topology setup.Topology) setupJourneyF
 	t.Setenv("PATH", toolDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Chdir(root)
 	return setupJourneyFixture{dataDir: dataDir, calls: calls, credential: credential}
+}
+
+func TestSetupCompletesAndRerunsWithActiveHostStore(t *testing.T) {
+	newSetupJourneyFixture(t, setup.TopologyExternal)
+	t.Setenv("LUMEN_HERMES_BASE_URL", newExternalHermesServer(t))
+	t.Setenv("LUMEN_HERMES_IDENTITY", "fixture-leaf")
+	var active *store.Store
+	setupHostStatusOverride = func(_ context.Context, cfg host.Config) (string, error) {
+		if active == nil {
+			var err error
+			active, err = store.Open(filepath.Join(cfg.DataDir, "state.json"), filepath.Join(cfg.DataDir, "state.key"))
+			if err != nil {
+				return "", err
+			}
+		}
+		return setup.StateRunning, nil
+	}
+	t.Cleanup(func() {
+		if active != nil {
+			_ = active.Close()
+		}
+	})
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		report := runForTest([]string{"setup"})
+		if report.Outcome != setup.Ready {
+			t.Fatalf("setup attempt %d with active Host store = %#v", attempt, report)
+		}
+	}
+	if active == nil {
+		t.Fatal("test did not hold the active Host state-store lock")
+	}
 }
 
 func newExternalHermesServer(t *testing.T) string {

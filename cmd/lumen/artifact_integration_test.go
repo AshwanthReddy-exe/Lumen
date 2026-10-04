@@ -113,7 +113,7 @@ func rewriteHermesManifestArtifact(t *testing.T, imageRef string) {
 	if end < 0 {
 		t.Fatalf("manifest Hermes artifact is malformed: %s", raw)
 	}
-	replacement := `{"name":"hermes","version":"1.0.0","os":"` + runtime.GOOS + `","architecture":"` + runtime.GOARCH + `","profile":"development","kind":"docker-image","imageRef":"` + imageRef + `","contractVersion":1,"ownership":"hermes"}`
+	replacement := `{"name":"hermes","version":"1.0.0","os":"linux","architecture":"` + runtime.GOARCH + `","profile":"development","kind":"docker-image","imageRef":"` + imageRef + `","contractVersion":1,"ownership":"hermes"}`
 	raw = raw[:start] + replacement + raw[start+end+1:]
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatal(err)

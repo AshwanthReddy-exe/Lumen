@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+cd "$(dirname "$0")/.."
+phase=.planning/phases/02-close-the-existing-host-hermes-foundation
+if [ "$(gh pr view 20 --json state --jq .state)" != CLOSED ]; then
+	printf '%s\n' 'PR #20 is not closed' >&2
+	exit 1
+fi
+local_sha=$(git rev-parse refs/remotes/origin/feat/lumen-continuity-preserved)
+remote_sha=$(git ls-remote origin refs/heads/feat/lumen-continuity-preserved | cut -f1)
+if [ -z "$remote_sha" ] || [ "$local_sha" != "$remote_sha" ]; then
+	printf '%s\n' 'PR #20 preservation branch is not verified remotely' >&2
+	exit 1
+fi
+if [ "${1:-}" = --pr20-only ]; then
+	printf '%s\n' 'PR #20 preservation and closure verified.'
+	exit 0
+fi
+for number in 01 02 03 04 05 06; do
+	file=$phase/02-$number-EVIDENCE.md
+	if [ ! -f "$file" ] || ! grep -qx 'Gate verdict: PASS' "$file"; then
+		printf 'Phase 02 gate %s lacks reviewed PASS evidence\n' "$number" >&2
+		exit 1
+	fi
+done
+if ! grep -qx 'Phase verdict: PASS' "$phase/02-07-REVIEW.md"; then
+	printf '%s\n' 'Phase 02 independent review is not PASS' >&2
+	exit 1
+fi
+printf '%s\n' 'Phase 02 evidence gate passed; review the linked live observations before marking complete.'

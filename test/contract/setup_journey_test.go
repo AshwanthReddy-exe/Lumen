@@ -35,6 +35,7 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 	}
 	for _, required := range []string{
 		"COMPOSE_PROJECT_NAME", "docker compose", "--volumes", "trap cleanup EXIT",
+		`"$@" </dev/null`,
 		"(umask 077",
 		"gateway", "8642",
 		"compose.milestone1.yaml", "LUMEN_HERMES_CONTAINER_BASE_URL",
@@ -95,10 +96,13 @@ func TestLinuxSetupJourneyScriptContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	override := string(overrideBytes)
-	for _, required := range []string{"lumen-provider", "lumen-test-key", "/v1/chat/completions", "stream", "LUMEN_HERMES_CONTAINER_BASE_URL", "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL"} {
+	for _, required := range []string{"lumen-provider", "lumen-test-key", "/v1/chat/completions", "stream", "LUMEN_HERMES_CONTAINER_BASE_URL", "title_generation", "http://lumen-provider:8080/v1"} {
 		if !strings.Contains(override, required) {
 			t.Errorf("milestone journey override is missing %q", required)
 		}
+	}
+	if strings.Contains(override, "OPENROUTER_API_KEY") || strings.Contains(override, "OPENROUTER_BASE_URL") {
+		t.Fatal("synthetic Hermes profile must not enable OpenRouter auxiliary egress")
 	}
 	if strings.Contains(compose, "lumen-test-key") || strings.Contains(compose, "lumen-provider") {
 		t.Fatal("deterministic provider must remain test-override-only")
@@ -198,6 +202,39 @@ func TestExternalSetupJourneyScriptContract(t *testing.T) {
 	}
 }
 
+func TestCrossMachineProbeContract(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scriptPath := filepath.Join(root, "scripts", "lumen-cross-machine-check")
+	b, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read cross-machine probe: %v", err)
+	}
+	script := string(b)
+	if info, err := os.Stat(scriptPath); err != nil || info.Mode()&0111 == 0 {
+		t.Fatalf("cross-machine probe must be executable: %v", err)
+	}
+	for _, required := range []string{
+		"snapshot-b", "run-a", "LUMEN_HERMES_CREDENTIAL_FILE", "LUMEN_SETUP_TOPOLOGY=external",
+		"compose.external.yaml", "runtimeRunId", "host_run_passed_operator_snapshots_match",
+		"supervisor_invocation_id", "endpoint_certificate_sha256", "negative_live_swaps",
+		"in_leaf", "valid_snapshot", "operator_asserted_not_remote_attestation",
+		"validate_commit", "normalize_pin",
+		"cleanup failed for project", "private recovery files retained",
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("cross-machine probe is missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{"example.invalid", "docker compose.*lumen-hermes", "ssh ", "python -m http.server", "systemctl --user restart"} {
+		if strings.Contains(strings.ToLower(script), strings.ToLower(forbidden)) {
+			t.Errorf("cross-machine probe contains prohibited test substitute or remote lifecycle command %q", forbidden)
+		}
+	}
+}
+
 func TestLinuxSetupJourneyUsesLiveHostNodeForApproval(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
@@ -209,6 +246,10 @@ func TestLinuxSetupJourneyUsesLiveHostNodeForApproval(t *testing.T) {
 	}
 	script := string(scriptBytes)
 	for _, required := range []string{
+		`export LUMEN_HOST_USER="${LUMEN_HOST_USER:-$(id -u):$(id -g)}"`,
+		`printf '%s\n' '=> doctor after setup failure'`,
+		`'"(outcome|host|hermes|supervisor|boot|artifacts)":"[^"]*"|"code":"[a-z_]+"'`,
+		`Host control status from inside the container`,
 		`host_status=$(cat "$work_dir/host-status.json")`,
 		`host_node_id=$(printf '%s\n' "$host_status" | sed -n 's/.*"host_id":"\([^"]*\)".*/\1/p')`,
 		`[ -n "$host_node_id" ] || fail 'live Host status did not expose a node ID'`,

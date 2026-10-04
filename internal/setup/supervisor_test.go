@@ -52,6 +52,22 @@ func TestSupervisorStatusParsesRunningAndBoundsContext(t *testing.T) {
 	}
 }
 
+func TestLaunchdStatusUsesOnlyTheStateField(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	commandRunner = &sequenceRunner{steps: []runnerStep{{stdout: []byte("state = waiting\npath = /Users/alice/running/lumen-host\n")}}}
+	got, err := (CommandSupervisor{Manager: SupervisorLaunchd}).Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHost})
+	if err != nil || got[0].State != StateStopped {
+		t.Fatalf("stopped LaunchAgent with 'running' in path: got %#v, err %v", got, err)
+	}
+
+	commandRunner = &sequenceRunner{steps: []runnerStep{{stdout: []byte("state = running\npath = /Users/alice/lumen-host\n")}}}
+	got, err = (CommandSupervisor{Manager: SupervisorLaunchd}).Control(context.Background(), Action{Code: "status"}, []ServiceName{ServiceHost})
+	if err != nil || got[0].State != StateRunning {
+		t.Fatalf("running LaunchAgent: got %#v, err %v", got, err)
+	}
+}
+
 func TestSupervisorRejectsInvalidInput(t *testing.T) {
 	s := CommandSupervisor{Manager: SupervisorSystemd}
 	if _, err := s.Control(context.Background(), Action{Code: "shell"}, []ServiceName{ServiceHost}); err == nil {
@@ -254,15 +270,177 @@ func TestSupervisorBootStatusRejectsAmbiguousRunitBootState(t *testing.T) {
 	}
 }
 
-func TestSupervisorBootStatusRejectsAmbiguousLaunchdBootState(t *testing.T) {
+func TestSupervisorBootStatusRequiresExactLaunchdEnabledEntry(t *testing.T) {
 	old := commandRunner
 	t.Cleanup(func() { commandRunner = old })
-	r := &bootStatusRunner{}
-	commandRunner = r
-	ready, err := (CommandSupervisor{Manager: SupervisorLaunchd}).BootStatus(context.Background(), []ServiceName{ServiceHost})
-	if err == nil || ready || len(r.calls) != 0 {
-		t.Fatalf("ready=%v err=%v calls=%#v", ready, err, r.calls)
+	for _, tc := range []struct {
+		output string
+		ready  bool
+	}{
+		{"disabled services = {\n\t\"dev.lumen.host\" => enabled\n}", true},
+		{"disabled services = {\n\t\"dev.lumen.host\" => disabled\n}", false},
+		{"disabled services = {\n\t\"dev.lumen.host-old\" => enabled\n}", false},
+	} {
+		r := &queuedOutputRunner{outputs: [][]byte{[]byte(tc.output)}}
+		commandRunner = r
+		ready, err := (CommandSupervisor{Manager: SupervisorLaunchd}).BootStatus(context.Background(), []ServiceName{ServiceHost})
+		if err != nil || ready != tc.ready || !reflect.DeepEqual(r.calls, [][]string{{"launchctl", "print-disabled", launchdDomain()}}) {
+			t.Fatalf("output=%q ready=%v err=%v calls=%#v", tc.output, ready, err, r.calls)
+		}
 	}
+}
+
+func TestLaunchdBootstrapResumesOnlyTheSameDefinition(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	path := filepath.Join(t.TempDir(), "dev.lumen.host.plist")
+	if err := os.WriteFile(path, []byte("plist"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	target := launchdTarget(ServiceHost)
+	t.Run("same path reloads the verified definition", func(t *testing.T) {
+		r := &sequenceRunner{steps: []runnerStep{{stdout: []byte("path = " + path)}, {}, {}}}
+		commandRunner = r
+		if err := launchdBootstrap(context.Background(), ServiceDefinition{Name: ServiceHost, Path: path}); err != nil || len(r.calls) != 3 {
+			t.Fatalf("err=%v calls=%#v", err, r.calls)
+		}
+		want := [][]string{{"launchctl", "print", target}, {"launchctl", "bootout", target}, {"launchctl", "bootstrap", launchdDomain(), path}}
+		if !reflect.DeepEqual(r.calls, want) {
+			t.Fatalf("calls=%#v want=%#v", r.calls, want)
+		}
+	})
+	t.Run("same path reload failure is not success", func(t *testing.T) {
+		r := &sequenceRunner{steps: []runnerStep{{stdout: []byte("path = " + path)}, {}, {err: errors.New("bootstrap failed")}}}
+		commandRunner = r
+		if err := launchdBootstrap(context.Background(), ServiceDefinition{Name: ServiceHost, Path: path}); err == nil || len(r.calls) != 3 {
+			t.Fatalf("err=%v calls=%#v", err, r.calls)
+		}
+	})
+	t.Run("already loaded from the committed auto-load path", func(t *testing.T) {
+		alternate := filepath.Join(t.TempDir(), "dev.lumen.host.plist")
+		if err := os.WriteFile(alternate, []byte("committed plist"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		r := &sequenceRunner{steps: []runnerStep{{stdout: []byte("path = " + alternate)}, {}, {}}}
+		commandRunner = r
+		definition := ServiceDefinition{Name: ServiceHost, Path: path, AlternatePath: alternate}
+		if err := launchdBootstrap(context.Background(), definition); err != nil || len(r.calls) != 3 {
+			t.Fatalf("err=%v calls=%#v", err, r.calls)
+		}
+		want := [][]string{{"launchctl", "print", target}, {"launchctl", "bootout", target}, {"launchctl", "bootstrap", launchdDomain(), path}}
+		if !reflect.DeepEqual(r.calls, want) {
+			t.Fatalf("calls=%#v want=%#v", r.calls, want)
+		}
+	})
+	t.Run("bootout uncertainty fails closed", func(t *testing.T) {
+		alternate := filepath.Join(t.TempDir(), "staged.plist")
+		if err := os.WriteFile(alternate, []byte("staged"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		r := &sequenceRunner{steps: []runnerStep{{stdout: []byte("path = " + alternate)}, {err: errors.New("timeout")}}}
+		commandRunner = r
+		if err := launchdBootstrap(context.Background(), ServiceDefinition{Name: ServiceHost, Path: path, AlternatePath: alternate}); err == nil || len(r.calls) != 2 {
+			t.Fatalf("err=%v calls=%#v", err, r.calls)
+		}
+	})
+	t.Run("failed bootstrap is not accepted from a matching path", func(t *testing.T) {
+		r := &sequenceRunner{steps: []runnerStep{
+			{err: errors.New("print unavailable")},
+			{err: errors.New("bootstrap timeout")},
+		}}
+		commandRunner = r
+		if err := launchdBootstrap(context.Background(), ServiceDefinition{Name: ServiceHost, Path: path}); err == nil || len(r.calls) != 2 {
+			t.Fatalf("err=%v calls=%#v", err, r.calls)
+		}
+	})
+	t.Run("failed published transition retries from no loaded job", func(t *testing.T) {
+		published := filepath.Join(t.TempDir(), "published.plist")
+		if err := os.WriteFile(published, []byte("published"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		stage := filepath.Join(t.TempDir(), "stage.plist")
+		if err := os.WriteFile(stage, []byte("stage"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		definition := ServiceDefinition{Name: ServiceHost, Path: published, AlternatePath: stage}
+		r := &sequenceRunner{steps: []runnerStep{
+			{stdout: []byte("path = " + stage)}, {}, {err: errors.New("bootstrap interrupted")},
+			{err: errors.New("not loaded")}, {},
+		}}
+		commandRunner = r
+		if err := launchdBootstrap(context.Background(), definition); err == nil {
+			t.Fatal("failed staged-to-published transition reported success")
+		}
+		if err := launchdBootstrap(context.Background(), definition); err != nil {
+			t.Fatalf("retry after interrupted transition: %v", err)
+		}
+		want := [][]string{
+			{"launchctl", "print", target}, {"launchctl", "bootout", target}, {"launchctl", "bootstrap", launchdDomain(), published},
+			{"launchctl", "print", target}, {"launchctl", "bootstrap", launchdDomain(), published},
+		}
+		if !reflect.DeepEqual(r.calls, want) {
+			t.Fatalf("calls=%#v want=%#v", r.calls, want)
+		}
+	})
+	t.Run("collision is never booted out or replaced", func(t *testing.T) {
+		r := &sequenceRunner{steps: []runnerStep{{stdout: []byte("path = /other/dev.lumen.host.plist")}}}
+		commandRunner = r
+		if err := launchdBootstrap(context.Background(), ServiceDefinition{Name: ServiceHost, Path: path}); err == nil || len(r.calls) != 1 {
+			t.Fatalf("err=%v calls=%#v", err, r.calls)
+		}
+	})
+	t.Run("new registration is user scoped", func(t *testing.T) {
+		r := &sequenceRunner{steps: []runnerStep{{err: errors.New("not loaded")}, {}}}
+		commandRunner = r
+		if err := launchdBootstrap(context.Background(), ServiceDefinition{Name: ServiceHost, Path: path}); err != nil {
+			t.Fatal(err)
+		}
+		want := [][]string{{"launchctl", "print", target}, {"launchctl", "bootstrap", launchdDomain(), path}}
+		if !reflect.DeepEqual(r.calls, want) {
+			t.Fatalf("calls=%#v want=%#v", r.calls, want)
+		}
+	})
+}
+
+func TestLaunchdLifecycleUsesCurrentUserDomain(t *testing.T) {
+	old := commandRunner
+	t.Cleanup(func() { commandRunner = old })
+	r := &queuedOutputRunner{outputs: [][]byte{[]byte("state = running"), []byte("state = running"), []byte("state = running")}}
+	commandRunner = r
+	s := CommandSupervisor{Manager: SupervisorLaunchd}
+	for _, action := range []string{"start", "stop", "restart"} {
+		if _, err := s.Control(context.Background(), Action{Code: action}, []ServiceName{ServiceHost}); err != nil {
+			t.Fatalf("%s: %v", action, err)
+		}
+	}
+	target := launchdTarget(ServiceHost)
+	want := [][]string{
+		{"launchctl", "kickstart", target}, {"launchctl", "print", target},
+		{"launchctl", "kill", "SIGTERM", target}, {"launchctl", "print", target},
+		{"launchctl", "kickstart", "-k", target}, {"launchctl", "print", target},
+	}
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Fatalf("calls=%#v want=%#v", r.calls, want)
+	}
+}
+
+type runnerStep struct {
+	stdout []byte
+	err    error
+}
+
+type sequenceRunner struct {
+	calls [][]string
+	steps []runnerStep
+}
+
+func (r *sequenceRunner) Run(_ context.Context, name string, args ...string) ([]byte, []byte, error) {
+	r.calls = append(r.calls, append([]string{name}, args...))
+	step := runnerStep{}
+	if len(r.steps) > 0 {
+		step, r.steps = r.steps[0], r.steps[1:]
+	}
+	return step.stdout, nil, step.err
 }
 
 type bootStatusRunner struct{ calls [][]string }

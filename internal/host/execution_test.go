@@ -746,7 +746,8 @@ func TestExpiredRunSkipsSSEAndPersistsUnknown(t *testing.T) {
 func TestSubsecondReconcileDeadlineIsNotRoundedUp(t *testing.T) {
 	r := &fakeRuntime{eventsBlock: make(chan struct{})}
 	s := executionService(t, r)
-	s.executor.options.now = func() time.Time { return time.Unix(100, 900*int64(time.Millisecond)) }
+	base, started := time.Unix(100, 900*int64(time.Millisecond)), time.Now()
+	s.executor.options.now = func() time.Time { return base.Add(time.Since(started)) }
 	if _, err := s.state.Update(func(state space.State) space.Transition {
 		state.Tasks = map[string]space.Task{"subsecond": {ID: "subsecond", TargetNodeID: "host", HostEpoch: 1, Status: space.OutcomeDispatched}}
 		state.HostRuns = map[string]space.HostRun{"subsecond": {TaskID: "subsecond", RuntimeRunID: "run-subsecond", RuntimeProfileDigest: "profile", HostEpoch: 1, DispatchedAt: 100, ReconcileBy: 101}}
@@ -840,6 +841,23 @@ func TestDisconnectReconcilesThenUnknownAtDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForTask(t, s2, "task-unknown", space.OutcomeUnknown)
+}
+
+func TestEventStreamDeadlineFallsBackToRunStatus(t *testing.T) {
+	r := &fakeRuntime{
+		create:        hermes.Run{RunID: "run-stream-timeout", Status: "started"},
+		eventsErr:     context.DeadlineExceeded,
+		statusDefault: hermes.Run{RunID: "run-stream-timeout", Status: "completed", Output: "recovered output"},
+	}
+	s := executionService(t, r)
+	if _, err := s.SubmitTask(context.Background(), submitRequest("submit-stream-timeout", "task-stream-timeout")); err != nil {
+		t.Fatal(err)
+	}
+	waitForTask(t, s, "task-stream-timeout", space.OutcomeCompleted)
+	task, ok, err := s.Task("task-stream-timeout")
+	if err != nil || !ok || task.Output != "recovered output" || r.statusCalls == 0 {
+		t.Fatalf("reconciled task=%#v ok=%v status calls=%d err=%v", task, ok, r.statusCalls, err)
+	}
 }
 
 func TestRunStatusOutputIsDurablyBoundedAtUTF8Boundary(t *testing.T) {
