@@ -10,7 +10,7 @@ External GSD review remains pending; this is a source-grounded manual review. Th
 
 ## 05-01
 
-- **HIGH:** D-056 is an unresolved physical-device choice (`docs/DECISIONS.md:55`). The experiment needs named Android and iPhone hardware, exact pass thresholds for pairing, secure storage, replay, approval, and audio, and a recorded choice before any TSX phone file is treated as final.
+- **RESOLVED IN PLAN; PHYSICAL DEVICE GATE OPEN:** The D-056 experiment now measures stack feasibility with key persistence/non-exportability, fixture outbox recovery, accessible pairing/approval screens, permission denial, and local stop. It cannot call or claim later Host pairing/approval APIs. Owner must still approve named physical Android and iPhone evidence before client paths bind.
 
 ## 05-02
 
@@ -22,13 +22,12 @@ External GSD review remains pending; this is a source-grounded manual review. Th
 
 ## 05-04
 
-- **HIGH:** The fixed `apps/phone/src/*.tsx` file list conflicts with the D-056 Android plus phone-web fallback. The task itself says to relocate paths if fallback (`05-04-PLAN.md:54`), so file ownership is not yet executable. Resolve the experiment first and rewrite exact files for the selected stack.
-- **HIGH:** Both phone sync tasks verify only Go Host tests (`05-04-PLAN.md:55`, `:61`), which cannot execute `apps/phone/src/sync.test.ts`. Require native/client tests on the selected physical devices plus the Host contract check.
+- **RESOLVED AS A CONDITIONAL HANDOFF:** `.planning/CLIENT-BRANCHES.md` now lists exact shared/fallback manifests and commands. 05-01 binds every path and client check before the 05-04 wave; `client_binding: UNBOUND` and the plan preconditions prohibit starting either branch before that rewrite. Re-run structure validation on the bound plan after owner-approved D-056 evidence.
 
 ## 05-05
 
-- **MEDIUM:** The journey cannot claim support for all phone types from one device pair. Record supported OS/build matrix and mark untested combinations as open, consistent with FR-84's physical Android and iPhone gate (`.planning/REQUIREMENTS.md:68`).
+- **RESOLVED IN PLAN:** 05-05 now records exact device/OS/build/client/protocol/network support rows; every untested combination is `NOT TESTED` and cannot be described as supported. FR-84's measured Android/iPhone pair does not imply universal platform coverage.
 
 ## CYCLE_SUMMARY
 
-Status: **not converged**. Plan findings addressed: 05-02 protocol ambiguity and 05-03 enrollment ceremony. Remaining gates: independent security approval of the Phase 05 protocol candidate; owner-provided physical D-056 evidence and selection; selected-branch path/check rewrite for 05-04, 06-03 and the phone portion of 10-04; and explicit supported-device matrix in 05-05. The phase cannot be declared converged or complete from plan validation alone. Re-run independent GSD review after the remaining plan edits and before implementation.
+Status: **not converged**. Plan findings addressed: 05-01 dependency cycle, 05-02 protocol ambiguity, and 05-03 enrollment ceremony. Remaining gates: independent security approval of the Phase 05 protocol candidate; owner-provided physical D-056 evidence and selection; selected-branch path/check rewrite for 05-04, 06-03 and the phone portion of 10-04; and explicit supported-device matrix in 05-05. The phase cannot be declared converged or complete from plan validation alone. Re-run independent GSD review after the remaining plan edits and before implementation.
