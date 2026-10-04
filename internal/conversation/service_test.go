@@ -598,8 +598,10 @@ func TestTerminalStatusStillRejectsHiddenToolEvent(t *testing.T) {
 
 func TestDisconnectedEventStreamWithoutTerminalEvidenceIsUncertain(t *testing.T) {
 	store := &memoryStore{state: conversationState()}
-	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "unverified"}, eventsErr: hermes.ErrEventStreamDisconnected}
-	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	now := int64(100)
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, eventsErr: hermes.ErrEventStreamDisconnected}
+	runtime.beforeEvents = func() { now = 201 }
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(now, 0) }))
 	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
 	if err == nil || store.state.Tasks["task-1"].Status != space.OutcomeUnknown || len(store.state.Messages["c1"]) != 1 {
 		t.Fatalf("disconnected evidence accepted: err=%v task=%q messages=%d", err, store.state.Tasks["task-1"].Status, len(store.state.Messages["c1"]))
@@ -691,6 +693,16 @@ func TestAcceptedRunIsStoppedIfDurableDispatchMappingFails(t *testing.T) {
 	result, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
 	if err == nil || runtime.stopped != 1 || result.Receipt.Outcome != space.OutcomeUnknown || store.state.Tasks["task-1"].Status != space.OutcomeUnknown {
 		t.Fatalf("unmapped accepted run was not stopped and made uncertain: result=%#v task=%#v stopped=%d err=%v", result, store.state.Tasks["task-1"], runtime.stopped, err)
+	}
+}
+
+func TestTerminalStatusSurvivesDisconnectedEventStream(t *testing.T) {
+	store := &memoryStore{state: conversationState()}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "verified answer"}, eventsErr: hermes.ErrEventStreamDisconnected}
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	result, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err != nil || result.Receipt.Outcome != space.OutcomeCompleted || store.state.Tasks["task-1"].Status != space.OutcomeCompleted {
+		t.Fatalf("verified terminal status lost after event disconnect: outcome=%q task=%q err=%v", result.Receipt.Outcome, store.state.Tasks["task-1"].Status, err)
 	}
 }
 

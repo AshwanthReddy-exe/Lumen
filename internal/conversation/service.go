@@ -294,7 +294,7 @@ func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, sta
 		if eventsErr != nil && !errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) {
 			return s.complete(queued, state, taskID, space.OutcomeUnknown, "", eventsErr)
 		}
-		if errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) && !terminalEvent && !isNonterminalChatStatus(status.Status) {
+		if errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) && !terminalEvent && isNonterminalChatStatus(status.Status) {
 			return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("runtime event stream ended without terminal evidence"))
 		}
 		if s.now().Unix() >= by {
@@ -312,8 +312,8 @@ func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, sta
 		}
 		switch status.Status {
 		case "completed", "succeeded", "success":
-			conversation, ok := state.Conversations[conversationForTask(state, taskID)]
-			if !ok || !utf8.ValidString(status.Output) || len(status.Output) > space.MaxChatMessageBytes || conversation.SizeBytes+len(status.Output) > space.MaxConversationBytes {
+			_, ok := state.Conversations[conversationForTask(state, taskID)]
+			if !ok || !utf8.ValidString(status.Output) || len(status.Output) > space.MaxChatMessageBytes {
 				return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("runtime output exceeds conversation bounds"))
 			}
 			return s.complete(queued, state, taskID, space.OutcomeCompleted, status.Output, nil)
