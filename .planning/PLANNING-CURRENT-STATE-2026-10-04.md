@@ -4,7 +4,7 @@ This is an additive status snapshot. It does not replace `docs/PLAN.md`, the 17-
 
 ## Current authority
 
-- Lumen `main`: `a6d2c658478ed8ea5437e778d9f9633506666fce`, with local `main` fast-forwarded to `origin/main` and clean after PRs [#30](https://github.com/AshwanthReddy-exe/Lumen/pull/30) and [#31](https://github.com/AshwanthReddy-exe/Lumen/pull/31) merged on 2026-10-04. The root checkout is clean; preserved side worktrees are listed separately below.
+- PR #31 merged at `a6d2c658478ed8ea5437e778d9f9633506666fce`; its follow-up ledger/checkpoint correction PR #32 then merged at `5e05eea061527d4665bb3c398b4f09751a52e4a4`. PRs #30–#32 all landed on `main` on 2026-10-04. The local root checkout is clean and tracks `origin/main`; preserved side worktrees are listed separately below.
 - PRs #22–#31 are merged; a live `gh pr list --state open` check after the two merges returned no open PRs. PR #20 remains closed unmerged; PR #18 is closed and its later release work landed through #19.
 - GSD phases 01–02 remain complete; Phase 03 remains pending. The merge of chat/runtime code is partial implementation evidence, not Phase 03 acceptance.
 - Local plan checks on the merged revision: all 73 GSD plans pass `verify plan-structure`; `scripts/check-plan-task-contracts.py` passes all 165 executable tasks; `scripts/check-plan-coverage.py` passes 58 FRs, 58 owners, 508 task source pointers and 459 GSD context pointers; `roadmap.validate`, `validate consistency`, and `git diff --check` pass. These checks establish document consistency, not implementation completeness or external review convergence.
@@ -70,6 +70,7 @@ The root checkout being clean does not mean every preserved worktree is clean. K
 ## Post-merge PR and checkout verification — 2026-10-04
 
 - PR #30 merged into `main` at `228c120cb5a9d4d302ea32def3cafb52e1ba6a0b`. PR #31 was then retargeted to `main` and merged at `a6d2c658478ed8ea5437e778d9f9633506666fce`; GitHub reported `MERGEABLE` before each merge. The merge order preserves the stacked history and avoids merging the parent changes twice.
+- PR #32 merged the post-merge audit refresh at `5e05eea061527d4665bb3c398b4f09751a52e4a4`.
 - Neither PR had CI checks or an independent review decision recorded at merge time. The owner explicitly requested both merges. This does not satisfy the independent GSD cross-AI convergence gate; plans remain marked unconverged and must not be treated as security-reviewed solely because they are merged.
 - A post-merge full GSD sweep found Phase 17-02 had a blocking owner checkpoint while `autonomous: true`; the plan now declares `autonomous: false`. Final local validation passes all 73/73 plan structures, task contracts 165/165, coverage 58/58 requirements and owners with 508 task source pointers and 459 context pointers, both consistency/roadmap checks, and `git diff --check`.
 - The local root checkout is clean on `main` and matches `origin/main`. Side worktrees and unrelated retained branches remain preserved; the planning merges did not merge any implementation branch.
