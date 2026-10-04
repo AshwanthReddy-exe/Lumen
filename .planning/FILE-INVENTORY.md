@@ -107,8 +107,10 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. `existing
 | `cmd/lumen/backup.go` | proposed | 10-04, 15-03 |
 | `cmd/lumen/backup_test.go` | proposed | 10-04 |
 | `cmd/lumen/doctor.go` | proposed | 15-04 |
-| `cmd/lumen/main.go` | existing | 03-03, 10-01, 15-02 |
-| `cmd/lumen/main_test.go` | existing | 03-03, 10-01 |
+| `cmd/lumen/main.go` | existing | 03-03, 10-01, 10-04, 15-02 |
+| `cmd/lumen/main_test.go` | existing | 03-03, 10-01, 10-04 |
+| `cmd/lumen/recovery.go` | proposed | 10-04 |
+| `cmd/lumen/recovery_test.go` | proposed | 10-04 |
 | `cmd/lumen/release.go` | existing | 10-03 |
 | `cmd/lumen/release_test.go` | existing | 10-03 |
 | `cmd/lumen/restore.go` | proposed | 10-04 |
@@ -198,7 +200,8 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. `existing
 | `internal/managed/provisioner_test.go` | proposed | 16-02 |
 | `internal/setup/adoption.go` | existing | 10-03 |
 | `internal/setup/adoption_test.go` | existing | 10-03 |
-| `internal/setup/doctor.go` | existing | 15-04 |
+| `internal/setup/doctor.go` | existing | 10-04, 15-04 |
+| `internal/setup/doctor_test.go` | existing | 10-04 |
 | `internal/setup/planner.go` | existing | 10-01 |
 | `internal/setup/planner_test.go` | existing | 10-01 |
 | `internal/setup/release.go` | existing | 10-03 |
@@ -235,6 +238,8 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. `existing
 | `internal/store/automation_test.go` | proposed | 14-01 |
 | `internal/store/membership.go` | proposed | 17-04 |
 | `internal/store/membership_test.go` | proposed | 17-04 |
+| `internal/store/recovery.go` | proposed | 10-04 |
+| `internal/store/recovery_test.go` | proposed | 10-04 |
 | `internal/store/snapshot.go` | proposed | 10-04 |
 | `internal/store/snapshot_test.go` | proposed | 10-04 |
 | `internal/store/store.go` | existing | 03-01 |

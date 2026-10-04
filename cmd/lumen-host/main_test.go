@@ -244,6 +244,9 @@ func TestCLIProcessLifecycleAndBoundary(t *testing.T) {
 	if out, code := runHost(t, bin, cfg, "bogus"); code != 2 || !strings.Contains(out, "usage:") {
 		t.Fatalf("usage: code=%d output=%q", code, out)
 	}
+	if out, code := runHost(t, bin, cfg, "runtime", "inspect"); code != 3 || !strings.Contains(out, "host unavailable:") || strings.Contains(out, "usage:") {
+		t.Fatalf("runtime inspect command was not routed through Host: code=%d output=%q", code, out)
+	}
 	if out, code := runHost(t, bin, cfg, "init"); code != 0 || out != "" {
 		t.Fatalf("init: code=%d output=%q", code, out)
 	}

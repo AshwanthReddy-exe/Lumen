@@ -35,6 +35,30 @@ func TestConfigFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestStatusReportsDeferredStoreCleanup(t *testing.T) {
+	d := t.TempDir()
+	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator")}
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(d, ".state.tmp-"+strings.Repeat("a", 24))
+	if err := os.WriteFile(stale, []byte("incomplete encrypted transaction"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stateStore, err := store.NewWithHooks(filepath.Join(d, "state.json"), store.Hooks{DirSync: func(*os.File) error {
+		return errors.New("injected directory sync failure")
+	}}, filepath.Join(d, "state.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stateStore.Close()
+	response := (&Service{state: stateStore}).handle(context.Background(), control.Request{Command: "status"})
+	data, ok := response.Data.(map[string]any)
+	if !response.OK || !ok || data["status"] != "degraded" {
+		t.Fatalf("cleanup warning missing from Host status: %#v", response)
+	}
+}
+
 func TestConfigFromFileRejectsTrailingAndRelativeSecrets(t *testing.T) {
 	d := t.TempDir()
 	p := filepath.Join(d, "c.json")
@@ -140,6 +164,35 @@ func TestLocalChatConfigurationRequiresCompleteLoopbackBinding(t *testing.T) {
 				t.Fatal("unsafe chat configuration accepted")
 			}
 		})
+	}
+}
+
+func TestRuntimeInspectReturnsUntrustedInventoryWithoutGrantingCapabilities(t *testing.T) {
+	s := executionService(t, &fakeRuntime{})
+	response := s.handle(context.Background(), control.Request{Command: "runtime inspect"})
+	if !response.OK || response.Error != "" {
+		t.Fatalf("runtime inspect failed: %#v", response)
+	}
+	data, ok := response.Data.(map[string]any)
+	if !ok || data["feature_inventory_only"] != true || data["lumen_grants_created"] != false {
+		t.Fatalf("runtime inventory incorrectly implies authority: %#v", response.Data)
+	}
+	features, ok := data["features"].(map[string]bool)
+	if !ok || !features[hermes.CapabilityRunSubmission] {
+		t.Fatalf("runtime feature inventory missing: %#v", data["features"])
+	}
+}
+
+func TestRuntimeInspectShowsAdvertisedFlagsOnCapabilityMismatch(t *testing.T) {
+	s := executionService(t, &fakeRuntime{capErr: hermes.ErrCapabilityMismatch})
+	response := s.handle(context.Background(), control.Request{Command: "runtime inspect"})
+	data, ok := response.Data.(map[string]any)
+	if !response.OK || !ok || data["status"] != "degraded" || data["runtime_health"] != "ok" || data["capability_contract"] != "incompatible" {
+		t.Fatalf("runtime mismatch not diagnosed: %#v", response)
+	}
+	features, ok := data["features"].(map[string]bool)
+	if !ok || !features[hermes.CapabilityRunSubmission] || data["lumen_grants_created"] != false {
+		t.Fatalf("advertised flags or authority label missing: %#v", response.Data)
 	}
 }
 

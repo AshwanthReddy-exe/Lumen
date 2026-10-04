@@ -2,9 +2,11 @@
 
 ## Verdict
 
-**The roadmap is complete in coverage, with explicit branch and evidence gates; unconditional execution handoff remains open.** There are 17 phases and 58 GSD plans containing 142 implementation/checkpoint tasks for Phases 03–17. All 58 pass GSD syntax/structure checks. Those checks establish document shape, not that a basic executor can implement every task without a qualified platform/provider or owner decision. No plan has passed the invoked external cross-AI convergence loop. None of Phases 03–17 has live product acceptance evidence.
+**The roadmap is complete in coverage, with explicit branch and evidence gates; unconditional execution handoff remains open.** There are 17 phases and 58 GSD plans containing 143 implementation/checkpoint tasks for Phases 03–17. All 58 pass GSD syntax/structure checks. Those checks establish document shape, not that a basic executor can implement every task without a qualified platform/provider or owner decision. No plan has passed the invoked external cross-AI convergence loop. None of Phases 03–17 has live product acceptance evidence.
 
-The 58 plans list 339 file entries, representing 291 distinct paths. Of those, 50 exist in the current checkout and 241 are proposed. Proposed paths are ownership targets, not proof that a package compiles, a function contract fits current callers, or a device/provider works. The [generated inventory](FILE-INVENTORY.md) is conditional on the D-056 client branch.
+The 58 plans list 347 file entries, representing 296 distinct paths. Of those, 51 exist in the current checkout and 245 are proposed. Proposed paths are ownership targets, not proof that a package compiles, a function contract fits current callers, or a device/provider works. The [generated inventory](FILE-INVENTORY.md) is conditional on the D-056 client branch.
+
+**Requirement and source-pointer check:** `python3 scripts/check-plan-coverage.py` compares the PRD IDs, requirements register, roadmap phase ownership, and Phase 03–17 plan frontmatter. It also requires every exact task `<read_first>` path and GSD `<context>` path to exist now or be declared by the same or an earlier plan, including GSD `<output>` summaries. It passes for all 58 FRs and 58 phase owners; the five Phase 02 requirements are deliberately outside the Phase 03–17 plan check. This checks assignment and pointer availability, not implementation or the adequacy of each task's acceptance evidence.
 
 ## Handoff gaps by phase band
 

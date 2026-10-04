@@ -2,11 +2,13 @@
 
 ## Scope
 
-The 17-phase roadmap is preserved. Phases 03–17 have 58 GSD execute plans with 142 implementation/checkpoint tasks, shared contracts, file ownership, task-level behavior/checks and explicit physical/provider/owner gates. All 58 pass GSD frontmatter and plan-structure validators on 2026-10-03. This is **planning coverage**, not product completion, unconditional routine-executor readiness or independent plan convergence. See [the completeness audit](PLANNING-COMPLETENESS-AUDIT.md) for remaining handoff work.
+The 17-phase roadmap is preserved. Phases 03–17 have 58 GSD execute plans with 143 implementation/checkpoint tasks, shared contracts, file ownership, task-level behavior/checks and explicit physical/provider/owner gates. All 58 pass GSD frontmatter and plan-structure validators on 2026-10-03. This is **planning coverage**, not product completion, unconditional routine-executor readiness or independent plan convergence. See [the completeness audit](PLANNING-COMPLETENESS-AUDIT.md) for remaining handoff work.
 
 ## Review record
 
 `workflow.plan_review_convergence` is enabled in `.planning/config.json`. Source-grounded reviews were written for Phases 03–10 (`NN-REVIEWS.md` / `NN-SOURCE-REVIEW.md`) and Phases 11–17 (`PHASE-11-17-SOURCE-REVIEW.md`). Their listed HIGH/MEDIUM observations drove revisions to the affected plans and `CONTRACT-CATALOG.md`, `CLIENT-BRANCHES.md`, and `PHASE-11-17-CONTRACTS.md`. Those review files are snapshots of the drafts; rerun the reviewer on current revisions rather than treating old counts as current defects.
+
+GitHub reported no CI checks for draft PRs #22, #23, or #24 on 2026-10-03. Local validation recorded here and in their PR descriptions is the available automated evidence; a mergeable PR state does not imply CI or independent review.
 
 The current-revision [Phase 03–10 handoff review](PHASE-03-10-HANDOFF-REVIEW.md) found nine HIGH and six MEDIUM gaps. The affected plans now specify the loopback/Tailscale Serve browser route, accepted-memory E8 set, D-056 physical client binding, shared approval insertion point, Host/node grant split, Go/Swift fixture parity, wake and live-journey blocking gates, and client/Mac epoch fencing. A separate read-only Codex CLI [Phase 03 review and bounded recheck](phases/03-conversation-and-web/03-CODEX-CLI-REVIEW.md) found two more HIGH and two MEDIUM file/contract gaps; the recheck marked all four resolved at plan level. This is same-family review, not the requested cross-AI convergence. `05-04`, `06-03`, and the selected-client part of `10-04` intentionally remain UNBOUND until the Phase 05 physical decision supplies exact client paths/checks.
 
