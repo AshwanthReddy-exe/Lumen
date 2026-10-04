@@ -11,9 +11,11 @@ For every mutation, record actor, authority, validation, durable intent/receipt,
 ## Current evidence and corrections
 
 - Phase 01 is merged. Phase 02 is marked complete in GSD with one real Host-mediated NIM answer, pinned synthetic lifecycle tests, and limited chat-only containment evidence. It does not prove a product conversation, a live cross-node action, or VPS release. See [state](STATE.md) and [Phase 02 evidence](phases/02-close-the-existing-host-hermes-foundation/02-12-EVIDENCE.md).
-- Phases 03–10 each currently have one coarse plan file. Several contain three or four large tasks spanning domain, API, UI, physical hardware, and recovery. Split them into the slices below before dispatching a basic model. The proposed `apps/phone` stack and some check commands must be validated at their prerequisite gate; a path in a draft plan is not evidence that the file or command exists.
-- Phases 11–17 have roadmap objectives but no executable GSD plan files. The later platform/provider/business choices remain gates; do not invent implementation detail behind an unmade decision.
-- The checked-in Future OS source is commit `98f7f3a3385e12d38ee7fc75bdca2cc3856cf987`; the earlier source analysis cites `907f38b...`. Resolve that provenance mismatch before copying code. Reinspect the actual source at the chosen pinned SHA. Port invariants and failure tests, not its Desktop/Agent authority or unrestricted defaults.
+- Phases 03–17 now have 58 executable GSD plans. They are split into 143 bounded implementation/checkpoint tasks, but source review still finds decision, test, and live-evidence gaps; use `.planning/PLANNING-COMPLETENESS-AUDIT.md` and the dated current-state delta rather than assuming file-level plans equal routine-agent readiness.
+- The 11–17 plans exist and gate later implementation on platform/provider/business decisions. Do not invent implementation detail behind an unmade decision.
+- The checked-in Future OS reference remains pinned at `98f7f3a3385e12d38ee7fc75bdca2cc3856cf987`; the older broad source analysis cites `907f38b...`; focused current-upstream comparison is pinned at `52328e8009817c5eca66e4461ee4cf55e23fd6c9`. Read `.planning/research/FUTURE-OS-UPSTREAM-DELTA-2026-10-04.md` before changing a Lumen sync/queue plan. Port invariants and failure tests, not Future OS authority, crypto, or permission defaults.
+
+**Post-PR #29 source delta:** Lumen already has Host-owned Space conversation state, Hermes projection/reconciliation and runtime certification. Phase 03-01/02 must audit and qualify those merged paths instead of rebuilding them. Browser HTTP/session/TLS, a browser client, and a full restart/reconnect acceptance journey remain unimplemented; Phase 03 is not complete. See `.planning/PLANNING-CURRENT-STATE-2026-10-04.md` for the exact source/plan reconciliation and branch disposition.
 
 ## Core functionality: phases 03–10
 

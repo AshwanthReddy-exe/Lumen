@@ -1,6 +1,6 @@
-# Planned file inventory — 2026-10-03
+# Planned file inventory — 2026-10-04
 
-Generated from the `files_modified` inventories of GSD Phases 03–17. `existing` means a path exists in the current checkout; `proposed` means it does not. Paths are ownership targets, not a promise that a future decision-gated branch will create every file. Consult the owning plan and shared contracts before editing.
+Generated from the `files_modified` inventories of GSD Phases 03–17 and the current Phase 03 replan. This snapshot contains 57 existing and 246 proposed unique paths. `existing` means a path exists in the current checkout; `proposed` means it does not. Paths are ownership targets, not a promise that a future decision-gated branch will create every file. Consult the owning plan and shared contracts before editing.
 
 | Path | Current status | Owning plan(s) |
 | --- | --- | --- |
@@ -82,12 +82,14 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. `existing
 | `apps/phone/src/pairing.tsx` | proposed | 05-04 |
 | `apps/phone/src/sync.test.ts` | proposed | 05-04 |
 | `apps/web/package.json` | proposed | 03-04 |
+| `apps/web/package-lock.json` | proposed | 03-04 |
 | `apps/web/src/attention.test.tsx` | proposed | 06-03 |
 | `apps/web/src/attention.tsx` | proposed | 06-03 |
 | `apps/web/src/automation.tsx` | proposed | 14-02 |
 | `apps/web/src/coding_review.tsx` | proposed | 13-03 |
 | `apps/web/src/conversation.test.tsx` | proposed | 03-04 |
 | `apps/web/src/conversation.tsx` | proposed | 03-04 |
+| `apps/web/vite.config.ts` | proposed | 03-03 |
 | `apps/web/src/devices.tsx` | proposed | 05-03 |
 | `apps/web/src/main.tsx` | proposed | 03-04 |
 | `apps/web/src/members.tsx` | proposed | 17-04 |
@@ -145,9 +147,9 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. `existing
 | `internal/conversation/context.go` | proposed | 04-02 |
 | `internal/conversation/context_test.go` | proposed | 04-02 |
 | `internal/conversation/eval_memory_test.go` | proposed | 04-04 |
-| `internal/conversation/projection.go` | proposed | 03-02 |
-| `internal/conversation/recovery.go` | proposed | 03-02 |
-| `internal/conversation/service.go` | proposed | 03-02 |
+| `internal/conversation/projection.go` | existing | 03-02 |
+| `internal/conversation/recovery.go` | existing | 03-02 |
+| `internal/conversation/service.go` | existing | 03-02 |
 | `internal/hermes/capability.go` | proposed | 07-02 |
 | `internal/hermes/capability_test.go` | proposed | 07-02 |
 | `internal/hermes/client.go` | existing | 06-04, 12-03 |
@@ -163,10 +165,14 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. `existing
 | `internal/host/capability_broker.go` | proposed | 07-02, 12-02 |
 | `internal/host/capability_broker_test.go` | proposed | 07-02 |
 | `internal/host/coding_broker.go` | proposed | 13-01, 13-02, 13-03 |
-| `internal/host/conversation.go` | proposed | 03-02 |
+| `internal/host/conversation.go` | existing | 03-02 |
 | `internal/host/conversation_http.go` | proposed | 03-03 |
 | `internal/host/conversation_http_test.go` | proposed | 03-03 |
-| `internal/host/conversation_test.go` | proposed | 03-02 |
+| `internal/host/web_assets.go` | proposed | 03-03 |
+| `internal/host/web_assets_test.go` | proposed | 03-03 |
+| `internal/host/web_embed.go` | proposed | 03-04 |
+| `internal/host/web_embed_test.go` | proposed | 03-04 |
+| `internal/host/conversation_test.go` | existing | 03-02 |
 | `internal/host/device_identity.go` | proposed | 05-03 |
 | `internal/host/device_identity_test.go` | proposed | 05-03 |
 | `internal/host/entitlement.go` | proposed | 15-03 |
@@ -218,7 +224,7 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. `existing
 | `internal/space/channel.go` | proposed | 11-02, 11-03 |
 | `internal/space/coding.go` | proposed | 13-01, 13-03 |
 | `internal/space/conversation.go` | proposed | 03-01 |
-| `internal/space/conversation_test.go` | proposed | 03-01, 03-03 |
+| `internal/space/conversation_test.go` | existing | 03-01, 03-03 |
 | `internal/space/device.go` | proposed | 05-02 |
 | `internal/space/device_test.go` | proposed | 05-02 |
 | `internal/space/entitlement.go` | proposed | 15-03 |
@@ -243,6 +249,7 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. `existing
 | `internal/store/snapshot.go` | proposed | 10-04 |
 | `internal/store/snapshot_test.go` | proposed | 10-04 |
 | `internal/store/store.go` | existing | 03-01 |
+| `internal/store/store_benchmark_test.go` | proposed | 03-01 |
 | `internal/store/store_test.go` | existing | 03-01 |
 | `protocol/README.md` | proposed | 17-01 |
 | `protocol/command-v1.json` | proposed | 05-02 |
