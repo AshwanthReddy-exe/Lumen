@@ -93,13 +93,16 @@ Requirements FR-03, FR-08, FR-09, FR-34, FR-62. One verified command installs a 
 1. **10-01 distribution and wizard.** Own installer under `scripts/`/`deploy/`, `cmd/lumen/main.go`, setup planner/runner and contract tests. Define supported OS/architecture prereqs, artifact digest/signature, least-privilege install, rollback on interruption, idempotent rerun and actionable doctor output. Test fresh/partial install and wrong artifact. The command and hosting URL are finalized only after release provenance is chosen.
 2. **10-02 supervision.** Own `deploy/systemd/`, `deploy/docker/`, macOS LaunchAgent path and setup tests. Prove actual boot/login/reboot and Host identity continuity on each claimed profile. Distinguish a logged-in macOS user agent from pre-login service behavior.
 3. **10-03 updates.** Own release generation code and tests. Install second pinned version, interrupt before/after publication, offline rollback to retained bytes, preserve encrypted state and reject incompatible schema downgrade.
-4. **10-04 separated Hermes.** On two authorized machines, pin TLS identity and scoped credentials, execute one harmless real Run, test auth failure/stream loss and prove Host does not manage external Hermes lifecycle. Declare exactly which containment is observed.
-5. **10-05 backup/migration.** Own `cmd/lumen/{backup,restore}.go` and tests. Encrypted export, clean replacement restore, identity/message/memory/grant/cursor comparison and old-Host epoch retirement. No automatic failover claim.
-6. **10-06 alpha acceptance.** With original laptop off and Host still reachable, continue from another node; later wake/select the target and perform approved cross-node action. Run seven-day soak, resource/latency checks, requirement-by-requirement evidence, support matrix and explicit owner sign-off. Missing hardware/soak/sign-off is `BLOCKED`.
+4. **10-04 encrypted backup/restore.** Export and validate complete encrypted Space state on a clean quarantined replacement without activating it.
+5. **10-05 source handoff.** Drain and reconcile effects, then obtain exact owner confirmation; a verified pre-transfer abort restores only the original source epoch.
+6. **10-06 replacement activation.** Consume the one-use handoff, persist the new Host epoch atomically, and fence the retired source on return.
+7. **10-07 node epoch pins.** The selected phone and Mac accept the confirmed replacement key/epoch before effectful work resumes; stale or offline nodes stay unavailable.
+8. **10-08 recovery artifacts.** Inventory and owner-prune retained encrypted recovery copies only after a verified fresh backup.
+9. **10-09 alpha acceptance.** With original laptop off and Host still reachable, continue from another node; later wake/select the target and perform approved cross-node action. Run seven-day soak, resource/latency checks, requirement-by-requirement evidence, support matrix and explicit owner sign-off. Missing hardware/soak/sign-off is `BLOCKED`.
 
 ## Phase 11–17 execution index
 
-The executable plans now live under `.planning/phases/11-*` through `17-*`, four plans per phase. `.planning/PHASE-11-17-CONTRACTS.md` fixes their exact authority, state, file and live-evidence requirements. Their first plans contain the provider/platform/commercial decisions; downstream plans stay blocked until those decisions are recorded. The high-level slice counts above are historical decomposition notes; the GSD `NN-XX-PLAN.md` files and contract catalog control execution.
+The executable plans live under `.planning/phases/11-*` through `17-*`; plan counts vary by phase. `.planning/PHASE-11-17-CONTRACTS.md` fixes their authority, state, file and live-evidence requirements. Decision-dependent downstream plans stay blocked until the binding decision is recorded. The GSD `NN-XX-PLAN.md` files and contract catalog control execution.
 
 ## GSD coordination and handoff contract
 
