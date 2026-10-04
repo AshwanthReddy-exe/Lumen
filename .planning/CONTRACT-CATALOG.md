@@ -141,7 +141,8 @@ The wire contract starts as versioned JSON as decided in `docs/PLAN.md`; generat
 |---|---:|---|
 | `/v1/conversations`, `/{id}/messages`, `/{id}/events` | 03 | Create/list scoped conversations, idempotent send, snapshot, fixed-watermark cursor replay and SSE live hint |
 | `/v1/runs/{id}`, `/stop` | 03 | Read committed status/checkpoint; idempotent stop intent and truthful terminal outcome |
-| `/v1/memory`, `/proposals`, `/{id}` | 04 | Owner inspect/accept/correct/delete/export with revision checks |
+| `/v1/memory`, `/proposals`, `/{id}` | 04 | Owner inspect/accept/correct/delete with revision checks; records and tombstone lineage are included in the D-024 encrypted full-Space backup owned by Phase 10 (no memory-only export format) |
+| `/v1/context-preferences` | 04 | Owner reads/sets per-destination capability disclosure level with version preconditions; unknown, unpaired, or ungranted target denies |
 | `/v1/enrollment`, `/v1/nodes`, `/{id}/rotate|revoke` | 05 | One-use invitation, confirmation, authenticated node identity and management |
 | `/v1/attention`, `/{id}/resolve` | 06 | Separate question/approval schemas and one accepted resolution |
 | `/v1/invocations`, `/{id}/receipt|cancel` | 07 | Typed action, target selection, Host grant check, durable receipt and uncertainty |
