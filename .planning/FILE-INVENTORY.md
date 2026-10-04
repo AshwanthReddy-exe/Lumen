@@ -273,7 +273,7 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. This snap
 | `internal/space/channel_test.go` | proposed | 11-02 |
 | `internal/space/coding.go` | proposed | 13-01, 13-03 |
 | `internal/space/commands.go` | existing | 14-01, 17-06 |
-| `internal/space/conversation.go` | proposed | 07-05 |
+| `internal/space/apply.go`, `internal/space/reducer.go` | existing | 07-05 extends existing Space transition surfaces |
 | `internal/space/conversation_test.go` | existing | 03-01, 03-03, 04-01, 04-02, 05-03, 07-05 |
 | `internal/space/device.go` | proposed | 05-02 |
 | `internal/space/device_test.go` | proposed | 05-02 |
