@@ -110,7 +110,7 @@ def main():
 
             def start_host():
                 nonlocal host
-                host = subprocess.Popen([str(binary), "serve"], env=env, stdout=log_file,
+                host = subprocess.Popen([str(binary), "serve", "--manual"], env=env, stdout=log_file,
                                         stderr=subprocess.STDOUT)
                 wait_ready(str(binary), env)
 

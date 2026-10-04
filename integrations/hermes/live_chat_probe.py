@@ -118,17 +118,27 @@ def probe(source):
     commit = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     if commit != expected:
         raise ValueError("Hermes source is not the pinned commit")
-    patch = Path(__file__).with_name("patches") / "0001-lumen-chat-zero-tool.patch"
+    chat_patch = Path(__file__).with_name("patches") / "0001-lumen-chat-zero-tool.patch"
+    room_patch = Path(__file__).resolve().parents[2] / "deploy/docker/hermes-api-room-dispatch.patch"
     expected_files = {"agent/turn_tool_round.py", "gateway/platforms/api_server.py",
                       "gateway/platforms/api_server_room_dispatch.py", "gateway/platforms/api_server_runs.py"}
     changed_files = set(subprocess.check_output(["git", "-C", str(source), "diff", "--name-only"],
                                                 text=True).splitlines())
     if changed_files != expected_files:
         raise ValueError("Hermes source has unexpected tracked modifications")
-    diff = subprocess.check_output(["git", "-C", str(source), "diff", "--",
-                                    *sorted(expected_files)])
-    if diff != patch.read_bytes():
-        raise ValueError("Hermes source does not match Lumen's pinned chat patch")
+    with tempfile.TemporaryDirectory(prefix="lumen-hermes-patch-check-") as temp:
+        expected_root = Path(temp)
+        for name in sorted(expected_files):
+            target = expected_root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(subprocess.check_output(["git", "-C", str(source), "show", f"HEAD:{name}"]))
+        for patch_file in (room_patch, chat_patch):
+            subprocess.run(["patch", "--batch", "--forward", "--fuzz=0", "-p1"],
+                           input=patch_file.read_bytes(), cwd=expected_root,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        if any((source / name).read_bytes() != (expected_root / name).read_bytes()
+               for name in expected_files):
+            raise ValueError("Hermes source does not match the pinned room and chat patch composition")
     hermes = source / ".venv/bin/hermes"
     if not hermes.is_file():
         raise ValueError("pinned Hermes virtual environment is missing")

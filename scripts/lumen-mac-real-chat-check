@@ -120,7 +120,7 @@ def main():
                     "LUMEN_CHAT_MODEL": route["model"]})
         run(str(binary), "init", env=env)
         log = (work / "host.log").open("w")
-        host = subprocess.Popen([str(binary), "serve"], env=env, stdout=log, stderr=subprocess.STDOUT)
+        host = subprocess.Popen([str(binary), "serve", "--manual"], env=env, stdout=log, stderr=subprocess.STDOUT)
         wait_ready(str(binary), env)
         run(str(binary), "conversation", "create", "--request_id", "real-create",
             "--conversation_id", "real-chat", "--surface_id", "mac-terminal", env=env)
