@@ -564,6 +564,16 @@ func (s *Service) Shutdown() {
 	})
 }
 func (s *Service) handle(ctx context.Context, q control.Request) control.Response {
+	if isConversationCommand(q.Command) {
+		select {
+		case <-s.recoveryDone:
+			if s.recoveryErr != nil {
+				return control.Response{Error: "conversation recovery unavailable"}
+			}
+		case <-ctx.Done():
+			return control.Response{Error: "conversation recovery wait cancelled"}
+		}
+	}
 	switch q.Command {
 	case "status":
 		state, err := s.state.Read()
@@ -603,6 +613,15 @@ func (s *Service) handle(ctx context.Context, q control.Request) control.Respons
 		return s.handleMemoryDelete(ctx, q.Arguments)
 	default:
 		return control.Response{Error: "unsupported command"}
+	}
+}
+
+func isConversationCommand(command string) bool {
+	switch command {
+	case "conversation create", "conversation send", "conversation show", "preference set", "memory save", "memory list", "memory delete":
+		return true
+	default:
+		return false
 	}
 }
 
