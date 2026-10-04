@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added owner-only `lumen-host runtime inspect` for the configured Hermes endpoint's health and advertised feature inventory. The inventory is diagnostic and creates no Lumen grants.
 - Synced the encrypted snapshot backup directory entry before replacing the active state file. Startup leaves a verified snapshot readable when stale-artifact cleanup fails and reports a non-secret degraded doctor state. Fault-injection and process-exit tests cover recovery; physical power-loss and operator-verified retained-artifact cleanup remain open gates.
 - Reconciled Phase 02 acceptance with the chat-only boundary: zero enabled Hermes tools and a no-effect action canary qualify the tested profile; tool-event denial, memory denial, VPS recovery and laptop-off acceptance remain later gates.
 - Restored the manual macOS Lumen-to-Hermes chat path: the Host helper uses explicit foreground mode, and the Hermes API server is configured with an empty toolset list for chat-only use. The manual NIM request completed through the Host with a durable receipt; the earlier 13-enabled-toolset preflight block is recorded without saving prompt or response content.

@@ -529,6 +529,8 @@ func (s *Service) handle(ctx context.Context, q control.Request) control.Respons
 		return control.Response{OK: true, Data: map[string]any{"status": status, "space_id": state.SpaceID, "owner_id": state.OwnerID, "host_id": state.HostID, "active_host_id": state.HostID, "epoch": state.Epoch, "tasks": state.Tasks}}
 	case "shutdown":
 		return control.Response{OK: true, Data: map[string]string{"status": "shutting_down"}}
+	case "runtime inspect":
+		return s.handleRuntimeInspect(ctx)
 	case "task submit":
 		return s.handleTaskSubmit(ctx, q.Arguments)
 	case "task show":
@@ -540,4 +542,27 @@ func (s *Service) handle(ctx context.Context, q control.Request) control.Respons
 	default:
 		return control.Response{Error: "unsupported command"}
 	}
+}
+
+func (s *Service) handleRuntimeInspect(ctx context.Context) control.Response {
+	if s.executor == nil || s.executor.runtime == nil {
+		return control.Response{Error: "Hermes runtime unavailable"}
+	}
+	health, err := s.executor.runtime.Health(ctx)
+	if err != nil {
+		return control.Response{Error: "Hermes health unavailable"}
+	}
+	capabilities, err := s.executor.runtime.Capabilities(ctx)
+	if err != nil {
+		return control.Response{Error: "Hermes capability inventory unavailable"}
+	}
+	return control.Response{OK: true, Data: map[string]any{
+		"status":                 health.Status,
+		"platform":               capabilities.Platform,
+		"model":                  capabilities.Model,
+		"version":                health.Version,
+		"features":               capabilities.Features,
+		"feature_inventory_only": true,
+		"lumen_grants_created":   false,
+	}}
 }

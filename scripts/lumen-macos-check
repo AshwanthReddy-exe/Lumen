@@ -238,6 +238,12 @@ initial_operator_credential=$(shasum -a 256 "$data_dir/operator.credential" | cu
 "$host_artifact" doctor >"$work_dir/initial-doctor.json" || fail 'Host doctor failed after initialization'
 [ "$(jq -r '.host_initialized' "$work_dir/initial-doctor.json")" = true ] || fail 'Host doctor did not observe initialized state'
 
+printf '%s\n' '=> Lumen runtime inventory'
+"$host_artifact" runtime inspect >"$work_dir/runtime-inventory.json" || fail 'Lumen runtime inspection failed'
+jq -e '.status == "ok" and .feature_inventory_only == true and .lumen_grants_created == false and (.features | type == "object")' \
+	"$work_dir/runtime-inventory.json" >/dev/null || fail 'runtime inventory was incomplete or implied authority'
+redact <"$work_dir/runtime-inventory.json"
+
 printf '%s\n' '=> configured synthetic task'
 export LUMEN_BINARY="$host_artifact"
 export LUMEN_TEST_TIMEOUT_SECONDS=${LUMEN_TEST_TIMEOUT_SECONDS:-180}
