@@ -31,7 +31,7 @@ The predicates and result contracts name concrete forbidden outcomes and explici
 
 - Installed GSD `verify plan-structure`: all 73 plan files passed.
 - `python3 scripts/check-plan-task-contracts.py`: passed with 165/165 executable task contracts, a runnable automated check on each executable task, and exact equality between task `<files>` and each active plan's `files_modified`. Historical plans marked superseded are excluded from file-edit ownership comparison but retain their outcome contracts.
-- `python3 scripts/check-plan-coverage.py`: passed for 58 FRs and phase owners; 508 task source pointers and 459 GSD context pointers after the Phase 03-01 live-source read list was corrected.
+- `python3 scripts/check-plan-coverage.py`: passed for 58 FRs and phase owners; 526 task source pointers and 459 GSD context pointers after Phase 03-01 and 03-02 live-source read lists were corrected.
 - Installed GSD `validate consistency`: passed with zero warnings.
 - Installed GSD `query roadmap.validate`: passed with zero warnings.
 - `git diff --check`: passed.
