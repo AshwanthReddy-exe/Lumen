@@ -241,74 +241,76 @@ func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, sta
 	if s.now().Unix() >= by {
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conversation reconciliation deadline reached"))
 	}
-	status, statusErr := s.runtime.RunStatus(reconcileCtx, run.RunID)
-	if statusErr != nil || status.RunID != run.RunID {
-		if statusErr == nil {
-			statusErr = errors.New("Hermes status run mismatch")
+	for {
+		status, statusErr := s.runtime.RunStatus(reconcileCtx, run.RunID)
+		if statusErr != nil || status.RunID != run.RunID {
+			if statusErr == nil {
+				statusErr = errors.New("Hermes status run mismatch")
+			}
+			return s.complete(queued, state, taskID, space.OutcomeUnknown, "", statusErr)
 		}
-		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", statusErr)
-	}
-	events, eventsErr := s.runtime.Events(reconcileCtx, run.RunID)
-	s.logger.Info("lumen_conversation", "event", "hermes_evidence_received", "status_class", terminalOutcome(status.Status), "events", len(events))
-	for _, event := range events {
-		if !allowedChatEvent(event, run.RunID) {
-			invalidated, invalidateErr := s.apply(space.Command{Type: space.CommandInvalidateRuntimeCertification, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: space.RuntimeCertificationInvalidationID(cert), CertificationID: cert.ID, RuntimeIdentity: cert.RuntimeIdentity, RuntimeProfileDigest: profile.Digest, TaskID: taskID, RuntimeRunID: run.RunID})
-			_, _ = s.runtime.Stop(ctx, run.RunID)
-			if invalidateErr != nil || invalidated.Rejection != "" {
-				return s.fail(queued, state, taskID, errors.Join(ErrRuntimeProfileUnverified, errOrRejection(invalidateErr, invalidated.Rejection)))
+		events, eventsErr := s.runtime.Events(reconcileCtx, run.RunID)
+		s.logger.Info("lumen_conversation", "event", "hermes_evidence_received", "status_class", terminalOutcome(status.Status), "events", len(events))
+		for _, event := range events {
+			if !allowedChatEvent(event, run.RunID) {
+				invalidated, invalidateErr := s.apply(space.Command{Type: space.CommandInvalidateRuntimeCertification, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: space.RuntimeCertificationInvalidationID(cert), CertificationID: cert.ID, RuntimeIdentity: cert.RuntimeIdentity, RuntimeProfileDigest: profile.Digest, TaskID: taskID, RuntimeRunID: run.RunID})
+				_, _ = s.runtime.Stop(ctx, run.RunID)
+				if invalidateErr != nil || invalidated.Rejection != "" {
+					return s.fail(queued, state, taskID, errors.Join(ErrRuntimeProfileUnverified, errOrRejection(invalidateErr, invalidated.Rejection)))
+				}
+				return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 			}
-			return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 		}
-	}
-	terminalEvent := false
-	terminal := terminalOutcome(status.Status)
-	for _, event := range events {
-		if eventStatus, output, ok := conversationEvent(event); ok {
-			if outcome := terminalOutcome(eventStatus); terminal != "" && outcome != terminal {
-				return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conflicting runtime terminal evidence"))
-			} else {
-				terminal = outcome
+		terminalEvent := false
+		terminal := terminalOutcome(status.Status)
+		for _, event := range events {
+			if eventStatus, output, ok := conversationEvent(event); ok {
+				if outcome := terminalOutcome(eventStatus); terminal != "" && outcome != terminal {
+					return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conflicting runtime terminal evidence"))
+				} else {
+					terminal = outcome
+				}
+				if status.Output != "" && output != "" && status.Output != output {
+					return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conflicting runtime output evidence"))
+				}
+				status.Status = eventStatus
+				if output != "" {
+					status.Output = output
+				}
+				terminalEvent = true
 			}
-			if status.Output != "" && output != "" && status.Output != output {
-				return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conflicting runtime output evidence"))
-			}
-			status.Status = eventStatus
-			if output != "" {
-				status.Output = output
-			}
-			terminalEvent = true
 		}
-	}
-	if eventsErr != nil && !errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) {
-		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", eventsErr)
-	}
-	if errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) && !terminalEvent && !isNonterminalChatStatus(status.Status) {
-		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("runtime event stream ended without terminal evidence"))
-	}
-	if s.now().Unix() >= by {
-		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conversation reconciliation deadline reached"))
-	}
-	if isNonterminalChatStatus(status.Status) {
-		timer := time.NewTimer(250 * time.Millisecond)
-		defer timer.Stop()
-		select {
-		case <-reconcileCtx.Done():
+		if eventsErr != nil && !errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) {
+			return s.complete(queued, state, taskID, space.OutcomeUnknown, "", eventsErr)
+		}
+		if errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) && !terminalEvent && !isNonterminalChatStatus(status.Status) {
+			return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("runtime event stream ended without terminal evidence"))
+		}
+		if s.now().Unix() >= by {
 			return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conversation reconciliation deadline reached"))
-		case <-timer.C:
 		}
-		return s.reconcileRun(ctx, queued, state, taskID, run, cert, profile, by)
-	}
-	switch status.Status {
-	case "completed", "succeeded", "success":
-		conversation, ok := state.Conversations[conversationForTask(state, taskID)]
-		if !ok || !utf8.ValidString(status.Output) || len(status.Output) > space.MaxChatMessageBytes || conversation.SizeBytes+len(status.Output) > space.MaxConversationBytes {
-			return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("runtime output exceeds conversation bounds"))
+		if isNonterminalChatStatus(status.Status) {
+			timer := time.NewTimer(250 * time.Millisecond)
+			select {
+			case <-reconcileCtx.Done():
+				timer.Stop()
+				return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conversation reconciliation deadline reached"))
+			case <-timer.C:
+			}
+			continue
 		}
-		return s.complete(queued, state, taskID, space.OutcomeCompleted, status.Output, nil)
-	case "failed", "error", "cancelled", "canceled":
-		return s.complete(queued, state, taskID, space.OutcomeFailed, "", nil)
-	default:
-		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("Hermes completion remains uncertain"))
+		switch status.Status {
+		case "completed", "succeeded", "success":
+			conversation, ok := state.Conversations[conversationForTask(state, taskID)]
+			if !ok || !utf8.ValidString(status.Output) || len(status.Output) > space.MaxChatMessageBytes || conversation.SizeBytes+len(status.Output) > space.MaxConversationBytes {
+				return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("runtime output exceeds conversation bounds"))
+			}
+			return s.complete(queued, state, taskID, space.OutcomeCompleted, status.Output, nil)
+		case "failed", "error", "cancelled", "canceled":
+			return s.complete(queued, state, taskID, space.OutcomeFailed, "", nil)
+		default:
+			return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("Hermes completion remains uncertain"))
+		}
 	}
 }
 

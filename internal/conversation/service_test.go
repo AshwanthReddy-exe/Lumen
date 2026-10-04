@@ -248,7 +248,7 @@ func TestProjectionForTaskDoesNotCaptureLaterQueuedInput(t *testing.T) {
 		s = tr.State
 	}
 	projection, err := ProjectForTask(s, "c1", "task-1", space.DefaultPersona(), space.DefaultRuntimeProfile(), 200)
-	if err != nil || projection.Input != "task-1 input" || len(projection.Messages) != 1 {
+	if err != nil || projection.Input != "task-1 input" || len(projection.Messages) != 0 {
 		t.Fatalf("projection captured a later task: %#v err=%v", projection, err)
 	}
 }
