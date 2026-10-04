@@ -473,9 +473,9 @@ func launchdBootstrap(ctx context.Context, d ServiceDefinition) error {
 		if !launchdHasPath(out, d.Path) && (d.AlternatePath == "" || !launchdHasPath(out, d.AlternatePath)) {
 			return errors.New("LaunchAgent label is already loaded from a different path")
 		}
-		if launchdHasPath(out, d.Path) {
-			return nil
-		}
+		// launchctl reports the plist path, not a digest of the loaded job.
+		// Reload even at the same path so an older in-memory definition cannot
+		// satisfy a new verified setup binding.
 		if _, _, bootoutErr := commandRunner.Run(bounded, "launchctl", "bootout", target); bootoutErr != nil {
 			return fmt.Errorf("LaunchAgent bootout outcome is uncertain: %w", bootoutErr)
 		}

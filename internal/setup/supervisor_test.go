@@ -298,15 +298,22 @@ func TestLaunchdBootstrapResumesOnlyTheSameDefinition(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := launchdTarget(ServiceHost)
-	t.Run("same path leaves the loaded job intact", func(t *testing.T) {
-		r := &sequenceRunner{steps: []runnerStep{{stdout: []byte("path = " + path)}}}
+	t.Run("same path reloads the verified definition", func(t *testing.T) {
+		r := &sequenceRunner{steps: []runnerStep{{stdout: []byte("path = " + path)}, {}, {}}}
 		commandRunner = r
-		if err := launchdBootstrap(context.Background(), ServiceDefinition{Name: ServiceHost, Path: path}); err != nil || len(r.calls) != 1 {
+		if err := launchdBootstrap(context.Background(), ServiceDefinition{Name: ServiceHost, Path: path}); err != nil || len(r.calls) != 3 {
 			t.Fatalf("err=%v calls=%#v", err, r.calls)
 		}
-		want := [][]string{{"launchctl", "print", target}}
+		want := [][]string{{"launchctl", "print", target}, {"launchctl", "bootout", target}, {"launchctl", "bootstrap", launchdDomain(), path}}
 		if !reflect.DeepEqual(r.calls, want) {
 			t.Fatalf("calls=%#v want=%#v", r.calls, want)
+		}
+	})
+	t.Run("same path reload failure is not success", func(t *testing.T) {
+		r := &sequenceRunner{steps: []runnerStep{{stdout: []byte("path = " + path)}, {}, {err: errors.New("bootstrap failed")}}}
+		commandRunner = r
+		if err := launchdBootstrap(context.Background(), ServiceDefinition{Name: ServiceHost, Path: path}); err == nil || len(r.calls) != 3 {
+			t.Fatalf("err=%v calls=%#v", err, r.calls)
 		}
 	})
 	t.Run("already loaded from the committed auto-load path", func(t *testing.T) {
