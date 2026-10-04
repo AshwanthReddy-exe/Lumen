@@ -1,6 +1,6 @@
 # Planned file inventory — 2026-10-04
 
-Generated from the `files_modified` inventories of GSD Phases 03–17 and the current Phase 03 replan. This snapshot contains 57 existing and 246 proposed unique paths. `existing` means a path exists in the current checkout; `proposed` means it does not. Paths are ownership targets, not a promise that a future decision-gated branch will create every file. Consult the owning plan and shared contracts before editing.
+Generated from the `files_modified` inventories of GSD Phases 03–17 and current plan audits. This snapshot contains 57 existing and 251 proposed unique paths. `existing` means a path exists in the current checkout; `proposed` means it does not. Paths are ownership targets, not a promise that a future decision-gated branch will create every file. Consult the owning plan and shared contracts before editing.
 
 | Path | Current status | Owning plan(s) |
 | --- | --- | --- |
@@ -49,9 +49,11 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and the cu
 | `apps/android-host/src/androidTest/kotlin/dev/lumen/android/host/WakeDeviceTest.kt` | proposed | 08-01 |
 | `apps/android-host/src/main/AndroidManifest.xml` | existing | 08-01 |
 | `apps/android-host/src/main/kotlin/dev/lumen/android/host/LumenHostActivity.kt` | existing | 08-02 |
+| `apps/android-host/src/main/kotlin/dev/lumen/android/host/Pairing.kt` | proposed | 05-04, 10-04 |
 | `apps/android-host/src/main/kotlin/dev/lumen/android/host/SpeechPipeline.kt` | proposed | 08-02 |
 | `apps/android-host/src/main/kotlin/dev/lumen/android/host/VoiceMode.kt` | proposed | 08-01 |
 | `apps/android-host/src/test/kotlin/dev/lumen/android/host/SpeechPipelineTest.kt` | proposed | 08-02 |
+| `apps/android-host/src/test/kotlin/dev/lumen/android/host/PairingTest.kt` | proposed | 10-04 |
 | `apps/android-host/src/test/kotlin/dev/lumen/android/host/VoiceModeTest.kt` | proposed | 08-01 |
 | `apps/linux-node/files_linux.go` | proposed | 13-04 |
 | `apps/linux-node/identity_linux.go` | proposed | 13-04 |
@@ -79,8 +81,8 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and the cu
 | `apps/phone/src/attention.tsx` | proposed | 06-03 |
 | `apps/phone/src/chat.tsx` | proposed | 05-04 |
 | `apps/phone/src/outbox.ts` | proposed | 05-04 |
-| `apps/phone/src/pairing.tsx` | proposed | 05-04 |
-| `apps/phone/src/sync.test.ts` | proposed | 05-04 |
+| `apps/phone/src/pairing.tsx` | proposed | 05-04, 10-04 |
+| `apps/phone/src/sync.test.ts` | proposed | 05-04, 10-04 |
 | `apps/web/package.json` | proposed | 03-04 |
 | `apps/web/package-lock.json` | proposed | 03-04 |
 | `apps/web/src/attention.test.tsx` | proposed | 06-03 |
@@ -163,6 +165,7 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and the cu
 | `internal/host/automation_http.go` | proposed | 14-02, 14-03, 14-04 |
 | `internal/host/browser_broker.go` | proposed | 12-03, 12-04 |
 | `internal/host/capability_broker.go` | proposed | 07-02, 12-02 |
+| `internal/host/capability_broker_test.go` | proposed | 12-02 |
 | `internal/host/capability_broker_test.go` | proposed | 07-02 |
 | `internal/host/coding_broker.go` | proposed | 13-01, 13-02, 13-03 |
 | `internal/host/conversation.go` | existing | 03-02 |
@@ -240,6 +243,7 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and the cu
 | `internal/space/policy.go` | existing | 04-02 |
 | `internal/space/policy_test.go` | proposed | 04-02 |
 | `internal/space/reminder.go` | proposed | 12-01 |
+| `internal/space/reminder_test.go` | proposed | 12-01 |
 | `internal/store/automation.go` | proposed | 14-01 |
 | `internal/store/automation_test.go` | proposed | 14-01 |
 | `internal/store/membership.go` | proposed | 17-04 |
@@ -273,6 +277,7 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and the cu
 | `scripts/lumen-macos-check` | existing | 10-02 |
 | `scripts/lumen-release` | existing | 10-01, 15-01 |
 | `scripts/sdk-out-of-tree-check` | proposed | 17-02 |
+| `scripts/sdk-release-check` | proposed | 17-02 |
 | `sdk/README.md` | proposed | 17-02 |
 | `sdk/examples/readonly-node/main.go` | proposed | 17-02 |
 | `sdk/go/go.mod` | proposed | 17-02 |

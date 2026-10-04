@@ -7,7 +7,7 @@ This is an additive status snapshot. It does not replace `docs/PLAN.md`, the 17-
 - Lumen `main`: `f08d76e00a1cf41e531ffff9310a5c2ab51db1ce`, PR [#29](https://github.com/AshwanthReddy-exe/Lumen/pull/29), clean at audit time.
 - PRs #22–#29 are merged. GitHub reported no open PRs when queried on 2026-10-04. PR #20 is closed unmerged; PR #18 is closed and its later release work landed through #19.
 - GSD phases 01–02 remain complete; Phase 03 remains pending. The merge of chat/runtime code is partial implementation evidence, not Phase 03 acceptance.
-- Local plan checks on this revision: 58 execute plans passed GSD `verify plan-structure`; `scripts/check-plan-coverage.py` passed for 58 FRs, 58 owners, 493 task source pointers and 459 GSD context pointers; `roadmap validate` and `validate consistency` passed with no warnings. These checks establish document consistency, not implementation completeness or external review convergence.
+- Local plan checks on the current revision: all 73 GSD plans passed `verify plan-structure`; `scripts/check-plan-coverage.py` passed for 58 FRs, 58 owners, 501 task source pointers and 459 GSD context pointers; `roadmap.validate` and `validate consistency` passed with no warnings. `git diff --check` passed. These checks establish document consistency, not implementation completeness or external review convergence.
 - The five Phase 03 plans were revised on the current planning branch against the post-#29 source audit: E4 now has a reproducible hard gate; 03-02 reuses current merged source; 03-03/04 define Host asset serving/build order, HTTP bounds and browser storage lifecycle; 03-05 pins evidence/reviewer artifacts. All 58 plan schemas, coverage and consistency checks pass after these edits. The local findings are addressed in plan text; independent GSD convergence remains BLOCKED.
 
 ## Phase 03 source reconciliation after PR #29
@@ -31,6 +31,14 @@ The current official Tailscale CLI reference documents `tailscale serve --bg <lo
 ## Future OS source freshness
 
 The checked-in reference remains pinned to `98f7f3a3385e12d38ee7fc75bdca2cc3856cf987`. The older analysis document examined `907f38b046b32ed3ac795c07b641e681d8e52101`. A read-only fetch and upstream lookup on 2026-10-04 found upstream `main` at `52328e8009817c5eca66e4461ee4cf55e23fd6c9`. The targeted source delta and Lumen adaptations are in [the upstream delta analysis](research/FUTURE-OS-UPSTREAM-DELTA-2026-10-04.md). The pin is intentionally unchanged; it is not a vendored runtime dependency.
+
+## 2026-10-04 plan handoff corrections
+
+- Phase 05-01 now owns binding Phase 10-04's phone epoch files and client-specific verification to the measured, owner-approved D-056 branch. Phase 10-04 is explicitly non-autonomous and cannot pass while the phone branch is BLOCKED or UNBOUND.
+- Phase 10-01 now orders bootstrap trust analysis and an owner checkpoint before installer implementation. Its decision record states that a `curl | sh` bootstrap executes before internal signature checks, so repository transport/control is the initial trust anchor.
+- Phase 12-01 now qualifies native versus Hermes browsing behavior before freezing the adapter contract and asking the owner to select; 12-02 is explicitly conditional and must be rewritten if the selected adapter changes.
+- Phase 17-01 limits its owner gate to protocol compatibility; shared-space remains a separate gate. Phase 17-02 requires owner approval of exact release metadata before publishing and verifying the Go SDK.
+- Detailed findings remain in the phase handoff reviews. Current task-level `fails_when` and `result_contract` coverage is incomplete; do not call every plan handoff checkpoint-ready until each executable task has meaningful negative and result criteria. Independent external convergence also remains blocked; see `.planning/PLAN-REVIEW-STATUS.md`.
 
 ## Branch and worktree disposition
 
