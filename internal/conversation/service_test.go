@@ -257,6 +257,23 @@ func TestProjectionForTaskDoesNotCaptureLaterQueuedInput(t *testing.T) {
 	}
 }
 
+func TestProjectionKeepsRecentHistoryWithinContextBudget(t *testing.T) {
+	s := conversationState()
+	appendMessage := func(id string, seq uint64, role space.MessageRole, content, task string) {
+		s.Messages["c1"] = append(s.Messages["c1"], space.Message{ID: id, ConversationID: "c1", Sequence: seq, Role: role, AuthorID: "owner", SurfaceID: "web", Content: content, ContentDigest: space.DigestText(content), CreatedAt: int64(seq), TaskID: task})
+	}
+	appendMessage("m1", 1, space.MessageUser, strings.Repeat("o", 80), "old")
+	appendMessage("m2", 2, space.MessageAssistant, strings.Repeat("n", 20), "new")
+	appendMessage("user:task-1", 3, space.MessageUser, "current", "task-1")
+	profile := space.DefaultRuntimeProfile()
+	profile.MaxContextBytes = 64
+	projection, err := ProjectForTask(s, "c1", "task-1", space.DefaultPersona(), profile, 100)
+	encoded, _ := json.Marshal(projection.Messages)
+	if err != nil || len(encoded) > profile.MaxContextBytes || len(projection.Messages) != 1 || projection.Messages[0].Content != strings.Repeat("n", 20) {
+		t.Fatalf("history exceeded budget or lost recent context: messages=%#v bytes=%d err=%v", projection.Messages, len(encoded), err)
+	}
+}
+
 func TestProjectionUsesOnlyCurrentOwnerMemory(t *testing.T) {
 	s := conversationState()
 	saved := space.Apply(s, space.Command{Type: space.CommandSaveMemory, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", RequestID: "remember", MemoryID: "fact-1", Content: "My project is Lumen", CreatedAt: 10})
@@ -447,6 +464,11 @@ func TestCertificationRequiresCompleteBindingAndUntamperedProfile(t *testing.T) 
 	valid.Evidence = "verified"
 	if !certificationMatches(valid, profile, time.Unix(100, 0)) {
 		t.Fatal("complete certification rejected")
+	}
+	laterExpiry := valid
+	laterExpiry.ExpiresAt++
+	if !sameCertificationBinding(valid, laterExpiry) {
+		t.Fatal("expiry drift changed the otherwise stable certification binding")
 	}
 	for name, change := range map[string]func(*space.RuntimeCertification){
 		"artifact":          func(c *space.RuntimeCertification) { c.ArtifactDigest = "" },

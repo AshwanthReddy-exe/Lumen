@@ -199,7 +199,7 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	}
 	s.logger.Info("lumen_conversation", "event", "context_projected", "history_messages", len(projection.Messages), "context_bytes", len(projection.Context), "instructions_bytes", len(projection.Instructions))
 	fresh, freshErr := s.certifier.Certify(ctx, state, profile)
-	if freshErr != nil || !reflect.DeepEqual(fresh, cert) || !certificationMatches(fresh, profile, s.now()) || !s.endpointMatches(ctx, fresh) {
+	if freshErr != nil || !sameCertificationBinding(fresh, cert) || !certificationMatches(fresh, profile, s.now()) || !s.endpointMatches(ctx, fresh) {
 		s.logger.Warn("lumen_conversation", "event", "runtime_blocked", "reason", "runtime_profile_unverified")
 		return s.fail(queued, state, taskID, ErrRuntimeProfileUnverified)
 	}
@@ -232,6 +232,11 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	// Once dispatch is durably recorded, the Host owns reconciliation even if
 	// the client disconnects. The persisted deadline still bounds this work.
 	return s.reconcileRun(context.WithoutCancel(ctx), queued, state, taskID, run, cert, profile, by)
+}
+
+func sameCertificationBinding(a, b space.RuntimeCertification) bool {
+	a.ExpiresAt, b.ExpiresAt = 0, 0
+	return reflect.DeepEqual(a, b)
 }
 
 func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, state space.State, taskID string, run hermes.Run, cert space.RuntimeCertification, profile space.RuntimeProfile, by int64) (space.Transition, error) {
