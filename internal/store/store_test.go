@@ -589,6 +589,36 @@ func TestCleanupFailureDoesNotReportCommittedUpdateAsFailure(t *testing.T) {
 	}
 }
 
+func TestStartupCleanupFailureKeepsVerifiedSnapshotAvailable(t *testing.T) {
+	s, statePath, keyPath := testStore(t)
+	if err := s.Initialize(testState()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(filepath.Dir(statePath), ".state.tmp-"+strings.Repeat("a", 24))
+	if err := os.WriteFile(stale, []byte("incomplete encrypted transaction"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewWithHooks(statePath, Hooks{DirSync: func(*os.File) error {
+		return errors.New("injected startup directory sync failure")
+	}}, keyPath)
+	if err != nil {
+		t.Fatalf("valid active snapshot should remain available: %v", err)
+	}
+	defer reopened.Close()
+	if !errors.Is(reopened.CleanupWarning(), ErrCleanupDeferred) {
+		t.Fatalf("missing cleanup warning: %v", reopened.CleanupWarning())
+	}
+	if got, err := reopened.Read(); err != nil || !stateEqual(got, testState()) {
+		t.Fatalf("verified snapshot unavailable: %#v %v", got, err)
+	}
+	if _, err := os.Stat(stale); err != nil {
+		t.Fatalf("failed cleanup discarded recovery artifact: %v", err)
+	}
+}
+
 func TestReadRejectsTrailingDataBeyondLimit(t *testing.T) {
 	s, statePath, _ := testStore(t)
 	if err := s.Initialize(testState()); err != nil {

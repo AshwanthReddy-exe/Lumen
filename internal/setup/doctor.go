@@ -12,6 +12,7 @@ type DoctorEvidence struct {
 	LumenVersion          string
 	HostReady             bool
 	HostState             string
+	StoreCleanupDeferred  bool
 	HermesReady           bool
 	HermesState           string
 	HermesVersion         string
@@ -142,6 +143,12 @@ func (d Doctor) Check(ctx context.Context) Report {
 	if !e.HostReady || e.HostError != nil {
 		r.Actions = append(r.Actions, Action{Code: "host_unready"})
 		r.Outcome = ActionRequired
+	}
+	if e.StoreCleanupDeferred {
+		r.Actions = append(r.Actions, Action{Code: "store_cleanup_deferred"})
+		if r.Outcome == "" {
+			r.Outcome = Degraded
+		}
 	}
 	if e.HermesError != nil && !durableMismatch {
 		e.HermesReady = false

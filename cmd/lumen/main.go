@@ -636,9 +636,10 @@ func observeDeployment(ctx context.Context, d deployment, deps doctorDeps) setup
 	}
 
 	state, liveErr := deps.hostStatus(ctx, d.config)
-	if liveErr == nil && (state == setup.StateRunning || state == "ready") {
+	if liveErr == nil && (state == setup.StateRunning || state == "ready" || state == "degraded") {
 		e.CredentialsReady = privateFile(d.config.CredentialPath) && privateFile(d.config.HermesBearerPath)
 		e.HostReady, e.HostState = true, setup.StateRunning
+		e.StoreCleanupDeferred = state == "degraded"
 	} else if _, err := host.VerifyInitialized(d.config); err != nil {
 		e.HostError = err
 	} else {
@@ -760,8 +761,11 @@ func defaultHostStatus(ctx context.Context, cfg host.Config) (string, error) {
 		return setup.StateUnknown, errors.New("Host status rejected")
 	}
 	data, ok := response.Data.(map[string]any)
-	if !ok || data["status"] != "ready" {
+	if !ok || (data["status"] != "ready" && data["status"] != "degraded") {
 		return setup.StateUnknown, errors.New("Host status is not ready")
+	}
+	if data["status"] == "degraded" {
+		return "degraded", nil
 	}
 	return setup.StateRunning, nil
 }

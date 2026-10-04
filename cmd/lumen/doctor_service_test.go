@@ -62,6 +62,33 @@ func TestDoctorUsesLiveTopologyEvidence(t *testing.T) {
 	}
 }
 
+func TestDoctorSurfacesHostStoreCleanupAsDegraded(t *testing.T) {
+	newDurableDoctorFixture(t, setup.TopologyExternal)
+	old := doctorDepsOverride
+	doctorDepsOverride = &doctorDeps{
+		hostStatus: func(context.Context, host.Config) (string, error) { return "degraded", nil },
+		supervisorStatus: func(context.Context, setup.Supervisor, []setup.ServiceName) ([]setup.ServiceState, error) {
+			return []setup.ServiceState{{Name: setup.ServiceHost, State: setup.StateRunning}}, nil
+		},
+		hermesProbe: func(context.Context, host.Config, *setup.ExternalAdoption) hermesObservation {
+			return hermesObservation{Ready: true, Version: "1.0.0", IdentityMatch: true, AuthenticationValid: true, CompatibilityValid: true}
+		},
+		bootStatus: func(context.Context, setup.Supervisor, []setup.ServiceName) (bool, error) { return true, nil },
+	}
+	t.Cleanup(func() { doctorDepsOverride = old })
+	report := runForTest([]string{"doctor"})
+	if report.Outcome != setup.Degraded {
+		t.Fatalf("deferred cleanup reported %#v", report)
+	}
+	found := false
+	for _, action := range report.Actions {
+		found = found || action.Code == "store_cleanup_deferred"
+	}
+	if !found {
+		t.Fatalf("doctor omitted cleanup action: %#v", report.Actions)
+	}
+}
+
 func TestDoctorExternalOutageIsDegraded(t *testing.T) {
 	newDurableDoctorFixture(t, setup.TopologyExternal)
 	old := doctorDepsOverride

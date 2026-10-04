@@ -28,6 +28,21 @@ func TestDoctorDistinguishesDegradedAndRedactsDetails(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsDeferredStoreCleanupWithoutHidingReadyHost(t *testing.T) {
+	r := Doctor{Observe: func(context.Context) DoctorEvidence {
+		return DoctorEvidence{Stage: Validated, HostReady: true, HostState: StateRunning, StoreCleanupDeferred: true,
+			HermesReady: true, HermesState: StateRunning, SupervisorReady: true, SupervisorState: StateRunning,
+			BootReady: true, BootState: StateRunning, CredentialsReady: true, IsolationReady: true,
+			ArtifactsReady: true, ArtifactState: "installed"}
+	}}.Check(context.Background())
+	if r.Outcome != Degraded || r.States["host"] != StateRunning {
+		t.Fatalf("deferred cleanup misreported: %#v", r)
+	}
+	if len(r.Actions) != 1 || r.Actions[0].Code != "store_cleanup_deferred" {
+		t.Fatalf("missing safe operator action: %#v", r.Actions)
+	}
+}
+
 func TestDoctorTreatsUnknownAndFailedStatesAsActionRequired(t *testing.T) {
 	r := Doctor{Observe: func(context.Context) DoctorEvidence {
 		return DoctorEvidence{Stage: Validated, HostReady: true, HermesReady: true, SupervisorReady: true, BootReady: true, CredentialsReady: true, IsolationReady: true, HostState: StateUnknown, HermesState: StateFailed, SupervisorState: StateRunning, BootState: StateRunning}

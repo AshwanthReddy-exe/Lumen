@@ -29,22 +29,29 @@ type Hooks struct {
 }
 
 type Store struct {
-	path      string
-	key       string
-	stateName string
-	keyName   string
-	root      *os.Root
-	keyRoot   *os.Root
-	lock      *os.File
-	hooks     Hooks
-	mu        sync.Mutex
-	close     sync.Once
-	closed    bool
+	path            string
+	key             string
+	stateName       string
+	keyName         string
+	root            *os.Root
+	keyRoot         *os.Root
+	lock            *os.File
+	hooks           Hooks
+	mu              sync.Mutex
+	close           sync.Once
+	closed          bool
+	cleanupDeferred bool
 }
+
+var ErrCleanupDeferred = errors.New("encrypted store artifact cleanup deferred")
 
 // New opens the store lock. With one argument it treats the argument as a
 // private data directory; with two it accepts explicit state and key paths.
 func New(path string, keyPath ...string) (*Store, error) {
+	return newStore(path, Hooks{}, keyPath...)
+}
+
+func newStore(path string, hooks Hooks, keyPath ...string) (*Store, error) {
 	if len(keyPath) == 0 {
 		keyPath = []string{filepath.Join(path, "state.key")}
 		path = filepath.Join(path, "state.json")
@@ -104,10 +111,11 @@ func New(path string, keyPath ...string) (*Store, error) {
 			return nil, errors.New("key parent changed during open")
 		}
 	}
-	s := &Store{path: path, key: keyPath[0], stateName: filepath.Base(path), keyName: filepath.Base(keyPath[0]), root: parent, keyRoot: keyParent, lock: lock}
+	s := &Store{path: path, key: keyPath[0], stateName: filepath.Base(path), keyName: filepath.Base(keyPath[0]), root: parent, keyRoot: keyParent, lock: lock, hooks: hooks}
 	if err := s.cleanupInterruptedCommitArtifacts(); err != nil {
-		_ = s.Close()
-		return nil, fmt.Errorf("clean interrupted state commit artifacts: %w", err)
+		// Cleanup is maintenance after the active encrypted snapshot has been
+		// checked. A failed cleanup must not hide the last readable state.
+		s.cleanupDeferred = true
 	}
 	return s, nil
 }
@@ -115,11 +123,17 @@ func New(path string, keyPath ...string) (*Store, error) {
 func Open(path string, keyPath ...string) (*Store, error) { return New(path, keyPath...) }
 
 func NewWithHooks(path string, hooks Hooks, keyPath ...string) (*Store, error) {
-	s, err := New(path, keyPath...)
-	if err == nil {
-		s.hooks = hooks
+	return newStore(path, hooks, keyPath...)
+}
+
+// CleanupWarning reports a deferred stale-artifact cleanup without denying
+// access to the verified active snapshot. Operators must inspect the artifacts
+// before removing any distinct-inode recovery copy.
+func (s *Store) CleanupWarning() error {
+	if s.cleanupDeferred {
+		return ErrCleanupDeferred
 	}
-	return s, err
+	return nil
 }
 
 func (s *Store) Close() error {

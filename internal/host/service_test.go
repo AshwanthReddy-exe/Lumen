@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,6 +32,30 @@ func TestConfigFromEnvironment(t *testing.T) {
 	}
 	if c.HermesProfile != "hardened" || c.HermesBaseURL != "https://hermes.example.test" || c.HermesBearerPath == "" {
 		t.Fatalf("Hermes config not loaded: %#v", c)
+	}
+}
+
+func TestStatusReportsDeferredStoreCleanup(t *testing.T) {
+	d := t.TempDir()
+	c := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator")}
+	if err := Initialize(c); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(d, ".state.tmp-"+strings.Repeat("a", 24))
+	if err := os.WriteFile(stale, []byte("incomplete encrypted transaction"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stateStore, err := store.NewWithHooks(filepath.Join(d, "state.json"), store.Hooks{DirSync: func(*os.File) error {
+		return errors.New("injected directory sync failure")
+	}}, filepath.Join(d, "state.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stateStore.Close()
+	response := (&Service{state: stateStore}).handle(context.Background(), control.Request{Command: "status"})
+	data, ok := response.Data.(map[string]any)
+	if !response.OK || !ok || data["status"] != "degraded" {
+		t.Fatalf("cleanup warning missing from Host status: %#v", response)
 	}
 }
 
