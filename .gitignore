@@ -22,6 +22,8 @@ local.properties
 
 # Local credentials
 *.pem
+/ssh-key-*.key
+/ssh-key-*.key.pub
 
 # Per-machine agent settings and generated repository graph
 .agents/
@@ -36,3 +38,4 @@ references/
 
 # Pinned upstream source archive used as a Docker build context input
 hermes-source.tar.gz
+/.lumen-e2-hermes-source.*
