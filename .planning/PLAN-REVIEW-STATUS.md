@@ -21,7 +21,7 @@ The external Claude CLI probe did not return a review in bounded attempts and wa
 | Gate | First blocking plan | Required input or proof |
 | --- | --- | --- |
 | D-056 client branch | 05-01 | Disposable native feasibility fixture plus named physical Android and iPhone tests. Missing hardware is BLOCKED. A measured failure may select Kotlin Android + phone web; the chosen branch binds 05-04/06-03 and 10-04 files/checks. |
-| Cross-node live journey | 07-03, 09-01, 10-05 | Named Host, source/approval node, target node, real provider, selected-root canary, stable receipts and disconnect recovery. |
+| Cross-node live journey | 07-06, 09-01, 10-05 | Named Host, source/approval node, target node, real provider, selected-root canary, stable receipts and disconnect recovery. |
 | E6/E7 voice | 08-01/02 | Licensed on-device engine and named physical Android; preregistered E7 numeric thresholds; measured wake/egress/interruption. |
 | Public installer | 10-01/02 | D-054 GitHub Release trust anchor, digest-pinned artifact, and real OS/arch/profile installation, login/reboot/update/rollback. |
 | Alpha release | 10-05 | Powered-off primary journey, seven elapsed days of soak and explicit owner sign-off. |
