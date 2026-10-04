@@ -1,0 +1,13 @@
+# Dedicated pinned Hermes API profile for zero-tool chat qualification.
+# HERMES_SAFE_MODE=1 must also be set on that process.
+platform_toolsets:
+  api_server: [no_mcp]
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  provider: ""
+context:
+  engine: compressor
+auxiliary:
+  title_generation:
+    enabled: false

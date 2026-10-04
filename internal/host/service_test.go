@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,6 +82,64 @@ func TestProductionNewBuildsNonNilRuntimeAdapter(t *testing.T) {
 	defer s.Shutdown()
 	if s.executor == nil || s.executor.runtime == nil {
 		t.Fatal("production constructor left Hermes runtime nil")
+	}
+}
+
+func TestLocalChatConfigurationWiresDedicatedRuntime(t *testing.T) {
+	d := t.TempDir()
+	generalToken := filepath.Join(d, "hermes.token")
+	chatToken := filepath.Join(d, "chat.token")
+	for _, path := range []string{generalToken, chatToken} {
+		if err := os.WriteFile(path, []byte("synthetic-test-key"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("LUMEN_DATA_DIR", d)
+	t.Setenv("LUMEN_HERMES_PROFILE", "development")
+	t.Setenv("LUMEN_HERMES_BASE_URL", "http://127.0.0.1:1")
+	t.Setenv("LUMEN_HERMES_BEARER_FILE", generalToken)
+	t.Setenv("LUMEN_CHAT_BASE_URL", "http://127.0.0.1:28643")
+	t.Setenv("LUMEN_CHAT_PROVIDER_URL", "http://host.docker.internal:12345/v1")
+	t.Setenv("LUMEN_CHAT_BEARER_FILE", chatToken)
+	t.Setenv("LUMEN_CHAT_CONTAINER_ID", strings.Repeat("a", 64))
+	t.Setenv("LUMEN_CHAT_CONFIG_FILE", filepath.Join(d, "chat-config.yaml"))
+	t.Setenv("LUMEN_CHAT_PROBE_FILE", filepath.Join(d, "chat-probe.json"))
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Initialize(cfg); err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Shutdown()
+	if s.executor.options.certifier == nil || s.executor.options.conversationRuntime == nil {
+		t.Fatal("local chat configuration did not wire a dedicated certifier and runtime")
+	}
+}
+
+func TestLocalChatConfigurationRequiresCompleteLoopbackBinding(t *testing.T) {
+	d := t.TempDir()
+	base := Config{DataDir: d, SocketPath: filepath.Join(d, "host.sock"), CredentialPath: filepath.Join(d, "operator"), HermesProfile: "development", ChatBaseURL: "http://127.0.0.1:28643", ChatBearerPath: filepath.Join(d, "chat.token"), ChatContainerID: strings.Repeat("a", 64), ChatConfigPath: filepath.Join(d, "chat-config.yaml"), ChatProbePath: filepath.Join(d, "chat-probe.json"), ChatProviderURL: "http://host.docker.internal:12345/v1"}
+	if err := base.valid(); err != nil {
+		t.Fatalf("valid local chat config rejected: %v", err)
+	}
+	for name, change := range map[string]func(*Config){
+		"partial":       func(c *Config) { c.ChatContainerID = "" },
+		"non-loopback":  func(c *Config) { c.ChatBaseURL = "http://0.0.0.0:28643" },
+		"relative-file": func(c *Config) { c.ChatProbePath = "probe.json" },
+		"hardened":      func(c *Config) { c.HermesProfile = "hardened" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := base
+			change(&c)
+			if err := c.valid(); err == nil {
+				t.Fatal("unsafe chat configuration accepted")
+			}
+		})
 	}
 }
 

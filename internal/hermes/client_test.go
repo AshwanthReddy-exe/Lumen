@@ -529,6 +529,30 @@ func TestVerifiedEndpointIdentityUsesPinnedTLSPeer(t *testing.T) {
 	if identity != want {
 		t.Fatalf("identity = %q, want pinned TLS leaf identity %q", identity, want)
 	}
+	conversationIdentity, err := c.VerifiedConversationEndpointIdentity(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conversationIdentity != srv.URL+"|"+want {
+		t.Fatalf("conversation endpoint = %q, want origin and verified leaf", conversationIdentity)
+	}
+	other := newMutualTLSServer(t, pki, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	otherCfg := cfg
+	otherCfg.BaseURL = other.URL
+	otherClient, err := New(otherCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherIdentity, err := otherClient.VerifiedConversationEndpointIdentity(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if otherIdentity == conversationIdentity {
+		t.Fatal("two origins sharing a TLS certificate had the same conversation endpoint identity")
+	}
 }
 
 func TestResponsesRequireKnownFieldsAndStatuses(t *testing.T) {

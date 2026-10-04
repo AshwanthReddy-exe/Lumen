@@ -10,13 +10,17 @@ func cloneState(s State) State {
 }
 
 func Apply(s State, c Command) Transition {
-	s = cloneState(s)
+	s = NormalizeState(cloneState(s))
 	id := commandID(c)
 	if id == "" {
 		return reject(s, c, "invalid_identifier")
 	}
 	contentBytes, _ := json.Marshal(c)
 	content := string(contentBytes)
+	if c.Type == CommandSaveMemory {
+		// Keep replay identity without retaining deleted memory text in the command ledger.
+		content = DigestText(content)
+	}
 	if s.Commands != nil {
 		if old, ok := s.Commands[id]; ok {
 			if old.Content != content {
@@ -35,6 +39,26 @@ func Apply(s State, c Command) Transition {
 	switch c.Type {
 	case CommandCreateSpace:
 		tr = create(s, c)
+	case CommandCreateConversation:
+		tr = createConversation(s, c)
+	case CommandSendConversation:
+		tr = sendConversation(s, c)
+	case CommandCompleteConversation:
+		tr = completeConversation(s, c)
+	case CommandSetPreference:
+		tr = setPreference(s, c)
+	case CommandSaveMemory:
+		tr = saveMemory(s, c)
+	case CommandDeleteMemory:
+		tr = deleteMemory(s, c)
+	case CommandReserveRuntimeSession:
+		tr = reserveRuntimeSession(s, c)
+	case CommandBindRuntimeSession:
+		tr = bindRuntimeSession(s, c)
+	case CommandInvalidateRuntimeCertification:
+		tr = invalidateRuntimeCertification(s, c)
+	case CommandRegisterSurface:
+		tr = registerSurface(s, c)
 	case CommandPairNode:
 		tr = pair(s, c)
 	case CommandAdvertiseCapability:
@@ -246,6 +270,9 @@ func complete(s State, c Command) Transition {
 	if !ok {
 		return reject(s, c, "task_unknown")
 	}
+	if t.CapabilityID == "conversation.chat/respond" {
+		return reject(s, c, "conversation_evidence_requires_host")
+	}
 	if c.ActorID != t.TargetNodeID {
 		return reject(s, c, "unauthorized_actor")
 	}
@@ -302,6 +329,11 @@ func recover(s State, c Command) Transition {
 	}
 	for id, t := range s.Tasks {
 		if t.Status == OutcomeQueued || t.Status == OutcomeCreating || t.Status == OutcomeDispatched || t.Status == OutcomeRunning || t.Status == OutcomeCancelling {
+			if t.CapabilityID == "conversation.chat/respond" && (t.Status == OutcomeDispatched || t.Status == OutcomeRunning) {
+				if _, mapped := s.HostRuns[id]; mapped {
+					continue
+				}
+			}
 			t.Status = OutcomeUnknown
 			t.TerminalReason = "host_restarted"
 			s.Tasks[id] = t

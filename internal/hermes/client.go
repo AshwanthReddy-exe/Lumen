@@ -351,6 +351,17 @@ func (c *Client) VerifiedEndpointIdentity(ctx context.Context) (string, error) {
 	return "tls-leaf-sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
+// VerifiedConversationEndpointIdentity binds the authenticated peer to the
+// configured origin. The same certificate at another origin is a different
+// conversation endpoint even though its TLS leaf identity is unchanged.
+func (c *Client) VerifiedConversationEndpointIdentity(ctx context.Context) (string, error) {
+	identity, err := c.VerifiedEndpointIdentity(ctx)
+	if err != nil {
+		return "", err
+	}
+	return canonicalEndpoint(c.baseURL) + "|" + identity, nil
+}
+
 func (c *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 	var out Capabilities
 	b, err := c.request(ctx, http.MethodGet, "/v1/capabilities", nil, "application/json", "")

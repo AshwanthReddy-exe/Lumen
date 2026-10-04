@@ -1,0 +1,9 @@
+# Hermes chat profile probe
+
+`chat-config.yaml` is a candidate config for a **dedicated** Hermes API process at the pinned `v2026.9.7` source commit. Apply `patches/0001-lumen-chat-zero-tool.patch`, keep its `HERMES_HOME` separate from the general-purpose runtime, and set `HERMES_SAFE_MODE=1` and `LUMEN_CHAT_ZERO_TOOL=1`. The config excludes API tools, default MCP servers, built-in memory, the external memory provider, and auxiliary title generation. The source patch denies model tool calls before execution and disables room dispatch.
+
+Run `check_chat_profile.py` using the installed Hermes Python interpreter, from its source/install environment, with the same `HERMES_HOME` and environment as that API process. The preflight resolves ordinary API toolsets and constructs an agent; it exits nonzero if it sees any tools or built-in/provider memory. It does not verify the installed source pin, bind to a running process, exercise API sessions or context files, or issue a runtime certificate.
+
+Run `python3 integrations/hermes/live_chat_probe.py --source /path/to/patched/hermes` from the Lumen repository to exercise a disposable isolated API server. The probe checks forced terminal, session-search, and memory-write calls, context and memory sentinels, explicit-history isolation, room-route admission, and ordinary text completion. It does not issue a Host certificate. The remaining gate binds the deployed source artifact, process, config, and endpoint identity to a short-lived Host certificate and proves restart continuity. Until that gate passes, Lumen does not send canonical conversation content.
+
+After building the pinned patched image, run `python3 integrations/hermes/container_chat_probe.py --image <image>` to check an isolated container and negative Runs behavior. The container probe uses only synthetic credentials and a synthetic model provider. Production Compose and credential delivery remain part of the deployment binding gate.
