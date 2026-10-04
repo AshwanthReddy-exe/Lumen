@@ -1,22 +1,23 @@
 # Planned file inventory — 2026-10-04
 
-Generated from the `files_modified` inventories of GSD Phases 03–17 and current plan audits. This snapshot contains 57 existing and 251 proposed unique paths. `existing` means a path exists in the current checkout; `proposed` means it does not. Paths are ownership targets, not a promise that a future decision-gated branch will create every file. Consult the owning plan and shared contracts before editing.
+Generated from the current files_modified inventories of GSD Phases 03–17. This snapshot contains 67 existing and 252 proposed unique paths. Existing means a path exists in this checkout; proposed means it does not. Conditional D-056 paths remain candidates until the owner-approved physical branch binds the affected plan. Paths are ownership targets, not proof of a successful build or live gate.
 
 | Path | Current status | Owning plan(s) |
 | --- | --- | --- |
 | `.planning/phases/03-conversation-and-web/03-01-EVIDENCE.md` | proposed | 03-01 |
 | `.planning/phases/03-conversation-and-web/03-03-EVIDENCE.md` | proposed | 03-03 |
 | `.planning/phases/03-conversation-and-web/03-EVIDENCE.md` | proposed | 03-05 |
-| `.planning/phases/04-accepted-memory-and-context-controls/04-EVIDENCE.md` | proposed | 04-04, 04-04 |
+| `.planning/phases/04-accepted-memory-and-context-controls/04-EVIDENCE.md` | proposed | 04-04 |
 | `.planning/phases/05-phone-identity-and-chat/05-01-EVIDENCE.md` | proposed | 05-01 |
 | `.planning/phases/05-phone-identity-and-chat/05-04-PLAN.md` | existing | 05-01 |
 | `.planning/phases/05-phone-identity-and-chat/05-EVIDENCE.md` | proposed | 05-05 |
 | `.planning/phases/06-attention-inbox-and-human-input/06-03-PLAN.md` | existing | 05-01 |
 | `.planning/phases/06-attention-inbox-and-human-input/06-EVIDENCE.md` | proposed | 06-04 |
-| `.planning/phases/07-mac-node-and-useful-action/07-EVIDENCE.md` | proposed | 07-03 |
+| `.planning/phases/07-mac-node-and-useful-action/07-EVIDENCE.md` | proposed | 07-06 |
 | `.planning/phases/08-desk-voice/08-EVIDENCE.md` | proposed | 08-01, 08-02 |
 | `.planning/phases/09-integrated-local-product/09-EVIDENCE.md` | proposed | 09-01, 09-02 |
-| `.planning/phases/10-always-on-deployment-and-alpha-release/10-EVIDENCE.md` | proposed | 10-02, 10-03, 10-04, 10-05 |
+| `.planning/phases/10-always-on-deployment-and-alpha-release/10-04-PLAN.md` | existing | 05-01 |
+| `.planning/phases/10-always-on-deployment-and-alpha-release/10-EVIDENCE.md` | proposed | 10-01, 10-02, 10-03, 10-04, 10-05 |
 | `.planning/phases/11-messaging-integration/11-01-EVIDENCE.md` | proposed | 11-01 |
 | `.planning/phases/11-messaging-integration/11-02-EVIDENCE.md` | proposed | 11-02 |
 | `.planning/phases/11-messaging-integration/11-03-EVIDENCE.md` | proposed | 11-03 |
@@ -45,16 +46,24 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and curren
 | `.planning/phases/17-public-integrations-and-shared-spaces/17-02-EVIDENCE.md` | proposed | 17-02 |
 | `.planning/phases/17-public-integrations-and-shared-spaces/17-03-EVIDENCE.md` | proposed | 17-03 |
 | `.planning/phases/17-public-integrations-and-shared-spaces/17-04-EVIDENCE.md` | proposed | 17-04 |
+| `apps/android-host/src/androidTest/kotlin/dev/lumen/android/host/LumenHostActivityTest.kt` | existing | 08-01 |
 | `apps/android-host/src/androidTest/kotlin/dev/lumen/android/host/SpeechDeviceTest.kt` | proposed | 08-02 |
 | `apps/android-host/src/androidTest/kotlin/dev/lumen/android/host/WakeDeviceTest.kt` | proposed | 08-01 |
-| `apps/android-host/src/main/AndroidManifest.xml` | existing | 08-01 |
-| `apps/android-host/src/main/kotlin/dev/lumen/android/host/LumenHostActivity.kt` | existing | 08-02 |
-| `apps/android-host/src/main/kotlin/dev/lumen/android/host/Pairing.kt` | proposed | 05-04, 10-04 |
+| `apps/android-host/src/main/AndroidManifest.xml` | existing | 08-01, 08-02 |
+| `apps/android-host/src/main/kotlin/dev/lumen/android/host/CompanionEvents.kt` | proposed | 08-02 |
+| `apps/android-host/src/main/kotlin/dev/lumen/android/host/CompanionScreenModel.kt` | existing | 08-01 |
+| `apps/android-host/src/main/kotlin/dev/lumen/android/host/DeskIdentity.kt` | proposed | 08-02 |
+| `apps/android-host/src/main/kotlin/dev/lumen/android/host/LumenHostActivity.kt` | existing | 08-01, 08-02 |
+| `apps/android-host/src/main/kotlin/dev/lumen/android/host/Pairing.kt` | proposed | 10-04 |
 | `apps/android-host/src/main/kotlin/dev/lumen/android/host/SpeechPipeline.kt` | proposed | 08-02 |
 | `apps/android-host/src/main/kotlin/dev/lumen/android/host/VoiceMode.kt` | proposed | 08-01 |
-| `apps/android-host/src/test/kotlin/dev/lumen/android/host/SpeechPipelineTest.kt` | proposed | 08-02 |
+| `apps/android-host/src/main/kotlin/dev/lumen/android/host/VoiceOutbox.kt` | proposed | 08-02 |
+| `apps/android-host/src/test/kotlin/dev/lumen/android/host/CompanionEventsTest.kt` | proposed | 08-02 |
+| `apps/android-host/src/test/kotlin/dev/lumen/android/host/DeskIdentityTest.kt` | proposed | 08-02 |
 | `apps/android-host/src/test/kotlin/dev/lumen/android/host/PairingTest.kt` | proposed | 10-04 |
+| `apps/android-host/src/test/kotlin/dev/lumen/android/host/SpeechPipelineTest.kt` | proposed | 08-02 |
 | `apps/android-host/src/test/kotlin/dev/lumen/android/host/VoiceModeTest.kt` | proposed | 08-01 |
+| `apps/android-host/src/test/kotlin/dev/lumen/android/host/VoiceOutboxTest.kt` | proposed | 08-02 |
 | `apps/linux-node/files_linux.go` | proposed | 13-04 |
 | `apps/linux-node/identity_linux.go` | proposed | 13-04 |
 | `apps/linux-node/main_linux.go` | proposed | 13-04 |
@@ -63,19 +72,21 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and curren
 | `apps/mac-node/Package.swift` | proposed | 07-01 |
 | `apps/mac-node/Sources/LumenNode/Coding.swift` | proposed | 13-02 |
 | `apps/mac-node/Sources/LumenNode/CodingApply.swift` | proposed | 13-03 |
-| `apps/mac-node/Sources/LumenNode/Connection.swift` | proposed | 07-03 |
+| `apps/mac-node/Sources/LumenNode/Connection.swift` | proposed | 07-04, 07-05 |
 | `apps/mac-node/Sources/LumenNode/Files.swift` | proposed | 07-01 |
 | `apps/mac-node/Sources/LumenNode/Identity.swift` | proposed | 07-01, 10-04 |
-| `apps/mac-node/Sources/LumenNode/ReceiptStore.swift` | proposed | 07-03 |
+| `apps/mac-node/Sources/LumenNode/LocalAction.swift` | proposed | 07-01 |
+| `apps/mac-node/Sources/LumenNode/ReceiptStore.swift` | proposed | 07-04 |
 | `apps/mac-node/Sources/LumenNode/Reminders.swift` | proposed | 12-02 |
 | `apps/mac-node/Sources/LumenNode/main.swift` | proposed | 07-01 |
 | `apps/mac-node/Tests/LumenNodeTests/CodingApplyTests.swift` | proposed | 13-03 |
 | `apps/mac-node/Tests/LumenNodeTests/CodingTests.swift` | proposed | 13-02 |
-| `apps/mac-node/Tests/LumenNodeTests/ConnectionTests.swift` | proposed | 07-03 |
+| `apps/mac-node/Tests/LumenNodeTests/ConnectionTests.swift` | proposed | 07-04, 07-05 |
 | `apps/mac-node/Tests/LumenNodeTests/FilesTests.swift` | proposed | 07-01 |
 | `apps/mac-node/Tests/LumenNodeTests/IdentityTests.swift` | proposed | 07-01, 10-04 |
 | `apps/mac-node/Tests/LumenNodeTests/InvocationFixtureTests.swift` | proposed | 07-02 |
-| `apps/mac-node/Tests/LumenNodeTests/ReceiptStoreTests.swift` | proposed | 07-03 |
+| `apps/mac-node/Tests/LumenNodeTests/LocalActionTests.swift` | proposed | 07-01 |
+| `apps/mac-node/Tests/LumenNodeTests/ReceiptStoreTests.swift` | proposed | 07-04 |
 | `apps/mac-node/Tests/LumenNodeTests/RemindersTests.swift` | proposed | 12-02 |
 | `apps/phone/src/attention.test.tsx` | proposed | 06-03 |
 | `apps/phone/src/attention.tsx` | proposed | 06-03 |
@@ -83,20 +94,25 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and curren
 | `apps/phone/src/outbox.ts` | proposed | 05-04 |
 | `apps/phone/src/pairing.tsx` | proposed | 05-04, 10-04 |
 | `apps/phone/src/sync.test.ts` | proposed | 05-04, 10-04 |
-| `apps/web/package.json` | proposed | 03-04 |
 | `apps/web/package-lock.json` | proposed | 03-04 |
+| `apps/web/package.json` | proposed | 03-04 |
 | `apps/web/src/attention.test.tsx` | proposed | 06-03 |
 | `apps/web/src/attention.tsx` | proposed | 06-03 |
 | `apps/web/src/automation.tsx` | proposed | 14-02 |
 | `apps/web/src/coding_review.tsx` | proposed | 13-03 |
-| `apps/web/src/conversation.test.tsx` | proposed | 03-04 |
-| `apps/web/src/conversation.tsx` | proposed | 03-04 |
-| `apps/web/vite.config.ts` | proposed | 03-03 |
+| `apps/web/src/context-controls.test.tsx` | proposed | 04-03 |
+| `apps/web/src/context-controls.tsx` | proposed | 04-03 |
+| `apps/web/src/conversation.test.tsx` | proposed | 03-04, 07-05 |
+| `apps/web/src/conversation.tsx` | proposed | 03-04, 04-03, 07-05 |
+| `apps/web/src/devices.test.tsx` | proposed | 05-03 |
 | `apps/web/src/devices.tsx` | proposed | 05-03 |
-| `apps/web/src/main.tsx` | proposed | 03-04 |
+| `apps/web/src/invocations.test.tsx` | proposed | 07-05 |
+| `apps/web/src/invocations.tsx` | proposed | 07-05 |
+| `apps/web/src/main.tsx` | proposed | 03-04, 04-03 |
 | `apps/web/src/members.tsx` | proposed | 17-04 |
 | `apps/web/src/memory.test.tsx` | proposed | 04-03 |
 | `apps/web/src/memory.tsx` | proposed | 04-03 |
+| `apps/web/vite.config.ts` | proposed | 03-04 |
 | `apps/windows-node/files_windows.go` | proposed | 13-04 |
 | `apps/windows-node/identity_windows.go` | proposed | 13-04 |
 | `apps/windows-node/main_windows.go` | proposed | 13-04 |
@@ -104,8 +120,8 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and curren
 | `apps/windows-node/receipt_store.go` | proposed | 13-04 |
 | `cmd/lumen-host/devices.go` | proposed | 05-03 |
 | `cmd/lumen-host/devices_test.go` | proposed | 05-03 |
-| `cmd/lumen-host/main.go` | existing | 03-03 |
-| `cmd/lumen-host/main_test.go` | existing | 03-03 |
+| `cmd/lumen-host/main.go` | existing | 03-03, 04-01, 07-03 |
+| `cmd/lumen-host/main_test.go` | existing | 03-03, 04-01 |
 | `cmd/lumen-managed/http_auth.go` | proposed | 16-02 |
 | `cmd/lumen-managed/http_auth_test.go` | proposed | 16-02 |
 | `cmd/lumen/backup.go` | proposed | 10-04, 15-03 |
@@ -146,43 +162,37 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and curren
 | `internal/control/control_test.go` | existing | 03-03 |
 | `internal/control/protocol.go` | existing | 03-03 |
 | `internal/control/server.go` | existing | 03-03 |
-| `internal/conversation/context.go` | proposed | 04-02 |
-| `internal/conversation/context_test.go` | proposed | 04-02 |
 | `internal/conversation/eval_memory_test.go` | proposed | 04-04 |
-| `internal/conversation/projection.go` | existing | 03-02 |
+| `internal/conversation/projection.go` | existing | 03-02, 04-02, 04-04 |
 | `internal/conversation/recovery.go` | existing | 03-02 |
-| `internal/conversation/service.go` | existing | 03-02 |
-| `internal/hermes/capability.go` | proposed | 07-02 |
-| `internal/hermes/capability_test.go` | proposed | 07-02 |
+| `internal/conversation/service.go` | existing | 03-02, 04-01, 04-02 |
+| `internal/conversation/service_test.go` | existing | 03-02, 04-01, 04-02, 04-04 |
+| `internal/hermes/capability.go` | proposed | 07-03 |
+| `internal/hermes/capability_test.go` | proposed | 07-03 |
 | `internal/hermes/client.go` | existing | 06-04, 12-03 |
 | `internal/hermes/client_test.go` | existing | 06-04 |
 | `internal/host/approval.go` | proposed | 06-01 |
 | `internal/host/approval_test.go` | proposed | 06-01 |
-| `internal/host/attention_http.go` | proposed | 06-02 |
-| `internal/host/attention_http_test.go` | proposed | 06-02 |
+| `internal/host/attention_http.go` | proposed | 06-02, 07-05 |
+| `internal/host/attention_http_test.go` | proposed | 06-02, 07-05 |
 | `internal/host/automation_dispatch.go` | proposed | 14-01 |
 | `internal/host/automation_dispatch_test.go` | proposed | 14-01 |
 | `internal/host/automation_http.go` | proposed | 14-02, 14-03, 14-04 |
 | `internal/host/browser_broker.go` | proposed | 12-03, 12-04 |
-| `internal/host/capability_broker.go` | proposed | 07-02, 12-02 |
-| `internal/host/capability_broker_test.go` | proposed | 12-02 |
-| `internal/host/capability_broker_test.go` | proposed | 07-02 |
+| `internal/host/capability_broker.go` | proposed | 07-02, 07-03, 07-04, 07-05, 12-02 |
+| `internal/host/capability_broker_test.go` | proposed | 07-02, 07-03, 12-02 |
 | `internal/host/coding_broker.go` | proposed | 13-01, 13-02, 13-03 |
-| `internal/host/conversation.go` | existing | 03-02 |
-| `internal/host/conversation_http.go` | proposed | 03-03 |
-| `internal/host/conversation_http_test.go` | proposed | 03-03 |
-| `internal/host/web_assets.go` | proposed | 03-03 |
-| `internal/host/web_assets_test.go` | proposed | 03-03 |
-| `internal/host/web_embed.go` | proposed | 03-04 |
-| `internal/host/web_embed_test.go` | proposed | 03-04 |
-| `internal/host/conversation_test.go` | existing | 03-02 |
+| `internal/host/conversation.go` | existing | 03-02, 04-01 |
+| `internal/host/conversation_http.go` | proposed | 03-03, 04-03, 07-03, 07-05 |
+| `internal/host/conversation_http_test.go` | proposed | 03-03, 04-03, 07-03, 07-05 |
+| `internal/host/conversation_test.go` | existing | 04-01 |
 | `internal/host/device_identity.go` | proposed | 05-03 |
 | `internal/host/device_identity_test.go` | proposed | 05-03 |
 | `internal/host/entitlement.go` | proposed | 15-03 |
 | `internal/host/epoch_fence.go` | proposed | 10-04 |
 | `internal/host/epoch_fence_test.go` | proposed | 10-04 |
-| `internal/host/execution.go` | existing | 03-02, 06-01 |
-| `internal/host/execution_test.go` | existing | 03-02, 06-01 |
+| `internal/host/execution.go` | existing | 03-02, 06-01, 07-03 |
+| `internal/host/execution_test.go` | existing | 03-02, 06-01, 07-03 |
 | `internal/host/interaction.go` | proposed | 06-02, 06-04 |
 | `internal/host/interaction_test.go` | proposed | 06-02, 06-04 |
 | `internal/host/member_backup.go` | proposed | 17-04 |
@@ -191,13 +201,14 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and curren
 | `internal/host/member_projection.go` | proposed | 17-04 |
 | `internal/host/member_projection_test.go` | proposed | 17-04 |
 | `internal/host/membership_http.go` | proposed | 17-04 |
-| `internal/host/memory.go` | proposed | 04-01 |
-| `internal/host/memory_http.go` | proposed | 04-03 |
-| `internal/host/memory_http_test.go` | proposed | 04-03 |
-| `internal/host/memory_test.go` | proposed | 04-01 |
 | `internal/host/message_bridge.go` | proposed | 11-02, 11-03 |
-| `internal/host/node_transport.go` | proposed | 07-03 |
-| `internal/host/node_transport_test.go` | proposed | 07-03 |
+| `internal/host/node_transport.go` | proposed | 07-04 |
+| `internal/host/node_transport_test.go` | proposed | 07-04 |
+| `internal/host/service.go` | existing | 04-01 |
+| `internal/host/web_assets.go` | proposed | 03-03 |
+| `internal/host/web_assets_test.go` | proposed | 03-03 |
+| `internal/host/web_embed.go` | proposed | 03-04 |
+| `internal/host/web_embed_test.go` | proposed | 03-04 |
 | `internal/integrations/messaging.go` | proposed | 11-01, 11-02 |
 | `internal/integrations/outbox.go` | proposed | 11-03 |
 | `internal/managed/auth.go` | proposed | 16-02 |
@@ -219,31 +230,32 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and curren
 | `internal/setup/runner_test.go` | existing | 10-01, 10-03 |
 | `internal/setup/supervisor.go` | existing | 10-02 |
 | `internal/setup/supervisor_test.go` | existing | 10-02 |
-| `internal/space/apply.go` | existing | 03-01, 03-03 |
-| `internal/space/attention.go` | proposed | 06-01 |
+| `internal/space/apply.go` | existing | 03-01, 03-03, 04-01, 04-02, 05-03, 07-02 |
+| `internal/space/attention.go` | proposed | 06-01, 07-02 |
 | `internal/space/attention_test.go` | proposed | 06-01 |
 | `internal/space/automation.go` | proposed | 14-01, 14-04 |
 | `internal/space/browser.go` | proposed | 12-04 |
 | `internal/space/channel.go` | proposed | 11-02, 11-03 |
 | `internal/space/coding.go` | proposed | 13-01, 13-03 |
-| `internal/space/conversation.go` | proposed | 03-01 |
-| `internal/space/conversation_test.go` | existing | 03-01, 03-03 |
+| `internal/space/conversation.go` | proposed | 07-05 |
+| `internal/space/conversation_test.go` | existing | 03-01, 03-03, 04-01, 04-02, 05-03, 07-05 |
 | `internal/space/device.go` | proposed | 05-02 |
 | `internal/space/device_test.go` | proposed | 05-02 |
 | `internal/space/entitlement.go` | proposed | 15-03 |
 | `internal/space/host_epoch.go` | proposed | 10-04 |
 | `internal/space/host_epoch_test.go` | proposed | 10-04 |
-| `internal/space/invocation.go` | proposed | 07-02 |
+| `internal/space/invocation.go` | proposed | 07-02, 07-04, 07-05 |
 | `internal/space/invocation_test.go` | proposed | 07-02 |
 | `internal/space/membership.go` | proposed | 17-04 |
 | `internal/space/membership_test.go` | proposed | 17-04 |
-| `internal/space/memory.go` | proposed | 04-01 |
-| `internal/space/memory_test.go` | proposed | 04-01 |
-| `internal/space/model.go` | existing | 03-01, 03-03 |
-| `internal/space/policy.go` | existing | 04-02 |
-| `internal/space/policy_test.go` | proposed | 04-02 |
+| `internal/space/model.go` | existing | 03-01, 03-03, 04-01, 04-02, 05-03, 07-02 |
+| `internal/space/policy.go` | existing | 07-02 |
+| `internal/space/reducer.go` | existing | 03-01, 04-01, 04-02, 05-03 |
 | `internal/space/reminder.go` | proposed | 12-01 |
 | `internal/space/reminder_test.go` | proposed | 12-01 |
+| `internal/space/state.go` | existing | 04-01, 04-02, 05-03, 07-02 |
+| `internal/space/state_test.go` | existing | 04-01, 04-02, 05-03 |
+| `internal/space/types.go` | existing | 03-01, 04-01, 04-02 |
 | `internal/store/automation.go` | proposed | 14-01 |
 | `internal/store/automation_test.go` | proposed | 14-01 |
 | `internal/store/membership.go` | proposed | 17-04 |
@@ -262,14 +274,13 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and curren
 | `protocol/fixtures/browser-v1.json` | proposed | 12-03 |
 | `protocol/fixtures/channel-v1.json` | proposed | 11-01, 11-02 |
 | `protocol/fixtures/coding-v1.json` | proposed | 13-01 |
-| `protocol/fixtures/conversation-http-v1.json` | proposed | 03-03 |
-| `protocol/fixtures/conversation-v1.json` | proposed | 03-01 |
+| `protocol/fixtures/conversation-http-v1.json` | proposed | 03-03, 04-03 |
 | `protocol/fixtures/integration-v1.json` | proposed | 17-01 |
 | `protocol/fixtures/invocation-v1.json` | proposed | 07-02 |
 | `protocol/fixtures/membership-v1.json` | proposed | 17-04 |
-| `protocol/fixtures/memory-v1.json` | proposed | 04-01 |
 | `protocol/fixtures/node-v1.json` | proposed | 07-01, 13-04, 17-01 |
 | `protocol/fixtures/reminder-v1.json` | proposed | 12-01 |
+| `protocol/fixtures/space-v1.json` | existing | 03-01, 04-01, 04-02, 05-03 |
 | `protocol/fixtures/tenant-v1.json` | proposed | 16-02 |
 | `scripts/install.sh` | existing | 10-01, 15-02 |
 | `scripts/lumen-cross-machine-check` | existing | 10-03 |
@@ -304,7 +315,7 @@ Generated from the `files_modified` inventories of GSD Phases 03–17 and curren
 | `test/scenario/managed_isolation_test.go` | proposed | 16-04 |
 | `test/scenario/managed_restore_test.go` | proposed | 16-04 |
 | `test/scenario/messaging_continuity_test.go` | proposed | 11-04 |
-| `test/scenario/node_disconnect_test.go` | proposed | 07-03, 09-01 |
+| `test/scenario/node_disconnect_test.go` | proposed | 07-06, 09-01 |
 | `test/scenario/personal_alpha_laptop_off_test.go` | proposed | 10-05 |
 | `test/scenario/personal_alpha_local_test.go` | proposed | 09-01 |
 | `test/scenario/phone_suspend_test.go` | proposed | 09-02 |

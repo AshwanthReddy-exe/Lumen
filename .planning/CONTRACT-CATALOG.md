@@ -46,12 +46,14 @@ The table is a minimum schema checklist. Names are provisional; existing `State`
 | `Node` | Host: id, public key/fingerprint, enrollment/rotation/revocation revision, credential epoch, last health | Pairing grants no capability; revoked key cannot read or dispatch |
 | `Grant` | Host: actor/node/capability/action/resource/data/time scope, deny/ask/allow, revision, expiry, offline permission | Default deny; adapter cannot widen; target rechecks OS permission |
 | `Approval/Interaction` | Host: run/task, exact action digest or question id, actor, target, expiry, resolution, consume/delivery state | Clarification never grants authority; exact approval has one winner and one use |
-| `Invocation` | Host: id, source/target, capability/version, canonical args digest, grant/approval revision, deadline, status, dispatch attempt | Persist before send; never silently retarget; uncertain effect is not automatically repeated |
+| `Invocation` | Host: id, actor/source, required conversation id, optional source message id, selected target, capability/version, canonical args digest, grant/approval revision, deadline, status, dispatch attempt | Verify conversation participation; persist before send; never silently retarget; uncertain effect is not automatically repeated |
 | `ExecutionReceipt` | Host plus target evidence: invocation id, target epoch, output digest/reference, observed effect, final/unknown state | Distinguish observed completion from request acceptance and delivery |
 | `ArtifactReference` | Host: encrypted object id, digest, MIME, source, scope, retention, size | No raw artifact in ordinary audit/log/prompt; bounded delivery |
 | `AutomationOccurrence` | Host separate control ledger: schedule id/version, nominal time/zone, occurrence id, lease, budget, outcome | Duplicate ticks map to one occurrence and one effect intent |
 
 For all mutating records, commit audit metadata with the state transition. If the current store's full-snapshot rewrite cannot meet throughput/atomicity, Phase 03 must choose an encrypted transactional path with a tested migration, not quietly add a second database for a subset of authority.
+
+**Phase 07 invocation handoff.** An `ask` commits the exact pending invocation and Phase 06 approval request in one Host update; acceptance consumes the approved request once and advances that same invocation ID after revalidation. The Host commits redacted invocation and final receipt events under its verified source conversation ID before publishing, so snapshot and fixed-watermark replay show the same receipt across surfaces. A mapped Hermes Run supplies actor and conversation from its Host binding; only a pinned documented typed callback may enter the same broker. A parser without a supported callback is `UNSUPPORTED`, never an action path. The Mac entrypoint exposes owner-console local search/read and one-time local `ask` confirmation; local execution never borrows Host authority.
 
 ## State machines and legal transitions
 
@@ -127,9 +129,12 @@ The names below are intended API boundaries; they are not required verbatim if c
 | `internal/host/device_identity.go` | `BeginEnrollment`, `ConfirmEnrollment`, `RotateKey`, `RevokeNode`, `AuthenticateNode` | Owner-confirmed key and one-use invite → node credential; replay/old epoch denied |
 | `internal/host/node_transport.go` | `Attach`, `Replay`, `Dispatch`, `Cancel`, `ObserveReceipt` | Authenticated node stream; stable IDs, bounded frames, reconnection and unknown-outcome handling |
 | `internal/space/attention.go` | `RequestQuestion`, `RequestApproval`, `ResolveQuestion`, `ResolveApproval` | Exact binding, expiry, compare-and-set; question has no grant side effect |
-| `internal/host/capability_broker.go` | `SelectTarget`, `AuthorizeInvocation`, `DispatchInvocation`, `ReconcileInvocation` | Actor+capability+typed args+explicit target → one durable invocation; default deny and node revalidation |
+| `internal/host/capability_broker.go` | `SelectTarget`, `AuthorizeInvocation`, `ResumeApprovedInvocation`, `DispatchInvocation`, `ReconcileInvocation` | Actor+conversation+capability+typed args+owner target constraint → one durable invocation; pending ask commits attention, accepted decision consumes once, default deny and node revalidation |
+| `internal/host/execution.go` | `AcceptRuntimeCapabilityIntent` from a mapped, documented Hermes callback | Derive actor/conversation from persisted Run, then call the same broker; unsupported callback cannot claim action support |
+| `apps/mac-node/.../main.swift` | Owner-console `local grant-root|search|read` caller | Selected bookmark and exact one-time ask preview → LocalAction; wrong-user/noninteractive requests deny |
 | `apps/mac-node/.../Files.swift` | `Search`, `Read` | Selected security-scoped root + canonical relative path → bounded results; race/symlink/oversize denial |
 | `apps/phone/.../outbox` | `Queue`, `FindReceipt`, `RetrySameID`, `ApplyReplay` | Persist ID before network; pairing change fences pending sends; merge by Host revision |
+| `apps/android-host/.../DeskIdentity.kt` | Bind selected D-056 desk identity | Shared-client pass enrolls a distinct desk node; fallback reuses this app's Phase 05 key; blocked branch cannot submit |
 | `internal/host/interaction.go` | `ObserveRuntimeRequest`, `DeliverDecision`, `ReconcileDecision` | Documented Hermes request ID only; uncertain delivery remains visible |
 | `internal/integrations/messaging.go` | `ValidateIngress`, `MapThread`, `QueueDelivery`, `ReconcileDelivery` | Explicit linked identity/thread → Space message/receipt; forged sender and duplicate provider event denied |
 | `internal/automation/ledger.go` | `PreviewGoal`, `ApproveGoal`, `ClaimOccurrence`, `Checkpoint`, `CancelLineage` | Stable occurrence/lease/budget; stale worker cannot effect |
@@ -147,7 +152,7 @@ The wire contract starts as versioned JSON as decided in `docs/PLAN.md`; generat
 | `/v1/context-preferences` | 04 | Owner reads/sets per-destination capability disclosure level with version preconditions; unknown, unpaired, or ungranted target denies |
 | `/v1/enrollment`, `/v1/nodes`, `/{id}/rotate|revoke` | 05 | One-use invitation, confirmation, authenticated node identity and management |
 | `/v1/attention`, `/{id}/resolve` | 06 | Separate question/approval schemas and one accepted resolution |
-| `/v1/invocations`, `/{id}/receipt|cancel` | 07 | Typed action, target selection, Host grant check, durable receipt and uncertainty |
+| `/v1/invocations`, `/{id}/receipt|cancel` | 07 | Authenticated actor and conversation, typed action, Host target/grant check, pending exact approval, durable receipt in same conversation replay and uncertainty |
 | `/v1/integrations`, `/v1/automations` | 11/14 | Explicit lifecycle/status, never raw Hermes administration |
 
 Every mutating route requires schema/version, authenticated actor, operation ID and payload digest. Define response codes for validation denial, stale revision, unsupported version, unknown outcome, and dependency unavailable. Publish cross-language fixture vectors for canonical argument hashing, signatures, cursor gaps, duplicate commands, and backward/forward compatibility. Each client supports at least the current and prior published protocol generation or fails with upgrade guidance; no silent schema downgrade.

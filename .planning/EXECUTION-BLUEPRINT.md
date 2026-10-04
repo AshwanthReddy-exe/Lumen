@@ -61,11 +61,12 @@ Requirements FR-31, FR-81, FR-82. Future OS approval cards inform UI only; Host 
 
 Requirements FR-11–14, FR-20–22, FR-35, FR-64–65. The first real effect is selected-root `files.search/read` on an awake target computer; later effects use the same broker.
 
-1. **07-01 target node and manifest.** Own `apps/mac-node/` for the first tested target, `protocol/fixtures/node-v1.json`, and node tests. Pair and authenticate separately from grants. Advertise versioned capabilities/health; local stop and key storage must work before execution.
-2. **07-02 local file boundary.** Own target node `Files` adapter and tests. Explicitly selected roots only; canonicalize and revalidate immediately before open, including symlinks, rename races, file types, size limits and OS permission loss. Return bounded content with source metadata; deny everything else.
-3. **07-03 Host broker.** Own `internal/space/invocation.go`, `internal/host/capability_broker.go`, protocol fixtures and tests. Resolve an explicitly selected node; validate actor, grant, manifest, args, expiry and any exact approval. Persist invocation before dispatch; runtime text cannot select another node or create grants.
-4. **07-04 transport and receipt.** Own `internal/host/node_transport.go`, target node connection code and tests. Use authenticated bidirectional connection, stable invocation IDs, deadline and cancellation. Target durably records outcome; Host reconciles disconnect before/after effect without repeating non-idempotent work. Source and target projections show the same Host receipt.
-5. **07-05 real journey and review.** From source node, request selected target files, approve from an authorized surface and observe one bounded receipt in the same conversation. Inject offline target, stale manifest/grant, replay, node restart, target substitution and receipt loss. Independent review must close authorization and filesystem findings.
+1. **07-01 Mac node and local file boundary.** Own the first target's enrolled identity, selected-root `files.search/read`, local deny/ask/allow and the reachable owner-console caller. Pairing grants nothing; local stop, path and OS permission checks gate every effect.
+2. **07-02 Host authority.** Own `internal/space/invocation.go`, `internal/host/capability_broker.go`, approval schema and fixtures. Select one eligible target and bind actor, conversation, exact arguments/grant and pending ask before I/O.
+3. **07-03 source and Hermes ingress.** Register authenticated source POST and pass a documented, mapped Hermes typed callback through the same broker. If the pinned callback is unsupported, keep model-originated action blocked; runtime text cannot authorize it.
+4. **07-04 target transport and receipt.** Own authenticated selected-node dispatch, cancellation and durable target receipt; never blindly retry an accepted or ambiguous effect.
+5. **07-05 approval and conversation projection.** Resume the exact pending invocation from one accepted Phase 06 decision; bind final Host receipt, cancel and permitted local outcome sync to the source conversation snapshot/replay and reachable web action UI.
+6. **07-06 real journey and review.** From source node, request selected target files, approve from an authorized surface and observe one bounded receipt in the same conversation. Inject offline target, stale manifest/grant, replay, node restart, target substitution and receipt loss. Independent review must close authorization and filesystem findings.
 
 ### 08 — Voice companion
 
