@@ -1,6 +1,6 @@
 # Future OS reference and reuse analysis
 
-Review date: 2026-10-02
+Review date: 2026-10-02; upstream delta checked 2026-10-05
 Reviewed repository: `https://github.com/futuregene/future-os`
 Reviewed revision: `907f38b046b32ed3ac795c07b641e681d8e52101` (`main`)
 Purpose: identify implementation patterns and code that can inform Lumen's production system while preserving Lumen's Space and Host authority model.
@@ -29,11 +29,15 @@ The product authority model is different. Future OS centers its Agent sessions a
 | `mobile/` | Cross-platform remote client, pairing, session browsing, prompt outbox, replay, approvals, local credential storage | Valuable Phase 05/06 patterns for node enrollment, durable sends, reconnect, receipts, and approval UI. Rebind every operation to Space conversation and Host receipts. |
 | `channels/` | Messaging-provider adapters and outbound delivery queue | Useful later for Phase 11 delivery retries and truthful provider receipts; channel threads must map explicitly to Space conversations. |
 | `tui/`, `cli/` | Thin clients of the shared Agent RPC service | Useful example of keeping product surfaces as clients of one contract, rather than letting each surface implement its own state machine. |
-| `orchestration/loop/` | Separate event-sourced long-running goal/todo/gate/lease/evidence control plane with deterministic scheduling and validation | Reference for Phase 14 automation/delegation. Keep it separate from canonical Space conversations and don't merge its ledger into Space by default. |
+| `orchestration/loop/` | Future OS event-sourced long-running goal/todo/gate/lease/evidence control plane with deterministic scheduling and validation | Reference for Phase 14 invariants only. Lumen Phase 14 keeps canonical Goal/Occurrence/Lease records in Host-owned Space/Store; any reuse is limited to reviewed algorithms after owner and independent license/security approval. |
 | `packages/` TypeScript utilities | Shared thread projection, Markdown, and JSON rendering packages | Possible targeted web-client reuse after verifying license, framework compatibility, and whether the data model can be isolated behind Lumen DTOs. |
 | `tests/`, `scripts/`, `docs/` | Protocol fixtures, provider tests, operational probes, architecture/security records, release validation | Reuse test-design ideas and failure cases; translate them into Lumen's Go contract tests and node/Host fixtures. |
 
-The primary evidence for this architecture is the workspace manifest, [`README.md`](../../README.md), [`docs/architecture/packages.md`](../../docs/architecture/packages.md), and [`docs/architecture/rpc.md`](../../docs/architecture/rpc.md).
+The primary evidence for this architecture is the workspace manifest, [`README.md`](https://github.com/futuregene/future-os/blob/907f38b046b32ed3ac795c07b641e681d8e52101/README.md), [`docs/architecture/packages.md`](https://github.com/futuregene/future-os/blob/907f38b046b32ed3ac795c07b641e681d8e52101/docs/architecture/packages.md), and [`docs/architecture/rpc.md`](https://github.com/futuregene/future-os/blob/907f38b046b32ed3ac795c07b641e681d8e52101/docs/architecture/rpc.md).
+
+## Upstream freshness check (2026-10-05)
+
+The upstream `main` reference was refreshed to `e3bf4da7540b00164a86a0b866e5db2d1184d165`. Compared with the previously reviewed upstream revision, the observed source delta is confined to `agent/src/skills/manager.rs` (skill reconciliation now uses a fingerprint and detects externally changed skill directories/manifests) and the separately maintained `skills` submodule pointer. This delta does not change the reviewed Host/Space authority, pairing, replay, or Future Loop recommendations above. It is a targeted changed-path check, not a new full-tree or runtime audit; the architecture/security source links below remain pinned to the fully reviewed `907f38b046b32ed3ac795c07b641e681d8e52101` source snapshot.
 
 ## Reusable implementation patterns
 
@@ -52,11 +56,11 @@ The primary evidence for this architecture is the workspace manifest, [`README.m
 | Per-user Unix socket checks and Windows current-user-only named-pipe ACLs (`packages/rpc/src/transport.rs`) | Keep local operator control restricted to the owner and verify peer identity. Preserve explicit network transports as separately authenticated contracts, never implicit fallback. | Port security properties, not Rust implementation; Host service. |
 | Noise pairing and AEAD records use sequence/replay protection, context-bound AAD, frame bounds, and zeroized keys (`packages/remote-crypto/src/lib.rs`) | Use only after Lumen defines enrollment authority, Host identity pinning, revocation, key rotation, replay epoch, and recovery. Check identity before accepting/persisting a peer. | Strong protocol reference; not drop-in Go code. Phase 05, independently reviewed. |
 | Messaging outbox retries provider deliveries and records outcomes (`channels/src/outbox.rs`) | Preserve Space message identity across provider retries and record delivered/failed/unknown separately from the canonical message. | Adapt when a specific channel is selected; Phase 11. |
-| Future Loop event ledger, deterministic should-run decision packet, gates, leases, acceptance/evidence checks (`orchestration/loop/`, `docs/architecture/loop-control-plane.md`) | Later automation can have a separate durable work ledger that references Space messages/tasks without replacing them. Keep human gates and evidence explicit. | Concepts first; assess code/Apache obligations at Phase 14. |
+| Future Loop event ledger, deterministic should-run decision packet, gates, leases, acceptance/evidence checks (`orchestration/loop/`, `docs/architecture/loop-control-plane.md`) | Future OS implements a separate control plane. Lumen may adapt reviewed deterministic algorithms, while its own schedule/goal/occurrence/lease authority remains in canonical Space/Store. Keep human gates and evidence explicit. | Phase 14 proposal and owner/security/license gate. |
 
 ## Security and architecture limits not to inherit
 
-Future OS's own [`SECURITY.md`](../../SECURITY.md) is unusually direct about limitations. It says local persistence is not offline processing: prompts, selected attachments, and included tool results go to the configured model provider. Remote traffic is encrypted end to end after pairing, but the relay still sees metadata, and the pairing envelope/refusal reasons are not fully encrypted.
+Future OS's own [`SECURITY.md`](https://github.com/futuregene/future-os/blob/907f38b046b32ed3ac795c07b641e681d8e52101/SECURITY.md) is unusually direct about limitations. It says local persistence is not offline processing: prompts, selected attachments, and included tool results go to the configured model provider. Remote traffic is encrypted end to end after pairing, but the relay still sees metadata, and the pairing envelope/refusal reasons are not fully encrypted.
 
 The same policy documents defaults that do not meet Lumen's default-deny contract: fresh sessions can have broad `all` permission, desktop defaults to sandbox `off`, channel clients can use broad permissions, network filtering is absent, Linux currently has no seccomp filter, and the credential file is not an encrypted vault and is exempted from one hard-deny list for CLI-based skills. Sandbox guarantees vary by platform, and some protected-path checks occur after a command rather than dynamically preventing access. These are not reasons to discard the repo; they are clear boundaries for selective reuse.
 
@@ -80,7 +84,7 @@ Do not copy these as Lumen semantics:
 - **Phase 09 — Integrated local product:** Combine real Hermes output, Space context/memory, messages across nodes, approvals, and receipts; exercise failure/recovery and measure the declared workload.
 - **Phase 10 — Always-on Host and alpha:** Study Future OS release/update operations, but independently prove Lumen's install, boot, update, rollback, backup/restore, offline-node, and soak contracts.
 - **Phase 11 — Messaging:** Adapt a channel outbox only after one provider is selected and every message/thread mapping is explicit.
-- **Phase 14 — Automation/delegation:** Evaluate Future Loop's event sourcing, leases, verification gates, and evidence requirements as a separate control plane with references to Space objects.
+- **Phase 14 — Automation/delegation:** Evaluate Future Loop's event sourcing, leases, verification gates, and evidence requirements as algorithmic input to Lumen's canonical Host-owned Space/Store automation records; do not import its separate ledger as Lumen authority.
 
 ## Recommended reuse policy
 

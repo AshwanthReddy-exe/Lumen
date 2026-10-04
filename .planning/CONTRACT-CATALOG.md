@@ -14,7 +14,7 @@ internal/hermes/           pinned Runs adapter and event normalization
 internal/setup/            install/adopt, journal, supervisor, release lifecycle
 internal/conversation/     bounded Host-owned context and run projection (Phase 03)
 internal/integrations/     typed provider bridges after Phase 11 gate
-internal/automation/      separate scheduled-work ledger after Phase 14 gate
+internal/automation/      deterministic automation computation/adapters only; canonical ledger remains in internal/space and Store
 internal/managed/         dedicated-customer provisioner after Phase 16 gate
 protocol/fixtures/        versioned wire and cross-language conformance cases
 apps/web/                 Host client, no canonical state (Phase 03)
@@ -49,7 +49,7 @@ The table is a minimum schema checklist. Names are provisional; existing `State`
 | `Invocation` | Host: id, actor/source, required conversation id, optional source message id, selected target, capability/version, canonical args digest, grant/approval revision, deadline, status, dispatch attempt | Verify conversation participation; persist before send; never silently retarget; uncertain effect is not automatically repeated |
 | `ExecutionReceipt` | Host plus target evidence: invocation id, target epoch, output digest/reference, observed effect, final/unknown state | Distinguish observed completion from request acceptance and delivery |
 | `ArtifactReference` | Host: encrypted object id, digest, MIME, source, scope, retention, size | No raw artifact in ordinary audit/log/prompt; bounded delivery |
-| `AutomationOccurrence` | Host separate control ledger: schedule id/version, nominal time/zone, occurrence id, lease, budget, outcome | Duplicate ticks map to one occurrence and one effect intent |
+| `AutomationOccurrence` | Host canonical Space record: schedule id/version, nominal time/zone, occurrence id, lease, budget, outcome | Duplicate ticks map to one occurrence and one effect intent; `internal/automation` computes but does not own canonical persistence |
 
 For all mutating records, commit audit metadata with the state transition. If the current store's full-snapshot rewrite cannot meet throughput/atomicity, Phase 03 must choose an encrypted transactional path with a tested migration, not quietly add a second database for a subset of authority.
 
@@ -120,7 +120,7 @@ The names below are intended API boundaries; they are not required verbatim if c
 
 | Module/file | Functions or responsibility | Input → output and failure behavior |
 |---|---|---|
-| `internal/space/conversation.go` | `AcceptMessage`, `AdvanceRun`, `CommitMessage`, `AppendEvent`, `StopRun` | Typed command + State → cloned State/receipt; reject wrong actor, revision, duplicate collision, invalid transition |
+| `internal/space/model.go`, `internal/space/apply.go`, `internal/space/reducer.go`, `internal/space/state.go` | Existing Conversation/Message/Command/Apply/reducer/state validation surfaces; extend their existing symbols | Extend the live canonical types and reducer in place; no duplicate `conversation.go` authority file. Bind each added transition to a fixture, receipt and replay test. |
 | `internal/store/store.go` | existing `Update`, `Read`; migration/export additions only after gate | Atomic authority commit; no acknowledged write without durable ciphertext; recover prior valid generation |
 | `internal/conversation/service.go` | `StartTurn`, `ObserveRuntime`, `ReconcileRun`, `RequestStop` | Host run id → bound Hermes operation; persist intent before I/O and evidence before terminal transition |
 | `internal/conversation/projection.go` | `BuildProjection`, `InvalidateBinding` | Authorized message/memory/context revision → bounded destination-specific payload with included-source manifest |
@@ -137,7 +137,7 @@ The names below are intended API boundaries; they are not required verbatim if c
 | `apps/android-host/.../DeskIdentity.kt` | Bind selected D-056 desk identity | Shared-client pass enrolls a distinct desk node; fallback reuses this app's Phase 05 key; blocked branch cannot submit |
 | `internal/host/interaction.go` | `ObserveRuntimeRequest`, `DeliverDecision`, `ReconcileDecision` | Documented Hermes request ID only; uncertain delivery remains visible |
 | `internal/integrations/messaging.go` | `ValidateIngress`, `MapThread`, `QueueDelivery`, `ReconcileDelivery` | Explicit linked identity/thread → Space message/receipt; forged sender and duplicate provider event denied |
-| `internal/automation/ledger.go` | `PreviewGoal`, `ApproveGoal`, `ClaimOccurrence`, `Checkpoint`, `CancelLineage` | Stable occurrence/lease/budget; stale worker cannot effect |
+| `internal/automation/` | Pure scheduling/eligibility computations and bounded adapters | Inputs/outputs are validated by Host; canonical Goal/Occurrence/Lease state is committed through `internal/space` and `internal/store` |
 | `internal/managed/provisioner.go` | `ProvisionTenant`, `SuspendTenant`, `DeleteTenant`, `ReconcileTenant` | Dedicated data-plane state machine; no shared canonical customer content |
 
 ## Public API and compatibility checklist

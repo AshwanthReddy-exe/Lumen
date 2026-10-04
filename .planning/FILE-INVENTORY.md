@@ -33,6 +33,7 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. This snap
 | `.planning/phases/13-coding-and-device-execution/13-05-EVIDENCE.md` | proposed | 13-05 |
 | `.planning/phases/13-coding-and-device-execution/13-06-EVIDENCE.md` | proposed | 13-06 |
 | `.planning/phases/14-automation-and-delegation/14-01-EVIDENCE.md` | proposed | 14-01 |
+| `.planning/phases/14-automation-and-delegation/14-01-PROPOSAL.md` | proposed | 14-01 |
 | `.planning/phases/14-automation-and-delegation/14-02-EVIDENCE.md` | proposed | 14-02 |
 | `.planning/phases/14-automation-and-delegation/14-03-EVIDENCE.md` | proposed | 14-03 |
 | `.planning/phases/14-automation-and-delegation/14-04-EVIDENCE.md` | proposed | 14-04 |
@@ -263,7 +264,7 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. This snap
 | `internal/setup/runner_test.go` | existing | 10-01, 10-03 |
 | `internal/setup/supervisor.go` | existing | 10-02 |
 | `internal/setup/supervisor_test.go` | existing | 10-02 |
-| `internal/space/apply.go` | existing | 03-01, 03-03, 04-01, 04-02, 05-03, 07-02, 11-02, 11-04, 12-01, 12-03, 12-04, 13-01, 13-03, 13-05, 14-01, 17-06 |
+| `internal/space/apply.go` | existing | 03-01, 03-03, 04-01, 04-02, 05-03, 07-02, 07-05, 11-02, 11-04, 12-01, 12-03, 12-04, 13-01, 13-03, 13-05, 14-01, 17-06 |
 | `internal/space/attention.go` | proposed | 07-02 |
 | `internal/space/attention_test.go` | proposed | 06-01 |
 | `internal/space/automation.go` | proposed | 14-03, 14-04, 14-05 |
@@ -273,7 +274,6 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. This snap
 | `internal/space/channel_test.go` | proposed | 11-02 |
 | `internal/space/coding.go` | proposed | 13-01, 13-03 |
 | `internal/space/commands.go` | existing | 14-01, 17-06 |
-| `internal/space/conversation.go` | proposed | 07-05 |
 | `internal/space/conversation_test.go` | existing | 03-01, 03-03, 04-01, 04-02, 05-03, 07-05 |
 | `internal/space/device.go` | proposed | 05-02 |
 | `internal/space/device_test.go` | proposed | 05-02 |
@@ -286,7 +286,7 @@ Generated from the `files_modified` inventories of GSD Phases 03–17. This snap
 | `internal/space/membership_test.go` | proposed | 17-06 |
 | `internal/space/model.go` | existing | 03-01, 03-03, 04-01, 04-02, 05-03, 07-02, 11-02, 11-04, 12-01, 12-03, 12-04, 13-01, 13-03, 13-05, 14-01, 17-06 |
 | `internal/space/policy.go` | existing | 07-02 |
-| `internal/space/reducer.go` | existing | 03-01, 04-01, 04-02, 05-03, 11-04, 14-01, 14-03, 14-04, 14-05, 17-06 |
+| `internal/space/reducer.go` | existing | 03-01, 04-01, 04-02, 05-03, 07-05, 11-04, 14-01, 14-03, 14-04, 14-05, 17-06 |
 | `internal/space/reminder.go` | proposed | 12-01 |
 | `internal/space/reminder_test.go` | proposed | 12-01 |
 | `internal/space/state.go` | existing | 04-01, 04-02, 05-03, 07-02, 11-02, 12-01, 12-03, 12-04, 13-01, 13-03, 13-05, 14-01, 14-03, 14-04, 14-05, 17-06 |
