@@ -4,10 +4,10 @@ This is an additive status snapshot. It does not replace `docs/PLAN.md`, the 17-
 
 ## Current authority
 
-- Lumen `main`: `f08d76e00a1cf41e531ffff9310a5c2ab51db1ce`, PR [#29](https://github.com/AshwanthReddy-exe/Lumen/pull/29), clean at audit time.
-- PRs #22–#29 are merged. GitHub reported no open PRs when queried on 2026-10-04. PR #20 is closed unmerged; PR #18 is closed and its later release work landed through #19.
+- Lumen `main`: `a6d2c658478ed8ea5437e778d9f9633506666fce`, with local `main` fast-forwarded to `origin/main` and clean after PRs [#30](https://github.com/AshwanthReddy-exe/Lumen/pull/30) and [#31](https://github.com/AshwanthReddy-exe/Lumen/pull/31) merged on 2026-10-04. The root checkout is clean; preserved side worktrees are listed separately below.
+- PRs #22–#31 are merged; a live `gh pr list --state open` check after the two merges returned no open PRs. PR #20 remains closed unmerged; PR #18 is closed and its later release work landed through #19.
 - GSD phases 01–02 remain complete; Phase 03 remains pending. The merge of chat/runtime code is partial implementation evidence, not Phase 03 acceptance.
-- Local plan checks on the current revision: all 73 GSD plans passed `verify plan-structure`; `scripts/check-plan-coverage.py` passed for 58 FRs, 58 owners, 501 task source pointers and 459 GSD context pointers; `roadmap.validate` and `validate consistency` passed with no warnings. `git diff --check` passed. These checks establish document consistency, not implementation completeness or external review convergence.
+- Local plan checks on the merged revision: all 73 GSD plans pass `verify plan-structure`; `scripts/check-plan-task-contracts.py` passes all 165 executable tasks; `scripts/check-plan-coverage.py` passes 58 FRs, 58 owners, 508 task source pointers and 459 GSD context pointers; `roadmap.validate`, `validate consistency`, and `git diff --check` pass. These checks establish document consistency, not implementation completeness or external review convergence.
 - The five Phase 03 plans were revised on the current planning branch against the post-#29 source audit: E4 now has a reproducible hard gate; 03-02 reuses current merged source; 03-03/04 define Host asset serving/build order, HTTP bounds and browser storage lifecycle; 03-05 pins evidence/reviewer artifacts. All 58 plan schemas, coverage and consistency checks pass after these edits. The local findings are addressed in plan text; independent GSD convergence remains BLOCKED.
 
 ## Phase 03 source reconciliation after PR #29
@@ -16,7 +16,7 @@ The current plans were written before PR #29. Do not have an executor recreate t
 
 | Plan | Already present on `main` | Remaining handoff / acceptance work |
 | --- | --- | --- |
-| 03-01 | Space conversation state/reducers, durable encrypted Store integration and tests; PR #26 also hardened encrypted backup replacement. | Run the specified E4 workload/crash matrix on the named Host and record evidence. The representative workload and storage decision remain gates; tests alone do not qualify physical power loss. Reconcile the plan's duplicate implementation tasks to audit-and-fill-missing behavior. |
+| 03-01 | Space conversation state/reducers in `internal/space/{types.go,model.go,reducer.go,apply.go,state.go}`, tests in `internal/space/conversation_test.go`, shared fixture `protocol/fixtures/space-v1.json`, and durable encrypted Store integration; PR #26 also hardened encrypted backup replacement. | The merged plan now maps to those existing source paths, requires a field/invariant-to-symbol/test/fixture reconciliation first, and directs edits only for proven gaps. Run the specified E4 workload/crash matrix on the named Host and record evidence. Tests alone do not qualify physical power loss. |
 | 03-02 | `internal/conversation/{service,projection,recovery}.go`, `internal/host/conversation.go`, certified runtime binding, bounded projection, serialized turns, recovery, receipts, and regression tests. | Audit each invariant in the plan against the merged code and run missing restart/runtime evidence. Do not rebuild these modules or treat synthetic adapters as live qualification. |
 | 03-03 | Owner-local command/control socket and Host APIs exist, but no `internal/host/conversation_http.go`, `deploy/tailscale/lumen-web.sh`, or `test/contract/browser_tls_smoke.sh` exists on `main`. | Implement the plan's owner-issued browser session, loopback-only HTTP, private Serve/TLS and CSRF/origin protections. The browser route is not available until the live TLS and denied-public-route evidence passes. |
 | 03-04 | No `apps/web/` package exists on `main`. | Select/reuse the repository-supported web toolchain, then build the authenticated client and accessibility/reconnect states. Host Go tests cannot satisfy this task's client test gate. |
@@ -34,11 +34,12 @@ The checked-in reference remains pinned to `98f7f3a3385e12d38ee7fc75bdca2cc3856c
 
 ## 2026-10-04 plan handoff corrections
 
+- Phase 03-01 now maps its conversation contract to current `internal/space/reducer.go` and `protocol/fixtures/space-v1.json`; it prohibits a duplicate `conversation.go` reducer and requires a live-source reconciliation before edits. It still owns the E4 named-host gate.
 - Phase 05-01 now owns binding Phase 10-04's phone epoch files and client-specific verification to the measured, owner-approved D-056 branch. Phase 10-04 is explicitly non-autonomous and cannot pass while the phone branch is BLOCKED or UNBOUND.
 - Phase 10-01 now orders bootstrap trust analysis and an owner checkpoint before installer implementation. Its decision record states that a `curl | sh` bootstrap executes before internal signature checks, so repository transport/control is the initial trust anchor.
 - Phase 12-01 now qualifies native versus Hermes browsing behavior before freezing the adapter contract and asking the owner to select; 12-02 is explicitly conditional and must be rewritten if the selected adapter changes.
 - Phase 17-01 limits its owner gate to protocol compatibility; shared-space remains a separate gate. Phase 17-02 requires owner approval of exact release metadata before publishing and verifying the Go SDK.
-- Detailed findings remain in the phase handoff reviews. Current task-level `fails_when` and `result_contract` coverage is incomplete; do not call every plan handoff checkpoint-ready until each executable task has meaningful negative and result criteria. Independent external convergence also remains blocked; see `.planning/PLAN-REVIEW-STATUS.md`.
+- Detailed findings remain in the phase handoff reviews. PR #31 added task-specific `fails_when` and `result_contract` criteria to all 165 executable tasks; the repeatable validator also checks runnable automated checks and active-plan file ownership. This closes the missing-result-field gap only. Function/caller reconciliation, independent external convergence, and all live acceptance gates remain open; see `.planning/PLAN-REVIEW-STATUS.md`.
 
 ## Branch and worktree disposition
 
@@ -65,6 +66,13 @@ The root checkout being clean does not mean every preserved worktree is clean. K
 3. Build 03-04 browser UI against the pinned 03-03 protocol, then add 03-05 journey acceptance and independent current-source review.
 4. Run the full phase entry pipeline using GSD: `gsd-discuss-phase` for material open choices, `gsd-pattern-mapper`, `gsd-phase-researcher` when library/platform/provider uncertainty exists, `gsd-plan-phase --reviews` for actionable findings, `gsd-plan-review-convergence` with a detected independent reviewer, then execution → code review → security review → verification/UAT. Do not claim convergence when the reviewer lane is the authoring model or fails to return.
 5. Keep Phases 05, 08, 10, and 15–17 gated on their recorded physical, provider, release, and owner decisions. Their provisional file paths are not permission to pre-build unselected platform/business branches.
+
+## Post-merge PR and checkout verification — 2026-10-04
+
+- PR #30 merged into `main` at `228c120cb5a9d4d302ea32def3cafb52e1ba6a0b`. PR #31 was then retargeted to `main` and merged at `a6d2c658478ed8ea5437e778d9f9633506666fce`; GitHub reported `MERGEABLE` before each merge. The merge order preserves the stacked history and avoids merging the parent changes twice.
+- Neither PR had CI checks or an independent review decision recorded at merge time. The owner explicitly requested both merges. This does not satisfy the independent GSD cross-AI convergence gate; plans remain marked unconverged and must not be treated as security-reviewed solely because they are merged.
+- A post-merge full GSD sweep found Phase 17-02 had a blocking owner checkpoint while `autonomous: true`; the plan now declares `autonomous: false`. Final local validation passes all 73/73 plan structures, task contracts 165/165, coverage 58/58 requirements and owners with 508 task source pointers and 459 context pointers, both consistency/roadmap checks, and `git diff --check`.
+- The local root checkout is clean on `main` and matches `origin/main`. Side worktrees and unrelated retained branches remain preserved; the planning merges did not merge any implementation branch.
 
 ## GSD workflow matrix for all 17 phases
 
