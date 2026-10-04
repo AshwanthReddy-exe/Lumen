@@ -42,6 +42,10 @@ func run(args []string) int {
 		if len(args) < 2 || args[1] != "resolve" {
 			return usage()
 		}
+	case "runtime":
+		if len(args) != 2 || args[1] != "inspect" {
+			return usage()
+		}
 	default:
 		return usage()
 	}
@@ -63,6 +67,8 @@ func run(args []string) int {
 		return serve(c, len(args) == 2 && args[1] == "--manual", len(args) == 2 && args[1] == "--setup-staging")
 	case "status", "shutdown":
 		return call(c, args[0])
+	case "runtime":
+		return call(c, "runtime inspect")
 	default:
 		arguments, ok := parseArguments(args[2:])
 		if !ok {
@@ -72,7 +78,7 @@ func run(args []string) int {
 	}
 }
 func usage() int {
-	fmt.Fprintln(os.Stderr, "usage: lumen-host doctor|init|serve [--manual|--setup-staging]|status|task submit|task show|task cancel|approval resolve|shutdown")
+	fmt.Fprintln(os.Stderr, "usage: lumen-host doctor|init|serve [--manual|--setup-staging]|status|runtime inspect|task submit|task show|task cancel|approval resolve|shutdown")
 	return 2
 }
 
