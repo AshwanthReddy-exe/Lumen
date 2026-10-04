@@ -119,6 +119,19 @@ func TestConversationCreateAndSendPersistAtomicIntent(t *testing.T) {
 	}
 }
 
+func TestConversationRejectsOverlappingSendUntilPriorTaskIsTerminal(t *testing.T) {
+	s := conversationWithSend(t)
+	second := Apply(s, Command{Type: CommandSendConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", TaskID: "task-2", Content: "next", CreatedAt: 101, ReconcileBy: 201, RequestID: "send-2"})
+	if second.Rejection != "conversation_busy" || len(second.State.Messages["conversation-1"]) != 1 {
+		t.Fatalf("overlapping send was not rejected atomically: rejection=%q messages=%d", second.Rejection, len(second.State.Messages["conversation-1"]))
+	}
+	finished := Apply(s, Command{Type: CommandCompleteConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", TaskID: "task-1", Outcome: OutcomeFailed, RequestID: "complete-1"})
+	second = Apply(finished.State, Command{Type: CommandSendConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "conversation-1", SurfaceID: "web", TaskID: "task-2", Content: "next", CreatedAt: 102, ReconcileBy: 202, RequestID: "send-2"})
+	if second.Rejection != "" {
+		t.Fatalf("send remained blocked after terminal outcome: %q", second.Rejection)
+	}
+}
+
 func TestRuntimeSessionBindingRequiresDurableReservation(t *testing.T) {
 	s := conversationWithSend(t)
 	bind := Command{Type: CommandBindRuntimeSession, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "host", RequestID: "bind-1", ConversationID: "conversation-1", HermesSessionID: "lumen-session:conversation-1", RuntimeIdentity: "hermes:test", RuntimeProfileDigest: DefaultRuntimeProfile().Digest}

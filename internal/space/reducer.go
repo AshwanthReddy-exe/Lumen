@@ -81,6 +81,12 @@ func sendConversation(s State, c Command) Transition {
 	if _, exists := s.Tasks[c.TaskID]; exists {
 		return reject(s, c, "task_already_exists")
 	}
+	for taskID, task := range s.Tasks {
+		conversationID, exists := conversationForTask(s, taskID)
+		if task.CapabilityID == "conversation.chat/respond" && exists && conversationID == c.ConversationID && (task.Status == OutcomeQueued || task.Status == OutcomeCreating || task.Status == OutcomeDispatched || task.Status == OutcomeRunning) {
+			return reject(s, c, "conversation_busy")
+		}
+	}
 	if s.HostCreates == nil {
 		s.HostCreates = map[string]HostCreate{}
 	}

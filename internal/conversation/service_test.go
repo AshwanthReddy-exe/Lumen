@@ -243,13 +243,14 @@ func TestProjectionIsBoundedDeterministicAndSelectsAcceptedPreferences(t *testin
 
 func TestProjectionForTaskDoesNotCaptureLaterQueuedInput(t *testing.T) {
 	s := conversationState()
-	for i, task := range []string{"task-1", "task-2"} {
-		tr := space.Apply(s, space.Command{Type: space.CommandSendConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "c1", SurfaceID: "web", TaskID: task, Content: task + " input", CreatedAt: int64(100 + i), ReconcileBy: 200, RequestID: task})
-		if tr.Rejection != "" {
-			t.Fatal(tr.Rejection)
-		}
-		s = tr.State
+	tr := space.Apply(s, space.Command{Type: space.CommandSendConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Content: "task-1 input", CreatedAt: 100, ReconcileBy: 200, RequestID: "task-1"})
+	if tr.Rejection != "" {
+		t.Fatal(tr.Rejection)
 	}
+	s = tr.State
+	// Model a later append from an older persisted state to verify projection
+	// remains task-bound when recovery encounters it.
+	s.Messages["c1"] = append(s.Messages["c1"], space.Message{ID: "user:task-2", ConversationID: "c1", Sequence: 2, Role: space.MessageUser, AuthorID: "owner", SurfaceID: "web", Content: "task-2 input", ContentDigest: space.DigestText("task-2 input"), CreatedAt: 101, TaskID: "task-2"})
 	projection, err := ProjectForTask(s, "c1", "task-1", space.DefaultPersona(), space.DefaultRuntimeProfile(), 200)
 	if err != nil || projection.Input != "task-1 input" || len(projection.Messages) != 0 {
 		t.Fatalf("projection captured a later task: %#v err=%v", projection, err)
