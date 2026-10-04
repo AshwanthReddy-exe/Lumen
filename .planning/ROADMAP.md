@@ -4,7 +4,7 @@
 
 The personal alpha builds and verifies useful local product behavior before any VPS or installer gate: Host/Hermes foundation, continuous Space conversation, accepted memory, node continuity, approvals/questions, cross-node execution, voice companion, integrated local use, then always-on deployment and alpha acceptance. Phases 11–17 retain their prior order and roadmap-level goals. This is the exact order and objective set in [docs/PLAN.md](../docs/PLAN.md).
 
-The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 58 file-owned GSD plans for Phases 03–17 hold the current tasks. The [file inventory](FILE-INVENTORY.md) indexes their proposed tree. The [contract catalog](CONTRACT-CATALOG.md), [client branch gate](CLIENT-BRANCHES.md), [Phase 07–10 handoff](PHASE-07-10-HANDOFF.md), [later-phase contracts](PHASE-11-17-CONTRACTS.md), [platform coverage](PLATFORM-COVERAGE.md), and [completeness audit](PLANNING-COMPLETENESS-AUDIT.md) bind shared details and remaining gates. The [2026-10-04 current-state delta](PLANNING-CURRENT-STATE-2026-10-04.md) reconciles merged PR #29, the preserved branches, and the updated Future OS reference. Decision-dependent paths are rewritten in the affected plan before execution.
+The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 60 file-owned GSD plans for Phases 03–17 hold the current tasks. The [file inventory](FILE-INVENTORY.md) indexes their proposed tree. The [contract catalog](CONTRACT-CATALOG.md), [client branch gate](CLIENT-BRANCHES.md), [Phase 07–10 handoff](PHASE-07-10-HANDOFF.md), [later-phase contracts](PHASE-11-17-CONTRACTS.md), [platform coverage](PLATFORM-COVERAGE.md), and [completeness audit](PLANNING-COMPLETENESS-AUDIT.md) bind shared details and remaining gates. The [2026-10-04 current-state delta](PLANNING-CURRENT-STATE-2026-10-04.md) reconciles merged PR #29, the preserved branches, and the updated Future OS reference. Decision-dependent paths are rewritten in the affected plan before execution.
 
 ## Phases
 
@@ -170,7 +170,7 @@ The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 58 fi
   4. Encrypted export/restore and old-Host retirement pass; one enrolled node continues the same conversation/action journey while the source node is offline.
   5. Measured latency and seven-day soak meet declared limits and owner sign-off records the exact supported configuration.
 
-**Plans**: 10-01 through 10-05 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/10-always-on-deployment-and-alpha-release/10-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
+**Plans**: 10-01 through 10-07 are file-owned GSD plans with contract, implementation, failure and evidence gates. See [the first plan](phases/10-always-on-deployment-and-alpha-release/10-01-PLAN.md) and [the contract catalog](CONTRACT-CATALOG.md).
 
 ### Phase 11: One messaging integration
 
