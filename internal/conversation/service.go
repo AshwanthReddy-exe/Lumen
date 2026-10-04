@@ -193,7 +193,7 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	if err != nil {
 		return s.fail(queued, state, taskID, err)
 	}
-	projection, err := Project(state, req.ConversationID, persona, profile, s.now().Unix())
+	projection, err := ProjectForTask(state, req.ConversationID, taskID, persona, profile, s.now().Unix())
 	if err != nil {
 		return s.fail(queued, state, taskID, err)
 	}
@@ -282,11 +282,21 @@ func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, sta
 	if eventsErr != nil && !errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) {
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", eventsErr)
 	}
-	if errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) && !terminalEvent {
+	if errors.Is(eventsErr, hermes.ErrEventStreamDisconnected) && !terminalEvent && !isNonterminalChatStatus(status.Status) {
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("runtime event stream ended without terminal evidence"))
 	}
 	if s.now().Unix() >= by {
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conversation reconciliation deadline reached"))
+	}
+	if isNonterminalChatStatus(status.Status) {
+		timer := time.NewTimer(250 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-reconcileCtx.Done():
+			return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("conversation reconciliation deadline reached"))
+		case <-timer.C:
+		}
+		return s.reconcileRun(ctx, queued, state, taskID, run, cert, profile, by)
 	}
 	switch status.Status {
 	case "completed", "succeeded", "success":
@@ -299,6 +309,15 @@ func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, sta
 		return s.complete(queued, state, taskID, space.OutcomeFailed, "", nil)
 	default:
 		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.New("Hermes completion remains uncertain"))
+	}
+}
+
+func isNonterminalChatStatus(status string) bool {
+	switch status {
+	case "created", "started", "running", "progress", "queued", "pending", "accepted", "in_progress":
+		return true
+	default:
+		return false
 	}
 }
 

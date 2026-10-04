@@ -28,16 +28,18 @@ func (m *memoryStore) Update(fn func(space.State) space.Transition) (space.Trans
 }
 
 type fakeRuntime struct {
-	created      int
-	endpoint     string
-	stopped      int
-	before       func()
-	beforeEvents func()
-	beforeStop   func()
-	run          hermes.Run
-	events       []hermes.Event
-	eventsErr    error
-	req          hermes.CreateRunRequest
+	created        int
+	endpoint       string
+	stopped        int
+	before         func()
+	beforeEvents   func()
+	beforeStop     func()
+	run            hermes.Run
+	statusSequence []hermes.Run
+	statusCalls    int
+	events         []hermes.Event
+	eventsErr      error
+	req            hermes.CreateRunRequest
 }
 
 func (f *fakeRuntime) VerifiedEndpointIdentity(context.Context) (string, error) {
@@ -65,7 +67,15 @@ func (f *fakeRuntime) CreateRun(_ context.Context, req hermes.CreateRunRequest, 
 	f.req = req
 	return f.run, nil
 }
-func (f *fakeRuntime) RunStatus(context.Context, string) (hermes.Run, error) { return f.run, nil }
+func (f *fakeRuntime) RunStatus(context.Context, string) (hermes.Run, error) {
+	if f.statusCalls < len(f.statusSequence) {
+		run := f.statusSequence[f.statusCalls]
+		f.statusCalls++
+		return run, nil
+	}
+	f.statusCalls++
+	return f.run, nil
+}
 func (f *fakeRuntime) Events(context.Context, string) ([]hermes.Event, error) {
 	if f.beforeEvents != nil {
 		f.beforeEvents()
@@ -225,6 +235,21 @@ func TestProjectionIsBoundedDeterministicAndSelectsAcceptedPreferences(t *testin
 	}
 	if strings.Contains(one.Context, "Mallory") || !strings.Contains(one.Context, "Ada") {
 		t.Fatalf("preference selection leaked or omitted values: %q", one.Context)
+	}
+}
+
+func TestProjectionForTaskDoesNotCaptureLaterQueuedInput(t *testing.T) {
+	s := conversationState()
+	for i, task := range []string{"task-1", "task-2"} {
+		tr := space.Apply(s, space.Command{Type: space.CommandSendConversation, SpaceID: "space", HostID: "host", Epoch: 1, ActorID: "owner", ConversationID: "c1", SurfaceID: "web", TaskID: task, Content: task + " input", CreatedAt: int64(100 + i), ReconcileBy: 200, RequestID: task})
+		if tr.Rejection != "" {
+			t.Fatal(tr.Rejection)
+		}
+		s = tr.State
+	}
+	projection, err := ProjectForTask(s, "c1", "task-1", space.DefaultPersona(), space.DefaultRuntimeProfile(), 200)
+	if err != nil || projection.Input != "task-1 input" || len(projection.Messages) != 1 {
+		t.Fatalf("projection captured a later task: %#v err=%v", projection, err)
 	}
 }
 
@@ -587,12 +612,12 @@ func TestLateTerminalResultDoesNotAppendAssistantMessage(t *testing.T) {
 
 func TestReplayedSendReportsDurableTaskOutcome(t *testing.T) {
 	store := &memoryStore{state: conversationState()}
-	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "hello"}, statusSequence: []hermes.Run{{RunID: "run-1", Status: "running"}}}
 	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
 	req := SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200}
 	_, _ = svc.Send(context.Background(), req)
 	replayed, err := svc.Send(context.Background(), req)
-	if err != nil || !replayed.Replayed || replayed.Receipt.Outcome != space.OutcomeUnknown || runtime.created != 1 {
+	if err != nil || !replayed.Replayed || replayed.Receipt.Outcome != space.OutcomeCompleted || runtime.created != 1 || runtime.statusCalls < 2 {
 		t.Fatalf("replay hid durable outcome or redispatched: receipt=%#v err=%v creates=%d", replayed.Receipt, err, runtime.created)
 	}
 }

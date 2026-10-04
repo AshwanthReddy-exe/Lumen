@@ -24,11 +24,37 @@ type Projection struct {
 // Project deterministically selects the newest bounded canonical messages and
 // accepted owner preferences. It never consults Hermes sessions or memory.
 func Project(state space.State, conversationID string, persona space.Persona, profile space.RuntimeProfile, now int64) (Projection, error) {
+	return project(state, conversationID, "", persona, profile, now)
+}
+
+// ProjectForTask binds runtime input to the queued user message for taskID,
+// even if later messages were appended before runtime projection began.
+func ProjectForTask(state space.State, conversationID, taskID string, persona space.Persona, profile space.RuntimeProfile, now int64) (Projection, error) {
+	if taskID == "" {
+		return Projection{}, errors.New("invalid conversation projection")
+	}
+	return project(state, conversationID, taskID, persona, profile, now)
+}
+
+func project(state space.State, conversationID, taskID string, persona space.Persona, profile space.RuntimeProfile, now int64) (Projection, error) {
 	conversation, ok := state.Conversations[conversationID]
 	if !ok || persona.Status != space.PersonaActive || persona.Digest != space.DigestText(persona.Instructions) || profile.MaxMessages > space.MaxProjectedMessages || profile.MaxContextBytes > space.MaxProjectedContextBytes {
 		return Projection{}, errors.New("invalid conversation projection")
 	}
 	messages := state.Messages[conversationID]
+	if taskID != "" {
+		end := -1
+		for i, message := range messages {
+			if message.TaskID == taskID && message.Role == space.MessageUser {
+				end = i
+				break
+			}
+		}
+		if end < 0 {
+			return Projection{}, errors.New("task user message missing from conversation")
+		}
+		messages = messages[:end+1]
+	}
 	if len(messages) > profile.MaxMessages && profile.MaxMessages > 0 {
 		messages = messages[len(messages)-profile.MaxMessages:]
 	} else if len(messages) > space.MaxProjectedMessages {
