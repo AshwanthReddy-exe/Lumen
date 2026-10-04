@@ -161,7 +161,7 @@ func TestConversationLogsShowStageWithoutLoggingPrivateContent(t *testing.T) {
 func TestConversationLogsTraceHermesRoundTripWithoutContent(t *testing.T) {
 	var output strings.Builder
 	state := &memoryStore{state: conversationState()}
-	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "private response sentinel"}, events: []hermes.Event{{Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"private response sentinel"}`)}}}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "private response sentinel"}, events: []hermes.Event{{Type: "completed", Data: json.RawMessage(`{"run_id":"run-1","status":"completed","output":"private response sentinel"}`)}}}
 	svc := NewService(state, runtime, fakeCertifier{cert: exactCertification()}, WithLogger(slog.New(slog.NewJSONHandler(&output, nil))), WithClock(func() time.Time { return time.Unix(100, 0) }))
 	_, err := svc.Send(context.Background(), SendRequest{RequestID: "round-trip", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "private request sentinel", CreatedAt: 100, ReconcileBy: 200})
 	if err != nil {
@@ -195,6 +195,9 @@ func TestPinnedHermesChatEventsAcceptTextAndTerminalOnly(t *testing.T) {
 		if allowedChatEvent(event, "run-1") {
 			t.Fatalf("%s event accepted", name)
 		}
+	}
+	if allowedChatEvent(hermes.Event{Type: "completed", Data: json.RawMessage(`{"run_id":"run-2","status":"completed","output":"forged"}`)}, "run-1") {
+		t.Fatal("typed event for another run accepted")
 	}
 }
 
@@ -464,7 +467,7 @@ func TestCertificationRequiresCompleteBindingAndUntamperedProfile(t *testing.T) 
 
 func TestUnexpectedToolEventCannotAppendAssistantMessage(t *testing.T) {
 	store := &memoryStore{state: conversationState()}
-	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "tool_call", Data: json.RawMessage(`{"tool":"shell"}`)}, {Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"unsafe answer"}`)}}}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "tool_call", Data: json.RawMessage(`{"tool":"shell"}`)}, {Type: "completed", Data: json.RawMessage(`{"run_id":"run-1","status":"completed","output":"unsafe answer"}`)}}}
 	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
 	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
 	if err == nil || runtime.stopped != 1 || len(store.state.Messages["c1"]) != 1 || store.state.Tasks["task-1"].Status == space.OutcomeCompleted {
@@ -474,7 +477,7 @@ func TestUnexpectedToolEventCannotAppendAssistantMessage(t *testing.T) {
 
 func TestRuntimeViolationInvalidatesCertificationForLaterSend(t *testing.T) {
 	state := &memoryStore{state: conversationState()}
-	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "unsafe"}, events: []hermes.Event{{Type: "failed", Data: json.RawMessage(`{"status":"failed"}`)}, {Type: "tool_call", Data: json.RawMessage(`{"tool":"secret-command"}`)}}}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "unsafe"}, events: []hermes.Event{{Type: "failed", Data: json.RawMessage(`{"run_id":"run-1","status":"failed"}`)}, {Type: "tool_call", Data: json.RawMessage(`{"tool":"secret-command"}`)}}}
 	cert := exactCertification()
 	runtime.beforeStop = func() {
 		if !space.RuntimeCertificationInvalidated(state.state, cert) {
@@ -536,7 +539,7 @@ func TestRuntimeViolationInvalidationSurvivesEncryptedStoreReopen(t *testing.T) 
 func TestTerminalStatusStillRejectsHiddenToolEvent(t *testing.T) {
 	store := &memoryStore{state: conversationState()}
 	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "unsafe answer"}, events: []hermes.Event{
-		{Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"unsafe answer"}`)},
+		{Type: "completed", Data: json.RawMessage(`{"run_id":"run-1","status":"completed","output":"unsafe answer"}`)},
 		{Type: "progress", Data: json.RawMessage(`{"status":"progress","details":{"tool_call":"shell"}}`)},
 	}}
 	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
@@ -564,8 +567,8 @@ func TestConflictingTerminalEvidenceCannotCompleteConversation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			state := &memoryStore{state: conversationState()}
 			runtime := &fakeRuntime{run: run, events: []hermes.Event{
-				{Type: "failed", Data: json.RawMessage(`{"status":"failed"}`)},
-				{Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"unsafe"}`)},
+				{Type: "failed", Data: json.RawMessage(`{"run_id":"run-1","status":"failed"}`)},
+				{Type: "completed", Data: json.RawMessage(`{"run_id":"run-1","status":"completed","output":"unsafe"}`)},
 			}}
 			svc := NewService(state, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
 			_, _ = svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
@@ -583,14 +586,14 @@ func TestDuplicateEventKeyCannotHideToolEvidence(t *testing.T) {
 }
 
 func TestEventTypeCannotContradictPayloadStatus(t *testing.T) {
-	if allowedChatEvent(hermes.Event{Type: "failed", Data: json.RawMessage(`{"status":"completed","output":"unsafe"}`)}, "run-1") {
+	if allowedChatEvent(hermes.Event{Type: "failed", Data: json.RawMessage(`{"run_id":"run-1","status":"completed","output":"unsafe"}`)}, "run-1") {
 		t.Fatal("terminal type contradicted by payload status")
 	}
 }
 
 func TestToolStatusHiddenInProgressCannotAppendAssistantMessage(t *testing.T) {
 	store := &memoryStore{state: conversationState()}
-	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "progress", Data: json.RawMessage(`{"status":"tool_call"}`)}, {Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"unsafe answer"}`)}}}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "progress", Data: json.RawMessage(`{"status":"tool_call"}`)}, {Type: "completed", Data: json.RawMessage(`{"run_id":"run-1","status":"completed","output":"unsafe answer"}`)}}}
 	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
 	_, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
 	if err == nil || runtime.stopped != 1 || len(store.state.Messages["c1"]) != 1 {
@@ -601,7 +604,7 @@ func TestToolStatusHiddenInProgressCannotAppendAssistantMessage(t *testing.T) {
 func TestLateTerminalResultDoesNotAppendAssistantMessage(t *testing.T) {
 	store := &memoryStore{state: conversationState()}
 	now := int64(100)
-	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"late"}`)}}}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}, events: []hermes.Event{{Type: "completed", Data: json.RawMessage(`{"run_id":"run-1","status":"completed","output":"late"}`)}}}
 	runtime.beforeEvents = func() { now = 201 }
 	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(now, 0) }))
 	_, _ = svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
@@ -687,7 +690,7 @@ func TestRestartReconcilesOnlyDurablyMappedConversationRun(t *testing.T) {
 	apply(space.Command{Type: space.CommandBindRuntimeSession, ActorID: "host", RequestID: "bind-1", ConversationID: "c1", HermesSessionID: "lumen-session:c1", RuntimeIdentity: "hermes:test", RuntimeProfileDigest: space.DefaultRuntimeProfile().Digest})
 	apply(space.Command{Type: space.CommandDispatchHostRun, ActorID: "host", RequestID: "dispatch-1", TaskID: "task-1", RuntimeRunID: "run-1", RuntimeIdempotencyKey: "send-1", RuntimeProfileDigest: space.DefaultRuntimeProfile().Digest, CertificationID: "cert-1", EndpointIdentity: "endpoint:test", DispatchedAt: 100, ReconcileBy: 200})
 	store := &memoryStore{state: state}
-	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "answer"}, events: []hermes.Event{{Type: "completed", Data: json.RawMessage(`{"status":"completed","output":"answer"}`)}}}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "answer"}, events: []hermes.Event{{Type: "completed", Data: json.RawMessage(`{"run_id":"run-1","status":"completed","output":"answer"}`)}}}
 	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(101, 0) }))
 	if err := svc.ReconcilePending(context.Background()); err != nil {
 		t.Fatal(err)
@@ -734,7 +737,7 @@ func TestRestartReconcilesOnlyDurablyMappedConversationRun(t *testing.T) {
 		t.Fatalf("unsafe recovered run accepted: task=%q messages=%d stopped=%d err=%v", violationStore.state.Tasks["task-1"].Status, len(violationStore.state.Messages["c1"]), violationRuntime.stopped, err)
 	}
 	oversized := strings.Repeat("x", space.MaxChatMessageBytes+1)
-	oversizedData, _ := json.Marshal(map[string]string{"status": "completed", "output": oversized})
+	oversizedData, _ := json.Marshal(map[string]string{"run_id": "run-1", "status": "completed", "output": oversized})
 	oversizedStore := &memoryStore{state: state}
 	oversizedRuntime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: oversized}, events: []hermes.Event{{Type: "completed", Data: oversizedData}}}
 	if err := NewService(oversizedStore, oversizedRuntime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(101, 0) })).ReconcilePending(context.Background()); err != nil || oversizedStore.state.Tasks["task-1"].Status != space.OutcomeUnknown || len(oversizedStore.state.Messages["c1"]) != 1 {

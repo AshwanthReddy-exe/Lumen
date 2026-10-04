@@ -331,6 +331,9 @@ func allowedChatEvent(event hermes.Event, expectedRunID string) bool {
 	if !allowedChatStatus(event.Type) {
 		return false
 	}
+	if len(event.Data) == 0 {
+		return false
+	}
 	if len(event.Data) > 0 {
 		if data := bytes.TrimSpace(event.Data); len(data) == 0 || data[0] != '{' {
 			return false
@@ -342,6 +345,7 @@ func allowedChatEvent(event hermes.Event, expectedRunID string) bool {
 		}
 		seen := map[string]bool{}
 		expected := canonicalChatStatus(event.Type)
+		seenRunID := false
 		for decoder.More() {
 			key, err := decoder.Token()
 			if err != nil {
@@ -357,6 +361,11 @@ func allowedChatEvent(event hermes.Event, expectedRunID string) bool {
 				return false
 			}
 			switch name {
+			case "run_id":
+				if value != expectedRunID {
+					return false
+				}
+				seenRunID = true
 			case "status", "event", "type":
 				if canonicalChatStatus(value) != expected {
 					return false
@@ -368,6 +377,9 @@ func allowedChatEvent(event hermes.Event, expectedRunID string) bool {
 		}
 		end, err := decoder.Token()
 		if err != nil || end != json.Delim('}') {
+			return false
+		}
+		if !seenRunID {
 			return false
 		}
 		var extra any
@@ -605,6 +617,10 @@ func (s *Service) complete(queued space.Transition, state space.State, taskID st
 		return tr, errors.Join(cause, err)
 	}
 	if tr.Rejection != "" {
+		if outcome == space.OutcomeCompleted && tr.Rejection == "conversation_too_large" {
+			cause = errors.New("runtime output no longer fits conversation bounds")
+			return s.complete(queued, state, taskID, space.OutcomeFailed, "", cause)
+		}
 		s.logger.Error("lumen_conversation", "event", "terminal_persistence_failed", "reason", "state_rejected")
 		return tr, errors.Join(cause, errors.New(tr.Rejection))
 	}

@@ -311,7 +311,7 @@ func TestRestartCompletesVerifiedConversationRunWithoutRedispatch(t *testing.T) 
 	apply(space.Command{Type: space.CommandDispatchHostRun, ActorID: state.HostID, RequestID: "dispatch-chat", TaskID: "chat-task", RuntimeRunID: "run-chat", RuntimeIdempotencyKey: "send-chat", RuntimeProfileDigest: profile.Digest, CertificationID: "cert-1", EndpointIdentity: "endpoint:test", DispatchedAt: 100, ReconcileBy: 200})
 	cfg := s.cfg
 	s.Shutdown()
-	runtime := &fakeRuntime{statusDefault: hermes.Run{RunID: "run-chat", Status: "completed", Output: "verified"}, events: []hermes.Event{{Type: "completed", Data: []byte(`{"status":"completed","output":"verified"}`)}}}
+	runtime := &fakeRuntime{statusDefault: hermes.Run{RunID: "run-chat", Status: "completed", Output: "verified"}, events: []hermes.Event{{Type: "completed", Data: []byte(`{"run_id":"run-chat","status":"completed","output":"verified"}`)}}}
 	restarted, err := NewWithRuntime(cfg, runtime, WithExecutionTiming(5*time.Millisecond, 35*time.Millisecond), WithClock(func() time.Time { return time.Unix(101, 0) }), WithConversationCertifier(fixedConversationCertifier{cert: testConversationCertification()}), WithConversationRuntime(runtime))
 	if err != nil {
 		t.Fatal(err)
