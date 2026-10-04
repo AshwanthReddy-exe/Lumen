@@ -300,13 +300,23 @@ func TestProjectionPicksNewestMemoryWithinBudget(t *testing.T) {
 }
 
 func TestProjectionContextNeverExceedsByteBudget(t *testing.T) {
+	large := strings.Repeat("x", 256)
 	records := map[string]space.ContextRecord{
-		"a": {ID: "a", Namespace: "user.preferences/v1", SchemaVersion: 1, Provenance: "owner", Classification: "private", AcceptedAt: 1, Digest: space.DigestText(`{"locale":"en"}`), Payload: json.RawMessage(`{"locale":"en"}`)},
-		"b": {ID: "b", Namespace: "user.preferences/v1", SchemaVersion: 1, Provenance: "owner", Classification: "private", AcceptedAt: 1, Digest: space.DigestText(`{"locale":"en"}`), Payload: json.RawMessage(`{"locale":"en"}`)},
+		"a":     {ID: "a", Namespace: "user.preferences/v1", SchemaVersion: 1, Provenance: "owner", Classification: "private", AcceptedAt: 1, Digest: space.DigestText(`{"locale":"en"}`), Payload: json.RawMessage(`{"locale":"en"}`)},
+		"b":     {ID: "b", Namespace: "user.preferences/v1", SchemaVersion: 1, Provenance: "owner", Classification: "private", AcceptedAt: 1, Digest: space.DigestText(`{"locale":"en"}`), Payload: json.RawMessage(`{"locale":"en"}`)},
+		"large": {ID: "large", Namespace: "user.preferences/v1", SchemaVersion: 1, Provenance: "owner", Classification: "private", AcceptedAt: 2, Digest: space.DigestText(`{"preferred_name":"` + large + `"}`), Payload: json.RawMessage(`{"preferred_name":"` + large + `"}`)},
 	}
 	const budget = 74
-	if contextText := projectedPreferences(records, budget, 100); len(contextText) > budget {
+	if contextText := projectedPreferences(records, budget, 100); len(contextText) > budget || !strings.Contains(contextText, "locale") {
 		t.Fatalf("projected context bytes=%d, want at most %d: %q", len(contextText), budget, contextText)
+	}
+}
+
+func TestNonterminalRunStatusesRemainPending(t *testing.T) {
+	for _, status := range []string{"stopping", "awaiting_approval", "waiting_for_approval"} {
+		if !isNonterminalChatStatus(status) {
+			t.Errorf("%q treated as terminal", status)
+		}
 	}
 }
 

@@ -316,7 +316,7 @@ func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, sta
 
 func isNonterminalChatStatus(status string) bool {
 	switch status {
-	case "created", "started", "running", "progress", "queued", "pending", "accepted", "in_progress":
+	case "created", "started", "running", "stopping", "awaiting_approval", "waiting_for_approval", "progress", "queued", "pending", "accepted", "in_progress":
 		return true
 	default:
 		return false

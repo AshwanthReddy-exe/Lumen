@@ -130,7 +130,7 @@ func projectedPreferences(records map[string]space.ContextRecord, maxBytes int, 
 			required++ // separator before every entry after the first
 		}
 		if maxBytes > 0 && b.Len()+required > maxBytes {
-			break
+			continue
 		}
 		if b.Len() > 1 {
 			b.WriteByte(',')
