@@ -229,7 +229,9 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	if err != nil || dispatched.Rejection != "" {
 		return queued, errOrRejection(err, dispatched.Rejection)
 	}
-	return s.reconcileRun(ctx, queued, state, taskID, run, cert, profile, by)
+	// Once dispatch is durably recorded, the Host owns reconciliation even if
+	// the client disconnects. The persisted deadline still bounds this work.
+	return s.reconcileRun(context.WithoutCancel(ctx), queued, state, taskID, run, cert, profile, by)
 }
 
 func (s *Service) reconcileRun(ctx context.Context, queued space.Transition, state space.State, taskID string, run hermes.Run, cert space.RuntimeCertification, profile space.RuntimeProfile, by int64) (space.Transition, error) {

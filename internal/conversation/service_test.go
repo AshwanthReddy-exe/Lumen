@@ -637,6 +637,18 @@ func TestReplayedSendReportsDurableTaskOutcome(t *testing.T) {
 	}
 }
 
+func TestAcceptedRunReconcilesAfterClientCancellation(t *testing.T) {
+	store := &memoryStore{state: conversationState()}
+	ctx, cancel := context.WithCancel(context.Background())
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "accepted reply"}}
+	runtime.before = cancel
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	result, err := svc.Send(ctx, SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err != nil || result.Receipt.Outcome != space.OutcomeCompleted || store.state.Tasks["task-1"].Status != space.OutcomeCompleted {
+		t.Fatalf("accepted run lost after client cancellation: outcome=%q task=%q err=%v", result.Receipt.Outcome, store.state.Tasks["task-1"].Status, err)
+	}
+}
+
 func TestSessionIntentIsDurableBeforeCertificationIO(t *testing.T) {
 	store := &memoryStore{state: conversationState()}
 	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "completed", Output: "hello"}}
