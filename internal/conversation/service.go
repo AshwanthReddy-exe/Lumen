@@ -227,7 +227,11 @@ func (s *Service) Send(ctx context.Context, req SendRequest) (space.Transition, 
 	s.logger.Info("lumen_conversation", "event", "hermes_request_accepted")
 	dispatched, err := s.apply(space.Command{Type: space.CommandDispatchHostRun, SpaceID: state.SpaceID, HostID: state.HostID, Epoch: state.Epoch, ActorID: state.HostID, RequestID: "dispatch:" + req.RequestID, TaskID: taskID, RuntimeRunID: run.RunID, RuntimeIdempotencyKey: req.RequestID, RuntimeProfileDigest: profile.Digest, CertificationID: cert.ID, EndpointIdentity: cert.EndpointIdentity, DispatchedAt: created, ReconcileBy: by})
 	if err != nil || dispatched.Rejection != "" {
-		return queued, errOrRejection(err, dispatched.Rejection)
+		cause := errOrRejection(err, dispatched.Rejection)
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		_, stopErr := s.runtime.Stop(stopCtx, run.RunID)
+		stopCancel()
+		return s.complete(queued, state, taskID, space.OutcomeUnknown, "", errors.Join(cause, stopErr))
 	}
 	// Once dispatch is durably recorded, the Host owns reconciliation even if
 	// the client disconnects. The persisted deadline still bounds this work.

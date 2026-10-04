@@ -72,7 +72,7 @@ func project(state space.State, conversationID, taskID string, persona space.Per
 			separator = 1
 		}
 		if historyBytes+separator+len(encoded) > profile.MaxContextBytes {
-			break
+			continue
 		}
 		historyBytes += separator + len(encoded)
 		projected = append(projected, candidate)

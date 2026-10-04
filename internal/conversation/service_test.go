@@ -27,6 +27,19 @@ func (m *memoryStore) Update(fn func(space.State) space.Transition) (space.Trans
 	return tr, nil
 }
 
+type rejectDispatchStore struct{ memoryStore }
+
+func (m *rejectDispatchStore) Update(fn func(space.State) space.Transition) (space.Transition, error) {
+	tr := fn(m.state)
+	if tr.Rejection == "" && tr.Receipt.Outcome == space.OutcomeDispatched {
+		return space.Transition{State: m.state, Rejection: "dispatch_storage_failed"}, nil
+	}
+	if tr.Rejection == "" {
+		m.state = tr.State
+	}
+	return tr, nil
+}
+
 type fakeRuntime struct {
 	created        int
 	endpoint       string
@@ -262,14 +275,14 @@ func TestProjectionKeepsRecentHistoryWithinContextBudget(t *testing.T) {
 	appendMessage := func(id string, seq uint64, role space.MessageRole, content, task string) {
 		s.Messages["c1"] = append(s.Messages["c1"], space.Message{ID: id, ConversationID: "c1", Sequence: seq, Role: role, AuthorID: "owner", SurfaceID: "web", Content: content, ContentDigest: space.DigestText(content), CreatedAt: int64(seq), TaskID: task})
 	}
-	appendMessage("m1", 1, space.MessageUser, strings.Repeat("o", 80), "old")
-	appendMessage("m2", 2, space.MessageAssistant, strings.Repeat("n", 20), "new")
+	appendMessage("m1", 1, space.MessageUser, "older useful turn", "old")
+	appendMessage("m2", 2, space.MessageAssistant, strings.Repeat("n", 80), "new")
 	appendMessage("user:task-1", 3, space.MessageUser, "current", "task-1")
 	profile := space.DefaultRuntimeProfile()
 	profile.MaxContextBytes = 64
 	projection, err := ProjectForTask(s, "c1", "task-1", space.DefaultPersona(), profile, 100)
 	encoded, _ := json.Marshal(projection.Messages)
-	if err != nil || len(encoded) > profile.MaxContextBytes || len(projection.Messages) != 1 || projection.Messages[0].Content != strings.Repeat("n", 20) {
+	if err != nil || len(encoded) > profile.MaxContextBytes || len(projection.Messages) != 1 || projection.Messages[0].Content != "older useful turn" {
 		t.Fatalf("history exceeded budget or lost recent context: messages=%#v bytes=%d err=%v", projection.Messages, len(encoded), err)
 	}
 }
@@ -668,6 +681,16 @@ func TestAcceptedRunReconcilesAfterClientCancellation(t *testing.T) {
 	result, err := svc.Send(ctx, SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
 	if err != nil || result.Receipt.Outcome != space.OutcomeCompleted || store.state.Tasks["task-1"].Status != space.OutcomeCompleted {
 		t.Fatalf("accepted run lost after client cancellation: outcome=%q task=%q err=%v", result.Receipt.Outcome, store.state.Tasks["task-1"].Status, err)
+	}
+}
+
+func TestAcceptedRunIsStoppedIfDurableDispatchMappingFails(t *testing.T) {
+	store := &rejectDispatchStore{memoryStore: memoryStore{state: conversationState()}}
+	runtime := &fakeRuntime{run: hermes.Run{RunID: "run-1", Status: "running"}}
+	svc := NewService(store, runtime, fakeCertifier{cert: exactCertification()}, WithClock(func() time.Time { return time.Unix(100, 0) }))
+	result, err := svc.Send(context.Background(), SendRequest{RequestID: "send-1", ConversationID: "c1", SurfaceID: "web", TaskID: "task-1", Input: "hello", CreatedAt: 100, ReconcileBy: 200})
+	if err == nil || runtime.stopped != 1 || result.Receipt.Outcome != space.OutcomeUnknown || store.state.Tasks["task-1"].Status != space.OutcomeUnknown {
+		t.Fatalf("unmapped accepted run was not stopped and made uncertain: result=%#v task=%#v stopped=%d err=%v", result, store.state.Tasks["task-1"], runtime.stopped, err)
 	}
 }
 
