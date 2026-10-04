@@ -35,7 +35,7 @@ None at product-journey level. Merged foundation evidence is recorded in [the ba
 ## Context
 
 - Merged `main` at `81b60e3` includes the Go Space authority, encrypted snapshot store, operator boundary, Hermes Runs adapter, setup foundation, and completed Phase 01 GSD artifacts.
-- Draft PR #20 on `feat/lumen-continuity` is candidate branch-only conversation/memory work with open live gates; its separate worktree has dirty edits. It is not merged or a completion claim.
+- PR #20 is closed and unmerged; useful conversation/memory candidate work is retained on the verified `feat/lumen-continuity-preserved` branch. It remains unaccepted candidate code with a real-provider authentication failure and unresolved findings; it is not part of `main` or a completion claim.
 - [docs/PRD.md](../docs/PRD.md) owns product behavior; [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) owns boundaries; [docs/PLAN.md](../docs/PLAN.md) owns exact 17-phase sequencing and gates.
 - The [ingest synthesis](intel/SYNTHESIS.md) contains 58 stable FR requirements. Its `REQ-fr-*` labels are ingest wrappers; the published `FR-*` IDs remain primary here.
 
@@ -44,7 +44,7 @@ None at product-journey level. Merged foundation evidence is recorded in [the ba
 - **Authority:** One active Host owns canonical state, grants, approvals, routing, task truth and audit; a node revalidates its exact invocation locally.
 - **Runtime:** Hermes stays behind a versioned adapter and cannot grant authority or persist canonical Space state.
 - **Security:** Default deny; one-time action-bound approval; minimum permitted context; encrypted sensitive state; honest uncertain outcomes.
-- **Release:** Phase 01 is merged. Phase 02 plans and verifies the remaining Host/Hermes foundation gates in [the plan](../docs/PLAN.md).
+- **Release:** Phase 01 is merged and Phase 02 local Host/Hermes foundation is complete. Phase 03 conversation and web is next; VPS/install/reboot/update/rollback and laptop-off acceptance belong to Phase 10 under D-060 and [the plan](../docs/PLAN.md).
 - **Evidence:** Physical device, recovery and seven-day soak gates cannot be claimed from automated tests or draft PR code.
 
 ## Key Decisions
@@ -54,10 +54,11 @@ None at product-journey level. Merged foundation evidence is recorded in [the ba
 | One personal Space with one active Go Host | Keeps canonical authority in one place | Accepted: D-001, D-002, D-034, D-058 |
 | Pinned Hermes behind Host-owned contracts | Reuse intelligence while preserving authority | Accepted: D-006, D-026, D-049–D-051 |
 | Explicit memory acceptance in alpha | Owner controls retained facts | Accepted: D-059; D-046 is superseded |
+| Product before deployment qualification | Local personal-alpha value must be demonstrated before VPS/install release overhead | Accepted: D-060; deployment gates retained in Phase 10 |
 | Physical mobile qualification with fallback | Shared client feasibility needs device evidence | Accepted: D-056 |
 | Tailscale-assisted alpha reachability | Prove private reachability before relay investment | Accepted: D-057 |
 
 All accepted entries in [docs/DECISIONS.md](../docs/DECISIONS.md) are locked. Its superseded entries are historical.
 
 ---
-*Last updated: 2026-09-27 after PR #21 merged into `main`*
+*Last updated: 2026-10-02 after the bounded Phase 02 foundation passed; Phase 03 is next.*

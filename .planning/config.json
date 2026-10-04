@@ -47,7 +47,8 @@
     "post_planning_gaps": true,
     "security_enforcement": true,
     "security_asvs_level": 1,
-    "security_block_on": "high"
+    "security_block_on": "high",
+    "plan_review_convergence": true
   },
   "ship": {
     "pr_body_sections": []

@@ -3,13 +3,13 @@
 
 ## 1. Product, release boundaries, and current baseline
 
-Lumen is a personal AI Space that follows the user across devices. An always-on Host maintains conversations, accepted memory, permissions, tasks and device identity. Hermes supplies reasoning and supported integration capabilities. Paired devices provide interfaces and permission-controlled execution.
+Lumen is a personal AI Space that follows the owner across authorized nodes. The Host maintains canonical conversations, accepted memory, permissions, tasks, run state and node identity. Hermes supplies bounded reasoning and supported integration capabilities. Nodes provide interfaces and separately permissioned execution.
 
 The defining demonstration is:
 
-> Start a conversation on a laptop, continue it from a phone after closing the laptop, later ask the phone to perform an action on the laptop, approve the action on the phone, and receive a verifiable result in the same conversation.
+> Start a conversation from one node, continue it from another while the same Space and Host retain canonical state, request a capability on an explicitly selected target node, approve the exact action from an authorized node, and receive a verifiable result in that same conversation.
 
-Conversation continuity requires the Host to be reachable. Laptop-local execution additionally requires the laptop’s node to be awake and connected.
+Conversation continuity requires an authorized path to the Host. A node-local capability additionally requires its target node to be awake, connected and locally authorized.
 
 ### Confirmed decisions
 
@@ -20,16 +20,16 @@ Conversation continuity requires the Host to be reachable. Laptop-local executio
 | Host and Hermes may share a machine | Confirmed; separate processes, credentials and protected storage |
 | Maximize Hermes reuse | Confirmed; use its reasoning, providers, tools, skills and integration mechanics wherever compatible |
 | Shared conversations and memory | Confirmed; Host owns canonical records and grants access to authorized surfaces |
-| Phone can initiate laptop actions | Confirmed; Host routes to a paired, authorized laptop node |
+| Cross-node execution | Confirmed; Host routes an approved capability to an explicitly selected, paired target node, which rechecks local permission |
 | Requests from Hermes reach the user | Confirmed; support both approval requests and ordinary clarification questions |
 | Existing Hermes or full setup | Confirmed; adopt an existing endpoint or provision a dedicated managed runtime |
 | QR/link/code pairing | Confirmed; easy enrollment with authenticated device identity |
 | Tailscale is acceptable | Confirmed as an option; application permissions remain Lumen’s responsibility |
 | Wake word before STT/TTS | Confirmed as the voice development order |
 | Speech local by default | Confirmed; remote speech requires explicit opt-in |
-| FutureOS-style mobile implementation | Preferred if feasible; Android native plus phone web is the agreed fallback |
+| Node client implementation | Use the selected shared client if it passes the bounded gate; otherwise qualify a platform-specific node client and responsive web surface |
 | GSD replaces Superpowers | Confirmed; use one planning workflow |
-| Phase-gated implementation | Confirmed; Phase 01 planning/evidence work is authorized, while product feature phases remain subject to their gates |
+| Phase-gated implementation | Confirmed; build the local personal-alpha product before VPS installation/release gates, while every slice still passes its security and recovery checks |
 
 The attached original prompt is reference material. Later conversation decisions override its earlier suggestions, including streaming pre-activation audio to another machine and treating Hermes as merely an optional early experiment.
 
@@ -48,7 +48,7 @@ Inspection found:
 | Live evidence | Recorded Linux/VPS lifecycle and native macOS runtime evidence exist; remaining recovery and update probes are explicitly documented |
 | Conversations and memory | Absent from current `main` |
 | Android | Disabled companion shell; no working pairing, microphone or execution surface |
-| Mobile/web/Mac node | Product clients and remote node execution remain to be built |
+| Node clients and cross-node execution | Product clients and remote node execution remain to be built |
 | Draft conversation work | [PR #20](https://github.com/AshwanthReddy-exe/Lumen/pull/20) is draft on `feat/lumen-continuity`, 26 committed changes ahead of `main` at `0b67f81` when inspected. It includes conversation/memory and bounded node-status work but retains open live gates; its separate worktree also has uncommitted edits. The older `feat/m2-conversation-nucleus` work is incorporated there and is not an independent completion claim |
 | GSD | Runtime identity confirms `@opengsd/gsd-core` version `1.14.0` |
 
@@ -58,7 +58,7 @@ The PRD and architecture status statements and active links to deleted plans hav
 
 ### Release sequence
 
-**Personal alpha:** one Space, one owner, always-on Host, Hermes, web administration, phone conversation and approval surface, Mac execution node, inspectable memory, Android desk voice, recovery and measured latency.
+**Personal alpha:** one Space, one owner, Hermes, continuous web conversation and agent runs, accepted memory, multiple enrolled nodes, cross-node approvals and execution, a qualified voice companion node, and integrated local use first; then qualify the always-on Host, VPS installation, reboot/update/recovery, primary-node-offline journey, soak and measured release configuration. Local success is not evidence for the later always-on gates.
 
 **Expanded personal beta:** one messaging integration, selected Apple abilities, controlled browsing and coding, richer native integrations, sustainable updates.
 
@@ -75,7 +75,7 @@ Multi-user customer hosting and multiple people sharing one Space are different 
 ### Ownership and execution
 
 ```text
-Phone / web / desktop / Android desk companion
+Authorized node interfaces (web, mobile, desktop, voice companion)
                   │
         authenticated Lumen connection
                   │
@@ -84,7 +84,7 @@ Phone / web / desktop / Android desk companion
   device routing · task records · durable events
           │                         │
      Hermes runtime            Paired nodes
-  reasoning, providers,      Mac files/apps/tools
+  reasoning, providers,      Node-local capabilities
   supported integrations     local voice and devices
           │                         │
           └── bounded evidence and receipts ──┘
@@ -139,6 +139,8 @@ Required records:
 Every accepted message stores its receipt and execution intent before runtime I/O. Retry with the same command ID returns the same receipt. Reusing an ID with different content is rejected.
 
 One conversation has one active turn initially. New messages queue by default; stopping or replacing a turn is explicit. Separate conversations may execute concurrently within configured limits.
+
+A continuous agent run is a durable, Host-owned execution attached to a Space conversation, not a long-lived client connection or Hermes session. It survives client disconnect, records accepted input, runtime/profile and context revisions, checkpoints, event cursor, deadline and resource budget, and can be reattached, inspected, stopped or reconciled by an authorized node. Waiting for owner input/approval is a durable paused state. Host policy is re-evaluated before every effect and after restart; a runtime or delegated child never inherits authority implicitly. Unknown dispatch outcomes are reconciled by stable run/invocation IDs, never blindly resubmitted.
 
 Token deltas are provisional display data. Batch checkpoints and persist final messages; do not rewrite the complete encrypted Space for every streamed token.
 
@@ -222,21 +224,21 @@ These require distinct UX and lifecycle records.
 
 Both appear in a durable attention inbox and the associated conversation. Notifications contain minimal information and link into an authenticated surface.
 
-Concurrent answers from phone and laptop use a single accepted resolution. Other surfaces show the result. Expired prompts cannot resume work. A changed action requires a new approval. Delivery failure retains the decision for bounded reconciliation.
+Concurrent answers from authorized nodes use a single accepted resolution. Other surfaces show the result. Expired prompts cannot resume work. A changed action requires a new approval. Delivery failure retains the decision for bounded reconciliation.
 
-Host approval does not override a local OS denial. Remote approval also cannot satisfy every native macOS or mobile consent dialog.
+Host approval does not override a target node’s local OS denial. Remote approval also cannot satisfy every native OS consent dialog.
 
 ### Cross-node execution
 
-For a phone-to-Mac request:
+For a source-node to target-node request:
 
 1. Host accepts the message.
 2. Hermes requests a typed capability.
-3. Host selects the Mac and checks grants.
+3. Host validates the explicit target node and checks grants.
 4. Host obtains any required approval.
 5. Host persists an invocation before sending it.
-6. Mac checks identity, epoch, expiry, resource scope and local permission.
-7. Mac durably records receipt/acceptance before performing a side effect.
+6. Target node checks identity, epoch, expiry, resource scope and local permission.
+7. Target node durably records receipt/acceptance before performing a side effect.
 8. Host records returned evidence and updates every authorized surface.
 
 Use at-least-once delivery with idempotent command handling. Do not claim universal exactly-once external effects. If an external service lacks an idempotency mechanism and the result is lost, report an uncertain outcome and reconcile before retrying.
@@ -315,7 +317,7 @@ Primary destinations:
 | Devices | Pairing, connection quality, last seen, capabilities and grants |
 | Settings | Hermes connection, provider policy, voice, privacy, export and recovery |
 
-Phone navigation emphasizes conversation, attention and devices. Web exposes administration and detailed inspection. Mac uses a status/menu interface for connectivity, stop, local permissions and selected roots. Android desk mode provides large listening/speaking indicators and touch-accessible stop/mute controls.
+Node interfaces emphasize conversation, attention and node/capability status. Web exposes administration and detailed inspection. Native node surfaces provide connectivity, stop, local permissions and selected-resource controls. Voice companion mode provides clear listening/speaking indicators and accessible stop/mute controls.
 
 Shared components include task cards, approval previews, clarification forms, connection banners, memory provenance panels and resource selectors.
 
@@ -360,7 +362,7 @@ Use an alpha workload of one owner, five enrolled devices, two concurrently acti
 | Experiment | Setup and measurements | Pass/fail decision |
 |---|---|---|
 | E1 Hermes interaction contract | Pinned runtime; exercise approval, clarification, stop, lost stream and restart | Enable only verified interactions; add a supported extension for missing ones |
-| E2 Runtime containment | Attempt unauthorized file/network/tool/memory access using a restricted profile | Any escape blocks the claimed profile |
+| E2 Runtime containment | Attempt unauthorized file/network/tool/memory access using a restricted profile | Any escape blocks the claimed profile; a boundary that does not exist is UNSUPPORTED and remains owned by its implementation phase |
 | E3 Shared mobile client | Physical Android and iPhone; pairing, secure key use, replay, approval and native audio bridge | Adopt shared client if stable; otherwise use agreed fallback |
 | E4 Storage growth | Existing store versus transactional candidate; crash injection and representative data | Choose based on atomicity, encryption, portability and latency targets |
 | E5 Connectivity | Phone cellular, home Mac, VPS; direct/relayed paths and reconnect | Establish alpha network configuration and identify whether relay work is justified |
@@ -399,163 +401,77 @@ Tasks:
 
 **Risks/tests:** historical assertions mistaken for current behavior; broken links; accidental restoration of unwanted workflow state.
 
-### Phase 02 — Close the existing Host/Hermes foundation
+### Phase 02 — Local Host/Hermes product foundation
 
-**Prerequisites:** Phase 01.
-**Effort:** 1–2 weeks.
+**Prerequisites:** Phase 01. **Requirements:** FR-01, FR-06, FR-38, FR-41, FR-69.
 
-Tasks:
+Plans: (A) establish a real provider-backed response through the Host and diagnose credential propagation with redacted checks; (B) inspect and selectively reuse the preserved conversation runtime/certifier, bind the actual local profile, and keep tools disabled for chat; (C) prove durable Run mapping, cancellation, stream loss, restart and exact approval behavior on pinned Hermes with a deterministic provider; (D) exercise file/network boundaries against the claimed restricted profile, establish chat-only tool safety through zero enabled tools plus a no-effect action canary, and record memory as unsupported until Phase 04; event-level denial of a model tool call belongs to Phase 07 when a real broker exists; (E) independent review and bounded Phase 02 exit ledger.
 
-1. Verify clean installation and authenticated connection using the existing pinned runtime.
-2. Demonstrate native artifact update and rollback on a real machine.
-3. Test pinned-runtime stream loss, Host restart and reconciliation.
-4. Demonstrate actual cross-machine external Hermes Runs.
-5. Resolve image-visibility contradictions through an anonymous pull check.
-6. Specify safe container-generation replacement or explicitly restrict alpha updates to the verified path.
-7. Run E1 and E2.
+**Exit:** one real authorized Host-mediated answer persists, failures persist honestly, duplicate dispatch and authority escape are disproved. Chat-only tool safety is shown by a zero-tool runtime inventory and no-effect canary; no model-originated denial event is claimed. Pinned Hermes lifecycle evidence may use a deterministic synthetic provider, clearly separated from the one real NIM answer. Synthetic evidence stays distinct. VPS setup, image distribution, reboot, update/rollback, two-machine Runs and external containment move to Phase 10. Preserve completed plan 02-06; mark deployment plans `status: superseded` with replacement links.
 
-**Acceptance:** no duplicate execution after ambiguous dispatch; approval denial holds; cancellation and unknown outcomes are honest; identity/state survive recovery.
+### Phase 03 — Continuous Space conversation
 
-**Risk:** upstream features may not provide the assumed control surface. Scope profiles accordingly rather than weakening enforcement.
+**Prerequisites:** Phase 02. **Requirements:** FR-04, FR-30, FR-60, FR-75.
 
-### Phase 03 — Validate mobile, storage, network and wake foundations
+Plans: canonical conversation/message/receipt/cursor/runtime-binding transitions in `internal/space`; review and selectively reuse preserved conversation code only after its findings are closed; authenticated send/status/stop/replay APIs in `internal/host` and `cmd/lumen-host`; responsive conversation UI in `apps/web`.
 
-**Prerequisites:** Phase 01; runtime tests depend on Phase 02.
-**Effort:** 1–2 weeks.
+**Exit:** real answers and accepted messages survive independent Host/Hermes restarts; duplicate sends map to one receipt; reconnect replays committed events by cursor. Run negative checks for duplicate key/different payload, lost stream, interrupted persistence, cancellation and unauthorized reads.
 
-Tasks:
+### Phase 04 — Accepted memory and context
 
-1. Run E3–E6 with bounded prototypes.
-2. Select mobile strategy and exact supported platform matrix.
-3. Select persistence path and migration requirements.
-4. Measure regional network routes and node reconnect behavior.
-5. Prove local wake detection without inference or outbound microphone data.
+**Prerequisites:** Phase 03. **Requirements:** FR-33, FR-36, FR-61, FR-63.
 
-**Acceptance:** reproducible experiment reports, dependency/license inventory, explicit pass/fail decisions and chosen fallbacks.
+Plans: Host-owned accepted memory/proposal records and revisions; policy-filtered context projection; inspect/accept/correct/delete/export controls; E8 independent retrieval questions and privacy canaries.
 
-**Risk:** native mobile/audio requirements exceed the shared-client benefit. Apply the agreed fallback rather than maintaining two competing apps.
+**Exit:** a corrected accepted fact changes the next answer; deletion and scope restriction are reflected after runtime restart and session replacement. Do not select a new database or semantic retrieval without a measured, independently authored evaluation.
 
-### Phase 04 — Canonical conversations and product API
+### Phase 05 — Node identity and continuity
 
-**Prerequisites:** Phases 02–03.
-**Effort:** 2–3 weeks.
+**Prerequisites:** Phases 03–04. **Requirements:** FR-02, FR-05, FR-10, FR-15, FR-23, FR-24, FR-66, FR-84.
 
-Tasks:
+Plans: physical shared-client gate from D-056; versioned signed/expiring node enrollment and command protocol; Host-confirmed enrollment, rotation and revocation; node conversation client with durable outbox, receipts, replay and status; suspension/acknowledgement/stale-key/clock-skew/revocation checks; reattachment to active continuous runs.
 
-1. Add conversation, message, surface, receipt and runtime-binding records.
-2. Implement transactional acceptance and durable execution intent.
-3. Add authenticated command and replay APIs.
-4. Normalize provisional and committed output.
-5. Implement one-active-turn ordering, queueing and explicit cancellation.
-6. Build a minimal web conversation surface.
+**Exit:** an enrolled node continues the same Space conversation and reattaches to an active run while the Host is reachable; replay does not duplicate; revocation blocks fresh access. Always-on and primary-node-offline continuity remain Phase 10 claims.
 
-**Acceptance:** restart Host and Hermes independently without losing accepted messages; duplicate sends return one result; event gaps recover through replay.
+### Phase 06 — Attention and human input
 
-**Tests:** crash at each persistence/I/O boundary, profile substitution, concurrent sends, oversized output and Unicode truncation.
+**Prerequisites:** Phases 02, 03 and 05. **Requirements:** FR-31, FR-81, FR-82.
 
-### Phase 05 — Accepted memory and context controls
+Plans: separate clarification from approval records; exact action binding, one winning resolution, expiry and cancellation; synchronized conversation cards/inbox; certify reply delivery against the supported Hermes interaction API.
 
-**Prerequisites:** Phase 04.
-**Effort:** 1.5–2.5 weeks.
+**Exit:** authorized nodes and web show the same pending request; conflicting replies resolve once; a waiting continuous run pauses and resumes by stable run ID only after the exact request is answered; expiry/cancellation prevents stale effects. Answering a question supplies input but grants no authority. Unsupported Hermes paths stay disabled.
 
-Tasks:
+### Phase 07 — Cross-node capabilities and useful action
 
-1. Implement classified context records and memory proposals.
-2. Build deterministic context selection and budgets.
-3. Add memory inspection, confirmation, correction and deletion.
-4. Invalidate runtime context when privacy policy changes.
-5. Run E8 and add retrieval metrics.
+**Prerequisites:** Phases 05–06. **Requirements:** FR-11–14, FR-20–22, FR-35, FR-64–65.
 
-**Acceptance:** relevant memory survives runtime replacement; correction affects subsequent turns; revoked/deleted material is excluded from new projections.
+Plans: target-node enrollment/health/local stop and versioned capability manifest; selected-resource `files.search` and `files.read` with local permission/path checks; Host authorization and explicit target selection; durable cross-node invocation, cancellation and receipt reconciliation; typed Hermes intent through the Host broker; stale-grant/revocation/replay and before/after-effect disconnect injection.
 
-**Risks/tests:** sensitive inference, stale session memory, conflicting facts, contaminated evaluation queries and backup retention.
+**Exit:** request from a source node, approve from an authorized node, execute one bounded capability on the explicitly selected target node, and see its verifiable receipt in the same Space conversation. Offline and uncertain outcomes remain visible; neither Hermes nor a node can expand Host authority.
 
-### Phase 06 — Pairing, client identity and reliable synchronization
+### Phase 08 — Voice companion node
 
-**Prerequisites:** Phase 04; mobile/network decision from Phase 03.
-**Effort:** 2–3 weeks.
+**Prerequisites:** Phases 03 and 05–07. **Requirements:** FR-07, FR-40, FR-71–73, FR-83.
 
-Tasks:
+Plans: qualify local wake on a physical Android device against E6; visible mute/listening/stop and zero pre-activation egress; post-activation recognition, canonical transcript, local playback and interruption; E7 accuracy, battery, thermal, echo and long-duration checks.
 
-1. Implement expiring enrollment invitations and confirmation.
-2. Add device key storage, membership and revocation.
-3. Implement authenticated connections and version negotiation.
-4. Add atomic authorized replica/cursor storage.
-5. Implement persistent offline message outbox and receipt lookup.
-6. Ship phone chat and device-management screens.
+**Exit:** voice uses the existing conversation and approval/action path; mute and stop respond promptly; local speech limits and unavailable engines are reported honestly.
 
-**Acceptance:** phone continues a laptop conversation while laptop is off; reconnect does not duplicate messages; a revoked device cannot fetch new state.
+### Phase 09 — Integrated local product
 
-**Tests:** stolen/reused invitation, clock skew, app suspension, cache corruption, lost acknowledgements and older client versions.
+**Prerequisites:** Phases 02–08. **Requirements:** FR-62 local restart/runtime-replacement continuity (Phase 10 owns restore/migration).
 
-### Phase 07 — Attention inbox and cross-device human input
+Plans: complete source-node→approval-node→target-node receipt journey with real Hermes and corrected memory; inject provider/Host/runtime/client reconnect/node availability/storage/accessibility failures; record latency/resources with revision, hardware, model, workload and limitations.
 
-**Prerequisites:** Phases 02, 04 and 06.
-**Effort:** 1–2 weeks.
+**Exit:** all personal-alpha functions work together locally. This phase claims neither primary-node-offline continuity nor VPS/install readiness.
 
-Tasks:
+### Phase 10 — Always-on deployment and alpha release
 
-1. Distinguish approvals from clarifications in contracts.
-2. Persist and display requests across surfaces.
-3. Bind exact approval arguments and consume resolutions once.
-4. Deliver replies through the certified Hermes interaction path.
-5. Add expiry, cancellation, race handling and privacy-preserving notifications.
+**Prerequisites:** Phases 02–09. **Requirements:** FR-03, FR-08, FR-09, FR-34, FR-62.
 
-**Acceptance:** a Hermes request can be answered from the phone and reflected on web; two simultaneous answers produce one accepted resolution.
+Plans: resume Linux setup, anonymous image pull, supervisor reboot and doctor gates; prove any claimed macOS auto-start profile loads after login/reboot and recovers safely across interrupted LaunchAgent publication (otherwise mark that profile unsupported); exercise executable update, rollback and interrupted replacement recovery; prove two-machine external Hermes Runs and declared containment profile; encrypted export/restore and old-Host retirement; primary-node-offline cross-node journey, latency, seven-day soak and owner sign-off.
 
-**Tests:** stale prompt, changed action, malicious reason text, missing runtime support, lost reply and restarted Host.
-
-### Phase 08 — Mac execution node and useful cross-device action
-
-**Prerequisites:** Phases 06–07.
-**Effort:** 2–3 weeks.
-
-Tasks:
-
-1. Implement Mac node enrollment and capability advertisement.
-2. Add user-selected file roots and local permission controls.
-3. Implement search/read/notification adapters.
-4. Connect Hermes typed requests through the Host broker.
-5. Persist invocation and execution receipts.
-6. Run E9 and add local/global stop controls.
-
-**Acceptance:** ask from phone, approve from phone, execute on Mac, receive a bounded result and receipt.
-
-**Tests:** Mac asleep, node disconnect, symlink escape, file replacement, revoked root, denied OS permission and duplicate invocation.
-
-### Phase 09 — Speech and Android desk companion
-
-**Prerequisites:** wake experiment from Phase 03; Phases 04, 06–08.
-**Effort:** 2–4 weeks.
-
-Tasks:
-
-1. Productize local wake/mute/listening indicators.
-2. Add STT after activation and TTS playback.
-3. Implement partial transcription and canonical final transcript.
-4. Add barge-in, echo handling and cancellation propagation.
-5. Add explicit remote-speech consent and resource-aware engine selection.
-6. Run E7 and long-duration desk-device checks.
-
-**Acceptance:** no pre-activation audio egress; voice can initiate the same phone-to-Mac workflow; interruptions stop playback promptly; disabled mic remains visibly disabled.
-
-**Tests:** noisy room, assistant self-trigger, calls/headphones, app suspension, missing offline voice, thermal throttling and network interruption.
-
-### Phase 10 — Personal alpha acceptance and recovery
-
-**Prerequisites:** Phases 02–09.
-**Effort:** 1–2 weeks plus a minimum seven-day soak.
-
-Tasks:
-
-1. Complete encrypted backup/export and restore drills.
-2. Run E10; document manual migration and old-Host retirement.
-3. Execute end-to-end user journeys and accessibility review.
-4. Measure latency/resource budgets.
-5. Exercise outage, storage-full, provider failure and node-loss scenarios.
-6. Publish the alpha’s supported configurations and limitations.
-
-**Acceptance:** sustained use across Host, Mac and phone; no unexplained canonical data loss; no unauthorized effects; every injected failure yields the specified visible state.
+**Exit:** the complete personal-alpha acceptance journey passes with an always-on Host. Each supported install/update profile has its own live evidence; no local Phase 02–09 check can substitute for it.
 
 ### Phase 11 — One messaging integration
 
@@ -600,18 +516,18 @@ Add Windows execution as a separate conformance implementation when the Mac cont
 
 **Tests:** escaping paths, malicious repository instructions, long-running processes, interrupted patch application and worktree conflicts.
 
-### Phase 14 — Durable automation and delegation
+### Phase 14 — Continuous agents, automation and delegation
 
-**Prerequisites:** Phase 10 and at least one stable effectful capability.
+**Prerequisites:** Phases 03, 07 and 10; at least one stable effectful capability.
 **Effort:** 2–4 weeks.
 
-Tasks: automation preview, approved schedules, timezone/missed-run policy, durable trigger receipts, bounded Hermes workers, child authority subsets, budgets, pause/revoke and outcome delivery.
+Tasks: continuous-goal preview/approval; durable run/checkpoint/lease/heartbeat state; bounded deadlines and resource budgets; approved schedules with timezone/missed-run policy and trigger receipts; delegated child runs with explicit target-node and capability subsets; parent/child evidence and receipt delivery; pause, revoke, resume and descendant cancellation.
 
-Reuse Hermes worker and scheduling mechanics only where one scheduler remains clearly authoritative.
+Reuse Hermes worker mechanics only where Host remains the scheduler and authority ledger. Study Future Loop as a separate control-plane reference; review its Apache-2.0 code and dependency obligations before copying anything.
 
-**Acceptance:** automation survives restart, executes once per logical trigger where supported, and cannot expand its grants.
+**Acceptance:** owner can inspect and control a continuous run across client and Host restarts; stale/orphaned leases cannot execute; each effect rechecks Host grants and target-node permission; trigger retries do not duplicate effects; child failures remain attached to the parent run.
 
-**Tests:** daylight-saving transitions, duplicate triggers, expired grants, child failure, budget exhaustion and cancellation of descendants.
+**Tests:** daylight-saving transitions, duplicate triggers, expired/revoked grants, restart during checkpoint, stale lease, child failure, budget exhaustion, uncertain effect and cancellation of descendants.
 
 ### Phase 15 — Paid self-hosted readiness
 
@@ -772,4 +688,4 @@ The proposed architecture retains the tested Go foundation, gives Hermes substan
 
 The highest-risk assumptions have explicit experiments before dependent implementation: runtime containment and interaction support, shared mobile native integration, storage evolution, wake reliability, remote connectivity and migration fencing.
 
-This is the approved master plan. Phase 01 GSD artifacts merged in PR #21. Phase 02 execution is in progress on its reviewed branch; live evidence and open gates are tracked in [GSD state](../.planning/STATE.md) and the phase evidence files.
+This is the approved master plan. Phase 01 GSD artifacts merged in PR #21. Phase 02 local Host/Hermes foundation is complete on its reviewed branch; its bounded evidence and deferred Phase 04/07/10 gates are tracked in [GSD state](../.planning/STATE.md) and the phase evidence files. Phase 03 conversation and web is next.
