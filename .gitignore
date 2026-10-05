@@ -39,3 +39,11 @@ references/
 # Pinned upstream source archive used as a Docker build context input
 hermes-source.tar.gz
 /.lumen-e2-hermes-source.*
+
+# Generated embedded browser bundle; keep the tracked compile-time sentinel
+/internal/host/web/dist/*
+!/internal/host/web/dist/.keep
+
+# Generated managed-service web bundle; keep Go embed directory present
+/cmd/lumen-managed/web/dist/*
+!/cmd/lumen-managed/web/dist/.keep
