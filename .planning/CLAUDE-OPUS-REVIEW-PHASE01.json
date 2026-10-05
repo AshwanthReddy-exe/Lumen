@@ -1,0 +1,129 @@
+{
+  "schema": "agy.review.v1",
+  "verdict": "accepted",
+  "findings": [
+    {
+      "id": "F-01",
+      "severity": "medium",
+      "category": "data-mismatch",
+      "file": ".planning/ROADMAP.md",
+      "lines": "267-286",
+      "title": "Progress table plan denominators disagree with Phase Details plan counts for 8 phases",
+      "description": "The Phase Details sections list plan ranges that match the actual plan files on disk (e.g. 07-01 through 07-06 = 6 plans, 10-01 through 10-09 = 9 plans), but the Progress table at the bottom uses different denominators for 8 of 15 phases: Phase 07 (6 plans, table says 0/3), Phase 10 (9 plans, table says 0/5), Phase 11 (5 plans, table says 0/4), Phase 13 (6 plans, table says 0/4), Phase 14 (5 plans, table says 0/4), Phase 15 (6 plans, table says 0/4), Phase 16 (6 plans, table says 0/4), Phase 17 (9 plans, table says 0/4). The file system has 78 plan files for phases 03-17, agreeing with the overview paragraph and Phase Details text but not with the progress table totals. This is a ROADMAP-internal consistency issue; it does not affect 01-01-PLAN.md itself but was produced by Phase 01 plan 01-03 which owns ROADMAP.md.",
+      "action": "Update the progress table denominators to match the Phase Details plan ranges and actual plan file counts."
+    },
+    {
+      "id": "F-02",
+      "severity": "medium",
+      "category": "broken-gate",
+      "file": ".planning/phases/01-baseline-and-planning/01-03-PLAN.md",
+      "lines": "64",
+      "title": "Automated verify assertion checks for 'Phase 01 PR merges' string absent from ROADMAP.md",
+      "description": "Plan 01-03 Task 2's automated verify command (line 64) contains: s.includes('Phase 01 PR merges'). A grep of ROADMAP.md confirms the exact string 'Phase 01 PR merges' does not appear anywhere in the file. The ROADMAP does describe Phase 02 depending on Phase 01 and mentions a completed date, but uses different wording. Running this verify command against the current ROADMAP would exit nonzero, making it a perpetually failing automated gate. Since Phase 01 is marked complete (2026-09-27) and verified (01-VERIFICATION.md), this is a stale assertion that was presumably valid against an earlier ROADMAP revision or was never run against the final ROADMAP text.",
+      "action": "Either update the verify assertion to match the actual gate wording in ROADMAP.md, or replace it with a check that tests the equivalent semantic property (e.g. Phase 02 depends on Phase 01, Phase 01 is marked complete)."
+    },
+    {
+      "id": "F-03",
+      "severity": "low",
+      "category": "title-mismatch",
+      "file": ".planning/ROADMAP.md",
+      "lines": "24,282",
+      "title": "Phase 14 title inconsistency between bullet list / Phase Details and Progress table",
+      "description": "The phase list (line 24) and Phase Details heading (line 214) both say 'Continuous agents, automation and delegation', but the Progress table row (line 282) says 'Durable automation and delegation'. This is cosmetic but can cause confusion and would break any automated title-matching assertion.",
+      "action": "Unify the Phase 14 title to one canonical form across the bullet list, heading, and progress table."
+    },
+    {
+      "id": "F-04",
+      "severity": "info",
+      "category": "evidence-scope",
+      "file": ".planning/phases/01-baseline-and-planning/01-01-PLAN.md",
+      "lines": "70",
+      "title": "Verification section references 'rtk go test ./...' and 'rtk mise run phase0-check' without noting their scope limitation",
+      "description": "The 01-01 verification section says to use these commands 'only for their stated merged-baseline scope', which is correct. However, the 01-VERIFICATION.md (line 56-57) records that these ran with specific results (463 passed, Kotlin/Swift schema checks passed). The plan and verification are internally consistent on scope, but the verification section in 01-01-PLAN itself (line 70) could be clearer that these commands verify existing code health, not evidence-map correctness. This is an observation, not a defect.",
+      "action": "No change required. Noting for completeness."
+    },
+    {
+      "id": "F-05",
+      "severity": "info",
+      "category": "cross-reference",
+      "file": ".planning/PROJECT.md",
+      "lines": "37,47",
+      "title": "PROJECT.md references commit 81b60e3 and asserts Phase 01 is merged; consistent with ROADMAP",
+      "description": "PROJECT.md line 37 names merged main at 81b60e3 with completed Phase 01 GSD artifacts, and line 47 states 'Phase 01 is merged and Phase 02 local Host/Hermes foundation is complete. Phase 03 conversation and web is next.' This is consistent with ROADMAP showing Phase 01 complete (2026-09-27) and Phase 02 complete (2026-10-02). No gap. The 01-01-PLAN references 'docs/PLAN.md' and '.planning/phases/01-baseline-and-planning/01-CONTEXT.md' in its context section; both files exist and are substantive.",
+      "action": "No change required. Noting confirmed consistency."
+    },
+    {
+      "id": "F-06",
+      "severity": "info",
+      "category": "structure",
+      "file": ".planning/phases/01-baseline-and-planning/01-01-PLAN.md",
+      "lines": "1-73",
+      "title": "Plan 01-01 frontmatter, objective, tasks, and acceptance criteria are well-formed and internally consistent",
+      "description": "Plan 01-01 defines two tasks (tracer + auto) across wave 1, produces the correct 8 artifact files, has automated and manual verify steps, references its context correctly, and its must_haves.truths are accurate reflections of the 01-CONTEXT decisions. The task type 'tracer' for Task 1 is not a standard GSD type (standard types are 'auto', 'execute', 'checkpoint:human-verify'), but it was accepted during execution and the phase passed verification.",
+      "action": "No change required."
+    }
+  ],
+  "blockers": [],
+  "files_inspected": [
+    ".planning/phases/01-baseline-and-planning/01-01-PLAN.md",
+    ".planning/phases/01-baseline-and-planning/01-02-PLAN.md",
+    ".planning/phases/01-baseline-and-planning/01-03-PLAN.md",
+    ".planning/phases/01-baseline-and-planning/01-CONTEXT.md",
+    ".planning/phases/01-baseline-and-planning/01-VALIDATION.md",
+    ".planning/phases/01-baseline-and-planning/01-VERIFICATION.md",
+    ".planning/PROJECT.md",
+    ".planning/ROADMAP.md",
+    ".planning/REQUIREMENTS.md (tail ~60 lines)",
+    ".planning/research/BASELINE-EVIDENCE.md (existence verified)",
+    ".planning/codebase/ARCHITECTURE.md (existence verified)",
+    ".planning/codebase/CONCERNS.md (existence verified)",
+    ".planning/codebase/CONVENTIONS.md (existence verified)",
+    ".planning/codebase/INTEGRATIONS.md (existence verified)",
+    ".planning/codebase/STACK.md (existence verified)",
+    ".planning/codebase/STRUCTURE.md (existence verified)",
+    ".planning/codebase/TESTING.md (existence verified)",
+    "docs/PLAN.md (first 200 lines)"
+  ],
+  "commands_run": [
+    {
+      "command": "ls -la .planning/phases/01-baseline-and-planning/ && ls -la .planning/research/BASELINE-EVIDENCE.md && ls -la .planning/codebase/",
+      "purpose": "Verify all Phase 01 artifact files exist on disk",
+      "result": "All files present with non-zero sizes"
+    },
+    {
+      "command": "grep -n 'Phase 01 PR' .planning/ROADMAP.md",
+      "purpose": "Verify the 01-03 automated verify gate string exists in ROADMAP",
+      "result": "STRING NOT FOUND — the exact string 'Phase 01 PR merges' is absent"
+    },
+    {
+      "command": "grep -c '^### Phase' .planning/ROADMAP.md",
+      "purpose": "Verify 17 phase headings exist in ROADMAP",
+      "result": "17 — correct"
+    },
+    {
+      "command": "find .planning/phases -name '*-PLAN.md' | grep -v '/01-\\|/02-' | wc -l",
+      "purpose": "Count actual plan files for phases 03-17",
+      "result": "78 plan files — matches ROADMAP overview claim"
+    },
+    {
+      "command": "find .planning/phases -name '${p}-*-PLAN.md' per phase",
+      "purpose": "Count plan files per phase to compare against progress table denominators",
+      "result": "8 of 15 phases have mismatched denominators between Phase Details and Progress table"
+    },
+    {
+      "command": "grep 'Phase 01' .planning/REQUIREMENTS.md",
+      "purpose": "Verify no FR is assigned to Phase 01",
+      "result": "No FR assigned to Phase 01 — correct per 01-03 must_haves"
+    },
+    {
+      "command": "which rtk",
+      "purpose": "Verify rtk CLI is available for plan verification commands",
+      "result": "/opt/homebrew/bin/rtk — available"
+    },
+    {
+      "command": "grep 'Phase 14' .planning/ROADMAP.md",
+      "purpose": "Check Phase 14 title consistency across ROADMAP sections",
+      "result": "Title mismatch found: 'Continuous agents...' vs 'Durable automation...'"
+    }
+  ]
+}

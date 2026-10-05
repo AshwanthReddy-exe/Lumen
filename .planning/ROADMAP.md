@@ -272,14 +272,14 @@ The [execution blueprint](EXECUTION-BLUEPRINT.md) summarizes the sequence; 78 fi
 | 04. Accepted memory and context controls | 0/4 | Not started | - |
 | 05. Node identity and continuity | 0/5 | Not started | - |
 | 06. Attention inbox and human input | 0/4 | Not started | - |
-| 07. Cross-node capabilities and useful action | 0/3 | Not started | - |
+| 07. Cross-node capabilities and useful action | 0/6 | Not started | - |
 | 08. Voice companion node | 0/2 | Not started | - |
 | 09. Integrated local product | 0/2 | Not started | - |
-| 10. Always-on deployment and alpha release | 0/5 | Not started | - |
-| 11. One messaging integration | 0/4 | Not started | - |
+| 10. Always-on deployment and alpha release | 0/9 | Not started | - |
+| 11. One messaging integration | 0/5 | Not started | - |
 | 12. Apple abilities and controlled browsing | 0/4 | Not started | - |
-| 13. Controlled coding and broader device execution | 0/4 | Not started | - |
-| 14. Durable automation and delegation | 0/4 | Not started | - |
-| 15. Paid self-hosted readiness | 0/4 | Not started | - |
-| 16. Managed service | 0/4 | Not started | - |
-| 17. Public integration ecosystem and shared Spaces | 0/4 | Not started | - |
+| 13. Controlled coding and broader device execution | 0/6 | Not started | - |
+| 14. Continuous agents, automation and delegation | 0/5 | Not started | - |
+| 15. Paid self-hosted readiness | 0/6 | Not started | - |
+| 16. Managed service | 0/6 | Not started | - |
+| 17. Public integration ecosystem and shared Spaces | 0/9 | Not started | - |

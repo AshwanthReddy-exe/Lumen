@@ -1,0 +1,227 @@
+{
+  "schema": "agy.review.v1",
+  "verdict": "rejected",
+  "findings": [
+    {
+      "id": "FINDING-P03-01",
+      "severity": "high",
+      "category": "sequencing",
+      "file": ".planning/phases/03-conversation-and-web/03-03-PLAN.md",
+      "lines": "20-25",
+      "title": "Static SPA route shadowing and embed sentinel race in web asset handler",
+      "description": "Wave 3 static web embed relies on an empty .keep sentinel in internal/host/web/dist before apps/web is built in Wave 4 (03-04-PLAN.md). Compiling Go in Wave 3 embeds only the placeholder sentinel and serves an empty file as the SPA root. Furthermore, SPA fallback intercepts /devices and /attention routes prematurely, serving 200 HTML responses instead of 404 API errors for endpoints belonging to Phase 05 and Phase 06.",
+      "action": "Guard Go asset embedding with a fallback handler when index.html is absent. Restrict SPA HTML fallback strictly to recognized web client routes (/ and /c/*) rather than shadowing future Phase 05 (/devices) and Phase 06 (/attention) API namespaces."
+    },
+    {
+      "id": "FINDING-P04-01",
+      "severity": "high",
+      "category": "blocker",
+      "file": ".planning/phases/04-accepted-memory-and-context-controls/04-04-PLAN.md",
+      "lines": "19-25",
+      "title": "E8 Memory benchmark evaluation requires uncommitted external dataset without reproducible synthetic fallback",
+      "description": "E8 Memory benchmark evaluation strictly requires an uncommitted external dataset via LUMEN_MEMORY_EVAL_MANIFEST with >=40 questions and >=100 records. Because raw test text is deliberately excluded from git and no synthetic fixture or generator script is checked into the repository, automated CI or isolated test runners unconditionally skip or fail, blocking automated verification of memory retrieval contracts.",
+      "action": "Check in a sanitized, non-personal synthetic fixture (test/fixtures/memory_eval_synthetic.json) and evaluation generator into the repository so automated runners can verify scoring algorithms and retrieval contracts deterministically without out-of-band private files."
+    },
+    {
+      "id": "FINDING-P05-01",
+      "severity": "high",
+      "category": "decision_gate",
+      "file": ".planning/phases/05-phone-identity-and-chat/05-04-PLAN.md",
+      "lines": "7-28",
+      "title": "Unbound client platform branch and runtime plan file modification in mobile client plans",
+      "description": "05-04-PLAN.md and 05-05-PLAN.md specify client_binding: UNBOUND in frontmatter while hardcoding apps/phone/... in files_modified. If physical device testing in 05-01 selects FAIL_SHARED_SELECT_FALLBACK, the plans instruct the executor to dynamically edit the plan files at runtime. In automated GSD execution, this causes schema validation failure, missing path errors, and nondeterministic execution.",
+      "action": "Split 05-04 and 05-05 into explicit branch variants (e.g., 05-04-expo vs 05-04-native-fallback) or introduce a formal client platform configuration gate that materializes the concrete plan file before wave execution starts."
+    },
+    {
+      "id": "FINDING-P05-02",
+      "severity": "medium",
+      "category": "verification",
+      "file": ".planning/phases/05-phone-identity-and-chat/05-02-PLAN.md",
+      "lines": "18-35",
+      "title": "Contradictory autonomy markers and deferred client verification for enrollment wire contract",
+      "description": "Task 0 imposes a mandatory human cryptographic review checkpoint before Tasks 1-3 can run, but individual tasks are marked type='auto'. Additionally, Task 2 defers client-side enrollment parity to 05-04-PLAN.md, meaning 05-02 claims completion of the enrollment wire contract without verifying client-side challenge-response implementations against the schema fixture.",
+      "action": "Align task execution types with the plan's autonomous: false status, and require cross-platform test fixtures (protocol/fixtures/enrollment-v1.json) to be verified against mock client implementations before closing Phase 05 Wave 2."
+    },
+    {
+      "id": "FINDING-P06-01",
+      "severity": "high",
+      "category": "blocker",
+      "file": ".planning/phases/06-attention-inbox-and-human-input/06-04-PLAN.md",
+      "lines": "18-30",
+      "title": "Hermes Runs API suspension uncertainty blocks human-in-the-loop approval workflow",
+      "description": "The plan notes that Hermes documented Runs API may not support mid-run suspension, bidirectional clarification replies, or typed resume calls. If unsupported, the plan requires marking FR-81 as UNSUPPORTED and blocking Phase 06 exit. Because Phase 07 (07-02, 07-03, 07-05) and Phase 08 (08-02) directly depend on Phase 06 attention resolution for cross-node tool approvals, an unhandled failure halts the entire alpha journey.",
+      "action": "Architect a Host-mediated tool execution interceptor in internal/host/execution.go. The Host holds tool execution tokens and pauses tool results delivery to Hermes pending attention approval, decoupling the human-in-the-loop approval invariant from Hermes upstream runtime capabilities."
+    },
+    {
+      "id": "FINDING-P07-01",
+      "severity": "high",
+      "category": "recovery",
+      "file": ".planning/phases/07-mac-node-and-useful-action/07-01-PLAN.md",
+      "lines": "20-25",
+      "title": "Mac Node security-scoped bookmarks lack crash-safe lifecycle and symlink-safe traversal",
+      "description": "macOS security-scoped bookmarks require balanced calls to startAccessingSecurityScopedResource() and stopAccessingSecurityScopedResource(). The task specifies bookmark persistence and race-safe path reads, but lacks a crash-safe lifecycle wrapper. In addition, Swift high-level FileManager APIs are vulnerable to symlink race conditions (TOCTOU) without POSIX O_NOFOLLOW / openat descriptors.",
+      "action": "Implement a scoped resource manager (withSecurityScopedAccess) using defer for deterministic cleanup, and use Darwin POSIX APIs (Darwin.open with O_NOFOLLOW and Darwin.fstat) to enforce sandboxed path traversal."
+    },
+    {
+      "id": "FINDING-P07-02",
+      "severity": "medium",
+      "category": "contradiction",
+      "file": ".planning/phases/07-mac-node-and-useful-action/07-02-PLAN.md",
+      "lines": "19-25",
+      "title": "Underspecified canonical argument digest encoding between Go and Swift",
+      "description": "07-02 specifies an argument_digest (SHA-256) in the cross-node invocation record, but does not define the canonical JSON encoding standard (RFC 8785). Swift's default JSONEncoder does not produce RFC 8785 canonical JSON by default, leading to hash mismatch and false tamper rejections between the Go Host and Swift Mac node.",
+      "action": "Specify RFC 8785 canonical JSON serialization in protocol/fixtures/invocation-v1.json and provide cross-language test vectors asserting identical SHA-256 digests in Go and Swift."
+    },
+    {
+      "id": "FINDING-P07-03",
+      "severity": "high",
+      "category": "recovery",
+      "file": ".planning/phases/07-mac-node-and-useful-action/07-04-PLAN.md",
+      "lines": "19-25",
+      "title": "Mac Node SQLite receipt store lacks WAL mode and transactional busy-timeout policy",
+      "description": "ReceiptStore.swift introduces an SQLite database in macOS Application Support for invocation receipts. The plan does not specify WAL mode, busy timeout, or transactional write boundaries. Concurrent queries during retries or Host reconnects can encounter SQLITE_BUSY errors, resulting in unrecorded receipts or duplicate action executions.",
+      "action": "Configure SQLite PRAGMAs explicitly (journal_mode=WAL; synchronous=NORMAL; busy_timeout=5000;) and wrap receipt state transitions in immediate transactions."
+    },
+    {
+      "id": "FINDING-P08-01",
+      "severity": "high",
+      "category": "decision_gate",
+      "file": ".planning/phases/08-desk-voice/08-01-PLAN.md",
+      "lines": "19-21",
+      "title": "Unselected and unlicensed wake word engine blocks desk companion voice qualification",
+      "description": "No device-resident wake engine, ABI model, or commercial license has been selected or tested for Android. The plan instructs the executor to record the choice or mark wake UNSUPPORTED and Phase 08 BLOCKED. Because wake detection is a core requirement for the desk companion milestone (FR-07, E6), leaving the engine selection open in the execution plan guarantees an execution halt.",
+      "action": "Hold an owner decision gate (D-062) to evaluate and pre-select a viable on-device wake engine (e.g. OpenWakeWord via ONNX Runtime / TFLite or licensed Porcupine) with confirmed licensing and committed Android ABI dependencies prior to running 08-01-PLAN.md."
+    },
+    {
+      "id": "FINDING-P08-02",
+      "severity": "high",
+      "category": "verification",
+      "file": ".planning/phases/08-desk-voice/08-02-PLAN.md",
+      "lines": "29-30",
+      "title": "Missing numerical E7 thresholds in execution plan contract",
+      "description": "Task 3 defers setting numerical E7 thresholds (word-error rate, p95 latency, battery drain, thermal limits, and barge-in cut-off) to the executor in 08-EVIDENCE.md. Without predefined numeric acceptance criteria in the plan, automated executors cannot deterministically evaluate PASS vs FAIL.",
+      "action": "Define explicit numerical benchmark thresholds (e.g., barge-in interruption <= 250ms, p95 local transcript latency <= 800ms, battery standby drain <= 3%/hr) directly in the plan's acceptance contract approved by the owner."
+    },
+    {
+      "id": "FINDING-P08-03",
+      "severity": "medium",
+      "category": "boundary",
+      "file": ".planning/phases/08-desk-voice/08-02-PLAN.md",
+      "lines": "28-29",
+      "title": "Missing automated network egress test for audio stream privacy boundaries",
+      "description": "The plan mandates that remote speech is excluded and must never activate as a fallback. However, there is no automated network egress test in SpeechDeviceTest.kt or SpeechPipelineTest.kt that asserts zero external audio byte egress during speech capture and recognition.",
+      "action": "Add an automated egress verification test that monitors network sockets during speech pipeline execution, failing if any outbound audio frames are transmitted."
+    },
+    {
+      "id": "FINDING-ENV-01",
+      "severity": "high",
+      "category": "blocker",
+      "file": ".planning/phases/01-baseline-and-planning/01-03-PLAN.md",
+      "lines": "18-25",
+      "title": "Mise runner failure under standard sandbox execution due to unreadable user config",
+      "description": "mise run phase0-check fails under standard sandbox execution due to file permission errors reading user-level ~/.config/mise/config.toml (Operation not permitted (os error 1)). This prevents standard agent environments from running the contract baseline checks via mise.",
+      "action": "Provide a self-contained, hermetic script (e.g. ./scripts/phase0-check.sh or a Go test harness) that does not depend on user-home mise configuration files."
+    }
+  ],
+  "blockers": [
+    "E8 Evaluation Manifest dependency (04-04-PLAN.md:Task 1): Lack of in-tree synthetic evaluation dataset blocks automated verification of memory retrieval.",
+    "Unbound client platform branch (05-04-PLAN.md, 05-05-PLAN.md): Dynamic modification of plan frontmatter and task files during execution conflicts with GSD automated runner.",
+    "Hermes Runs API suspension capability (06-04-PLAN.md:Task 1): Absence of verified in-flight question/reply support in Hermes risks deadlocking Phase 06-08 approvals without Host-mediated tool interception.",
+    "Unselected and unlicensed wake word engine (08-01-PLAN.md:Task 1): Execution cannot begin without an approved Android-compatible on-device wake engine.",
+    "Unspecified numerical E7 thresholds (08-02-PLAN.md:Task 3): Lacking quantitative latency and accuracy thresholds prevents deterministic acceptance.",
+    "Sandbox runner failure on mise (01-03-PLAN.md:Task 1): ~/.config/mise/config.toml cannot be read inside sandboxed execution environments."
+  ],
+  "files_inspected": [
+    ".planning/PROJECT.md",
+    ".planning/ROADMAP.md",
+    ".planning/REQUIREMENTS.md",
+    ".planning/EXECUTION-BLUEPRINT.md",
+    ".planning/CONTRACT-CATALOG.md",
+    ".planning/CLIENT-BRANCHES.md",
+    ".planning/FILE-INVENTORY.md",
+    ".planning/PHASE-11-17-CONTRACTS.md",
+    ".planning/PHASE-11-17-SOURCE-REVIEW.md",
+    ".planning/PHASE-03-10-HANDOFF-REVIEW.md",
+    ".planning/PHASE-07-10-HANDOFF.md",
+    ".planning/PLANNING-COMPLETENESS-AUDIT.md",
+    ".planning/PLANNING-CURRENT-STATE-2026-10-04.md",
+    ".planning/TASK-CONTRACT-COVERAGE-2026-10-04.md",
+    "docs/PRD.md",
+    "docs/ARCHITECTURE.md",
+    "docs/DECISIONS.md",
+    "docs/PLAN.md",
+    "docs/DESIGN-PRINCIPLES.md",
+    ".planning/research/FUTURE-OS-REFERENCE-ANALYSIS.md",
+    ".planning/research/FUTURE-OS-UPSTREAM-DELTA-2026-10-04.md",
+    ".planning/phases/01-baseline-and-planning/01-01-PLAN.md",
+    ".planning/phases/01-baseline-and-planning/01-02-PLAN.md",
+    ".planning/phases/01-baseline-and-planning/01-03-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-01-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-02-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-03-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-04-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-05-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-06-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-07-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-08-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-09-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-10-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-11-PLAN.md",
+    ".planning/phases/02-close-the-existing-host-hermes-foundation/02-12-PLAN.md",
+    ".planning/phases/03-conversation-and-web/03-01-PLAN.md",
+    ".planning/phases/03-conversation-and-web/03-02-PLAN.md",
+    ".planning/phases/03-conversation-and-web/03-03-PLAN.md",
+    ".planning/phases/03-conversation-and-web/03-04-PLAN.md",
+    ".planning/phases/03-conversation-and-web/03-05-PLAN.md",
+    ".planning/phases/04-accepted-memory-and-context-controls/04-01-PLAN.md",
+    ".planning/phases/04-accepted-memory-and-context-controls/04-02-PLAN.md",
+    ".planning/phases/04-accepted-memory-and-context-controls/04-03-PLAN.md",
+    ".planning/phases/04-accepted-memory-and-context-controls/04-04-PLAN.md",
+    ".planning/phases/05-phone-identity-and-chat/05-01-PLAN.md",
+    ".planning/phases/05-phone-identity-and-chat/05-02-PLAN.md",
+    ".planning/phases/05-phone-identity-and-chat/05-03-PLAN.md",
+    ".planning/phases/05-phone-identity-and-chat/05-04-PLAN.md",
+    ".planning/phases/05-phone-identity-and-chat/05-05-PLAN.md",
+    ".planning/phases/06-attention-inbox-and-human-input/06-01-PLAN.md",
+    ".planning/phases/06-attention-inbox-and-human-input/06-02-PLAN.md",
+    ".planning/phases/06-attention-inbox-and-human-input/06-03-PLAN.md",
+    ".planning/phases/06-attention-inbox-and-human-input/06-04-PLAN.md",
+    ".planning/phases/07-mac-node-and-useful-action/07-01-PLAN.md",
+    ".planning/phases/07-mac-node-and-useful-action/07-02-PLAN.md",
+    ".planning/phases/07-mac-node-and-useful-action/07-03-PLAN.md",
+    ".planning/phases/07-mac-node-and-useful-action/07-04-PLAN.md",
+    ".planning/phases/07-mac-node-and-useful-action/07-05-PLAN.md",
+    ".planning/phases/07-mac-node-and-useful-action/07-06-PLAN.md",
+    ".planning/phases/07-mac-node-and-useful-action/07-SOURCE-REVIEW.md",
+    ".planning/phases/08-desk-voice/08-01-PLAN.md",
+    ".planning/phases/08-desk-voice/08-02-PLAN.md",
+    ".planning/phases/08-desk-voice/08-SOURCE-REVIEW.md"
+  ],
+  "commands_run": [
+    {
+      "command": "ls -la .planning/phases/07-mac-node-and-useful-action",
+      "purpose": "List Phase 07 execution plans and review documents",
+      "result": "exit 0; listed 07-01-PLAN.md through 07-06-PLAN.md and 07-SOURCE-REVIEW.md"
+    },
+    {
+      "command": "ls -la .planning/phases/08-desk-voice",
+      "purpose": "List Phase 08 execution plans and review documents",
+      "result": "exit 0; listed 08-01-PLAN.md, 08-02-PLAN.md, and 08-SOURCE-REVIEW.md"
+    },
+    {
+      "command": "mise run phase0-check",
+      "purpose": "Run Phase 0 contract and lint baseline checks",
+      "result": "exit 1; failed with Operation not permitted reading ~/.config/mise/config.toml under sandbox isolation"
+    },
+    {
+      "command": "git status",
+      "purpose": "Check working tree status and branch tracking",
+      "result": "exit 0; branch main up to date with origin/main"
+    },
+    {
+      "command": "ls -la /Users/ashwanthreddyboddireddy/.local/state/codex-agy-bridge/runs/2026-10-05T104401.688689Z-b38ad93e/artifacts",
+      "purpose": "Verify accessibility of codex-agy-bridge artifact directory",
+      "result": "exit 1; failed with Operation not permitted across sandbox boundary"
+    }
+  ]
+}

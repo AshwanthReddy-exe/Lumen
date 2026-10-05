@@ -16,11 +16,11 @@ Status: **OPEN; not cross-AI converged.** Independent CLI review produced no res
 
 ## 10-04
 
-- **HIGH:** A restored Host cannot unilaterally prevent a partitioned old Host from accepting local writes. `10-04-PLAN.md:20` must define the fencing authority and enrollment/epoch protocol at each node, and state the manual quiescence precondition. Prove old Host return and offline node behavior before claiming one active authority.
+- **HIGH:** A restored Host cannot unilaterally prevent a partitioned old Host from accepting local writes. The authority fencing decision now spans the handoff and activation plans (`10-05-PLAN.md`, `10-06-PLAN.md`, `10-07-PLAN.md`); preserve their owner confirmation, monotonic epoch and offline-node gates through implementation.
 - **HIGH:** Backup scope includes identity, grants, tasks, cursors (`10-04-PLAN.md:19`) but owns only `cmd/lumen/backup.go` and `restore.go`. Assign the canonical storage snapshot API and its consistent watermark to a concrete package/file; a CLI-only archive risks inconsistent multi-store state.
 
-## 10-05
+## 10-09
 
-- **MEDIUM:** Seven-day soak and owner sign-off are explicit (`10-05-PLAN.md:20-21`); preserve BLOCKED status until actual elapsed duration and named physical acceptance exist. Do not let an automated `Test.*Soak` pass stand in for the duration.
+- **MEDIUM:** Seven-day soak and owner sign-off are explicit (`10-09-PLAN.md:20-21`); preserve BLOCKED status until actual elapsed duration and named physical acceptance exist. Do not let an automated `Test.*Soak` pass stand in for the duration.
 
 CYCLE_SUMMARY: unresolved HIGH 3; actionable MEDIUM 3; LOW 0. Revise plans, then run independent `gsd-review` again.

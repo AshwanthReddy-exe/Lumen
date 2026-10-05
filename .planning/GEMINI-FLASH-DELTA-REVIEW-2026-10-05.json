@@ -1,0 +1,73 @@
+{
+  "schema": "agy.review.v1",
+  "verdict": "rejected",
+  "findings": [
+    {
+      "file": ".planning/phases/10-always-on-deployment-and-alpha-release/10-SOURCE-REVIEW.md",
+      "line": 24,
+      "severity": "LOW",
+      "evidence": "Under heading ## 10-09, line 24 cites '10-05-PLAN.md:20-21' for the seven-day soak and owner sign-off ('Seven-day soak and owner sign-off are explicit (10-05-PLAN.md:20-21);'). In Phase 10, the soak plan is 10-09-PLAN.md:20-21, whereas 10-05-PLAN.md is host migration handoff preparation. Additionally, line 19 cites '10-04-PLAN.md:20' for fencing authority and node epoch protocol, which now belongs to 10-05-PLAN.md, 10-06-PLAN.md, and 10-07-PLAN.md.",
+      "smallest_corrective_change": "In 10-SOURCE-REVIEW.md:24, update '10-05-PLAN.md:20-21' to '10-09-PLAN.md:20-21'. In line 19, update the citation from 10-04-PLAN.md:20 to 10-05-PLAN.md/10-06-PLAN.md/10-07-PLAN.md."
+    },
+    {
+      "file": ".planning/phases/10-always-on-deployment-and-alpha-release/10-08-PLAN.md",
+      "line": 20,
+      "severity": "LOW",
+      "evidence": "Lines 20 and 21 contain back-to-back duplicate blocking-human checkpoints ('<name>10-08 owner confirms one-artifact prune</name>' and '<name>10-08 confirm exact recovery artifact</name>'), both gating the single recovery artifact deletion confirmation before Task 4 (line 22). Line 20 is an accidental duplicate checkpoint retained during task splitting.",
+      "smallest_corrective_change": "Delete line 20 (<task type=\"checkpoint:human-verify\" gate=\"blocking-human\"><name>10-08 owner confirms one-artifact prune</name>...</task>), retaining the more comprehensive checkpoint at line 21."
+    },
+    {
+      "file": ".planning/phases/10-always-on-deployment-and-alpha-release/10-07-PLAN.md",
+      "line": 20,
+      "severity": "MEDIUM",
+      "evidence": "In Task 3 ('Bind selected phone node and complete migration gate'), <verify><automated> runs 'rtk go test ./internal/space ./internal/host ./cmd/lumen -run 'Test.*(HostEpoch|Migration|EpochFence)' -count=1 && rtk swift test --package-path apps/mac-node --filter IdentityTests'. It completely omits the selected phone client test command despite result_contract requiring 'PASS only when selected phone tests, Mac tests and named physical migration prove persistent epoch acceptance...'. Per CLIENT-BRANCHES.md:28, this check must run the selected phone branch test suite (apps/phone test scripts or Gradle Android tests), rather than re-testing apps/mac-node while omitting the phone node.",
+      "smallest_corrective_change": "In 10-07-PLAN.md:20, update <verify><automated> to include the selected phone client test command (or explicit binding placeholder) per CLIENT-BRANCHES.md:28 instead of only re-running the Mac test."
+    },
+    {
+      "file": ".planning/phases/13-coding-and-device-execution/13-05-PLAN.md",
+      "line": 19,
+      "severity": "HIGH",
+      "evidence": "In automated Task 2 ('Bind selected facets to Host authority and lifecycle'), <action> mandates: 'Independently review authorization, credential and adapter boundaries, then prove one named skill and MCP call plus changed-tool/secret/restart denial on the pinned runtime.' and <verify><result_contract> requires: 'PASS when reducer/Host tests and pinned live calls show exact scoped profile, one intent/receipt and negative restart/secret cases with independent security review.' However, Task 3 (line 20) is the human checkpoint ('13-05 runtime facet security gate') where the independent reviewer inspects the configuration and where unapproved facets stay disabled. Automated Task 2 cannot perform independent review or execute live skill/MCP calls before the Task 3 independent security gate. Live execution and enablement must be blocked until Task 3 passes.",
+      "smallest_corrective_change": "In 13-05-PLAN.md:19 (Task 2), scope <action> and result_contract to automated Host capability enforcement, reducer tests, and negative denial tests with facets disabled by default; remove the requirement to perform live calls and independent review inside Task 2 so that live enablement is gated by the Task 3 human security checkpoint."
+    },
+    {
+      "file": ".planning/phases/12-apple-and-browsing/12-02-PLAN.md",
+      "line": 65,
+      "severity": "LOW",
+      "evidence": "Task 3 ('12-02: Register reminder route and owner UI') lists 'apps/web/src/reminder.test.tsx' under <files> and states in result_contract that 'Host/UI tests prove reachable form...', but <verify><automated> executes 'rtk go test ./internal/host -run 'Test.*ReminderRoute' -count=1 && rtk npm --prefix apps/web run check', which typechecks/lints but omits running the web component tests.",
+      "smallest_corrective_change": "In 12-02-PLAN.md:65, update <verify><automated> to append '&& rtk npm --prefix apps/web test' (or 'rtk npm --prefix apps/web run test')."
+    }
+  ],
+  "blockers": [],
+  "files_inspected": [
+    ".planning/phases/09-integrated-local-product/09-01-PLAN.md",
+    ".planning/phases/09-integrated-local-product/09-02-PLAN.md",
+    ".planning/phases/10-always-on-deployment-and-alpha-release/10-04-PLAN.md",
+    ".planning/phases/10-always-on-deployment-and-alpha-release/10-06-PLAN.md",
+    ".planning/phases/10-always-on-deployment-and-alpha-release/10-07-PLAN.md",
+    ".planning/phases/10-always-on-deployment-and-alpha-release/10-08-PLAN.md",
+    ".planning/phases/10-always-on-deployment-and-alpha-release/10-SOURCE-REVIEW.md",
+    ".planning/phases/12-apple-and-browsing/12-01-PLAN.md",
+    ".planning/phases/12-apple-and-browsing/12-02-PLAN.md",
+    ".planning/phases/13-coding-and-device-execution/13-05-PLAN.md",
+    ".planning/phases/14-automation-and-delegation/14-02-PLAN.md",
+    ".planning/phases/14-automation-and-delegation/14-04-PLAN.md",
+    ".planning/phases/16-managed-service/16-05-PLAN.md"
+  ],
+  "commands_run": [
+    "ls -la .planning/phases/10-always-on-deployment-and-alpha-release/",
+    "ls -la apps/",
+    "git status",
+    "git diff .planning/phases/09-integrated-local-product/ .planning/phases/10-always-on-deployment-and-alpha-release/ .planning/phases/12-apple-and-browsing/ .planning/phases/13-coding-and-device-execution/ .planning/phases/14-automation-and-delegation/ .planning/phases/16-managed-service/",
+    "git diff .planning/phases/09-integrated-local-product/ .planning/phases/10-always-on-deployment-and-alpha-release/",
+    "git diff .planning/phases/10-always-on-deployment-and-alpha-release/10-08-PLAN.md",
+    "git diff .planning/phases/09-integrated-local-product/09-01-PLAN.md .planning/phases/09-integrated-local-product/09-02-PLAN.md",
+    "git diff .planning/phases/10-always-on-deployment-and-alpha-release/10-04-PLAN.md .planning/phases/10-always-on-deployment-and-alpha-release/10-06-PLAN.md .planning/phases/10-always-on-deployment-and-alpha-release/10-07-PLAN.md",
+    "git diff .planning/phases/12-apple-and-browsing/ .planning/phases/13-coding-and-device-execution/",
+    "git diff .planning/phases/14-automation-and-delegation/14-02-PLAN.md",
+    "git diff .planning/phases/14-automation-and-delegation/14-04-PLAN.md",
+    "ls -la test/",
+    "ls -la apps/web",
+    "mkdir -p /Users/ashwanthreddyboddireddy/.local/state/codex-agy-bridge/runs/2026-10-05T111039.936606Z-70d0d781/artifacts"
+  ]
+}
