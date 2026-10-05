@@ -1,0 +1,36 @@
+{
+  "schema": "agy.review.v1",
+  "verdict": "accepted",
+  "findings": [],
+  "blockers": [],
+  "files_inspected": [
+    ".planning/phases/03-conversation-and-web/03-03-PLAN.md",
+    ".planning/phases/08-desk-voice/08-01-PLAN.md",
+    ".planning/phases/09-integrated-local-product/09-01-PLAN.md",
+    ".planning/phases/09-integrated-local-product/09-02-PLAN.md",
+    ".planning/phases/10-always-on-deployment-and-alpha-release/10-04-PLAN.md",
+    ".planning/phases/10-always-on-deployment-and-alpha-release/10-06-PLAN.md",
+    ".planning/phases/10-always-on-deployment-and-alpha-release/10-07-PLAN.md",
+    ".planning/phases/10-always-on-deployment-and-alpha-release/10-08-PLAN.md",
+    ".planning/phases/10-always-on-deployment-and-alpha-release/10-SOURCE-REVIEW.md",
+    ".planning/phases/12-apple-and-browsing/12-01-PLAN.md",
+    ".planning/phases/12-apple-and-browsing/12-02-PLAN.md",
+    ".planning/phases/13-coding-and-device-execution/13-05-PLAN.md",
+    ".planning/phases/14-automation-and-delegation/14-02-PLAN.md",
+    ".planning/phases/14-automation-and-delegation/14-04-PLAN.md",
+    ".planning/phases/16-managed-service/16-05-PLAN.md"
+  ],
+  "commands_run": [
+    "ls -la .planning",
+    "python3 scripts/check-plan-task-contracts.py && python3 scripts/check-plan-coverage.py",
+    "git status",
+    "git diff --check",
+    "which rtk",
+    "rtk git diff --check",
+    "mise run phase0-check",
+    "gradle -p spikes/o-001/kmp jvmTest --no-daemon",
+    "go test ./internal/space ./internal/host -count=1",
+    "node -v && which node",
+    "ls -la scripts/"
+  ]
+}
