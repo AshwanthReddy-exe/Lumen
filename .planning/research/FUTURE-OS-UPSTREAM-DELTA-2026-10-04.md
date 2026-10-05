@@ -19,7 +19,7 @@
 
 ## Plan changes required from this delta
 
-1. Phase 05 plans need an explicit single-writer cache/cursor atomic commit and replay integrity matrix before selecting any client implementation. The reference cannot decide client stack or platform support.
+1. **Mapped to Phase 05-01 Task 2, 05-02 Task 3, 05-04 Task 2 and 05-05 Task 1**: freeze an explicit single-writer projection/cursor atomic-commit rule and replay integrity matrix before selected-client implementation, then bind its paths/checks to the D-056 decision. The reference cannot decide client stack or platform support.
 2. Phase 14 plans may specify Host-owned lease epoch comparison at every transition and effect dispatch, but must retain every accepted schedule/child intent and receipts through crash, pause, revocation and ambiguous execution.
 3. Every transport plan should define max record bytes, sequence exhaustion/rekey, replay-window behavior, duplicate handling, timeout and unknown outcome in Lumen's protocol fixture. These are review criteria, not a decision to import Future OS crypto.
 4. No Future OS source code is copied by this analysis. If a future task copies code, freeze the exact upstream SHA, source path/lines, license and notices in that task; test Lumen authority and denial behavior independently.
